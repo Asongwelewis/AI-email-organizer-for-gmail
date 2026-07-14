@@ -1,4 +1,4 @@
-# MailMind AI
+# MailOrganizer AI
 
 MailMind AI is an AI-powered Gmail organization platform that automatically analyzes a user's inbox, discovers meaningful email categories, creates hierarchical Gmail labels, and organizes emails without requiring manual filters.
 
