@@ -15,16 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --force",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.+(ts|tsx|js|jsx)": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.+(json|md)": [
-      "prettier --write"
-    ]
+    "prepare": "node .husky/install.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
