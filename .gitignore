@@ -10,4 +10,3 @@ coverage
 apps/*/dist
 packages/*/dist
 apps/*/.vite
-package-lock.json
