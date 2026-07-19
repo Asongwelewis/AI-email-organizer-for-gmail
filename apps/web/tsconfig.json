@@ -5,6 +5,7 @@
     "baseUrl": ".",
     "jsx": "react-jsx",
     "noEmit": true,
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "paths": {

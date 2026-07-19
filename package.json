@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b --force",
     "prepare": "husky"
   },
   "lint-staged": {
