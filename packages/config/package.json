@@ -1,0 +1,11 @@
+{
+  "name": "@mailmind/config",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint.base.mjs",
+    "./prettier": "./prettier.base.cjs",
+    "./tsconfig": "./tsconfig.base.json"
+  }
+}
