@@ -1,0 +1,18 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@api/*": ["src/*"],
+      "@mailmind/shared": ["../../packages/shared/src/index.ts"],
+      "@mailmind/shared/*": ["../../packages/shared/src/*"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "prisma/**/*.prisma"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../../packages/shared" }]
+}

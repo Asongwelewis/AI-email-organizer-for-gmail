@@ -1,0 +1,57 @@
+{
+  "name": "mailmind-ai",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev --workspace @mailmind/web\" \"npm run dev --workspace @mailmind/api\"",
+    "dev:web": "npm run dev --workspace @mailmind/web",
+    "dev:api": "npm run dev --workspace @mailmind/api",
+    "build": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.+(ts|tsx|js|jsx)": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.+(json|md)": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.0.14",
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.16",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.2.1",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}
