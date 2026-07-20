@@ -11,8 +11,8 @@ export class GoogleIntegrationController {
 
   async callback(request: Request, response: Response): Promise<void> {
     if (typeof request.query['error'] === 'string') {
-      await googleGmailService.denyConnection(request, request.query['state']);
-      response.redirect(frontendUrl(env.WEB_APP_URL, '/settings/connections', 'gmail_denied'));
+      const redirectPath = await googleGmailService.denyConnection(request, request.query['state']);
+      response.redirect(frontendUrl(env.WEB_APP_URL, redirectPath, 'gmail_denied'));
       return;
     }
     try {

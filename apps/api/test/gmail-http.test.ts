@@ -62,7 +62,7 @@ describe('Gmail integration HTTP routes', () => {
       status: 'gmail_connected',
       redirectPath: '/settings/connections',
     });
-    mocks.denyConnection.mockResolvedValue(undefined);
+    mocks.denyConnection.mockResolvedValue('/auth/callback');
     mocks.status.mockResolvedValue({
       connected: true,
       email: 'connected@gmail.com',
@@ -88,6 +88,7 @@ describe('Gmail integration HTTP routes', () => {
       .set('Cookie', 'mailmind_session=valid-session');
     expect(response.status).toBe(302);
     expect(response.headers['location']).toContain('status=gmail_denied');
+    expect(response.headers['location']).toContain('/auth/callback');
     expect(response.headers['set-cookie']).toBeUndefined();
     expect(mocks.denyConnection).toHaveBeenCalledWith(expect.anything(), 'denied-state');
   });

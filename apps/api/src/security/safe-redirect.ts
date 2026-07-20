@@ -1,4 +1,4 @@
-const ALLOWED_PATHS = new Set(['/dashboard', '/settings/connections', '/login']);
+const ALLOWED_PATHS = new Set(['/dashboard', '/settings/connections', '/login', '/auth/callback']);
 
 export function safeRedirectPath(value: unknown, fallback: string): string {
   if (typeof value !== 'string' || !ALLOWED_PATHS.has(value)) return fallback;

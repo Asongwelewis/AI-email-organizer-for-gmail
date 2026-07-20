@@ -156,9 +156,10 @@ export class GoogleGmailService {
     }
   }
 
-  async denyConnection(request: Request, state: unknown): Promise<void> {
+  async denyConnection(request: Request, state: unknown): Promise<string> {
     let userId: string | undefined;
     let sessionId: string | undefined;
+    let redirectPath = '/settings/connections';
     if (typeof state === 'string' && state) {
       try {
         const oauthState = await oauthStateRepository.consume(sha256(state), [
@@ -167,6 +168,7 @@ export class GoogleGmailService {
         ]);
         userId = oauthState.initiating_user_id ?? undefined;
         sessionId = oauthState.initiating_session_id ?? undefined;
+        redirectPath = oauthState.redirect_path ?? redirectPath;
       } catch {
         // Invalid state is intentionally indistinguishable at the browser redirect.
       }
@@ -179,6 +181,7 @@ export class GoogleGmailService {
       ...(sessionId ? { sessionId } : {}),
       metadata: { code: 'GMAIL_PERMISSION_DENIED' },
     });
+    return redirectPath;
   }
 
   async status(userId: string) {

@@ -48,6 +48,7 @@ describe('security primitives', () => {
 
   it('allows only predefined internal redirects', () => {
     expect(safeRedirectPath('/dashboard', '/login')).toBe('/dashboard');
+    expect(safeRedirectPath('/auth/callback', '/login')).toBe('/auth/callback');
     expect(safeRedirectPath('https://evil.example', '/login')).toBe('/login');
     expect(safeRedirectPath('//evil.example', '/login')).toBe('/login');
     expect(safeRedirectPath('/not-allowed', '/login')).toBe('/login');

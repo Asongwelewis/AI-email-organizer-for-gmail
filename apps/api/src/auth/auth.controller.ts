@@ -14,8 +14,8 @@ export class AuthController {
 
   async googleCallback(request: Request, response: Response): Promise<void> {
     if (typeof request.query['error'] === 'string') {
-      await authService.denyGoogleLogin(request, request.query['state']);
-      response.redirect(frontendUrl(env.WEB_APP_URL, '/login', 'login_failed'));
+      const redirectPath = await authService.denyGoogleLogin(request, request.query['state']);
+      response.redirect(frontendUrl(env.WEB_APP_URL, redirectPath, 'login_failed'));
       return;
     }
     try {

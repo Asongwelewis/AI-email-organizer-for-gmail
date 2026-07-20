@@ -9,7 +9,6 @@ const validEnvironment = {
   WEB_APP_URL: 'http://localhost:5173',
   API_BASE_URL: 'http://localhost:4000',
   DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
-  DIRECT_URL: 'postgresql://test:test@localhost:5432/test',
   GOOGLE_CLIENT_ID: 'test-client-id',
   GOOGLE_CLIENT_SECRET: 'test-client-secret',
   GOOGLE_LOGIN_REDIRECT_URI: 'http://localhost:4000/api/auth/google/callback',

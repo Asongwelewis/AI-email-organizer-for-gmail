@@ -5,7 +5,8 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // The long-running API and migrations share the IPv4-compatible session pooler URL.
+  directUrl = env("DATABASE_URL")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -36,7 +37,7 @@ model connected_google_accounts {
   id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id                    String                   @db.Uuid
   google_subject             String
-  email                      String                   @db.Citext
+  email                      String
   granted_scopes             String[]                 @default([])
   access_token_ciphertext    String?
   access_token_iv            String?
@@ -115,8 +116,8 @@ model sessions {
 model users {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   google_subject            String                      @unique(map: "users_google_subject_unique_idx")
-  email                     String                      @db.Citext
-  normalized_email          String                      @unique(map: "users_normalized_email_unique_idx") @db.Citext
+  email                     String
+  normalized_email          String                      @unique(map: "users_normalized_email_unique_idx")
   email_verified            Boolean                     @default(false)
   display_name              String?
   avatar_url                String?

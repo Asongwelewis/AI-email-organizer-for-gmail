@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { prisma } from '../src/database/prisma.js';
 import { connectedGoogleAccountRepository } from '../src/repositories/connected-google-account.repository.js';
@@ -19,7 +19,16 @@ async function cleanDatabase() {
 }
 
 databaseTests('PostgreSQL authentication repositories', () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+  }, 30_000);
+
   beforeEach(cleanDatabase);
+
+  afterAll(async () => {
+    await cleanDatabase();
+    await prisma.$disconnect();
+  }, 30_000);
 
   it('atomically creates one user and a hashed session, then updates by stable Google subject', async () => {
     const repository = new UserRepository();

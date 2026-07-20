@@ -11,7 +11,7 @@ npm run prisma:generate --workspace @mailmind/api
 npm run dev:api
 ```
 
-Required configuration names are `NODE_ENV`, `PORT`, `WEB_APP_URL`, `API_BASE_URL`, `DATABASE_URL`, `DIRECT_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_LOGIN_REDIRECT_URI`, `GOOGLE_GMAIL_REDIRECT_URI`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_VERSION`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `COOKIE_SAME_SITE`, `ACCESS_SESSION_TTL_MINUTES`, `REFRESH_SESSION_TTL_DAYS`, `OAUTH_STATE_TTL_MINUTES`, `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX_REQUESTS`, and `LOG_LEVEL`. Never commit their secret values. `TOKEN_ENCRYPTION_KEY` must be a Base64-encoded 32-byte key.
+Required configuration names are `NODE_ENV`, `PORT`, `WEB_APP_URL`, `API_BASE_URL`, `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_LOGIN_REDIRECT_URI`, `GOOGLE_GMAIL_REDIRECT_URI`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_VERSION`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `COOKIE_SAME_SITE`, `ACCESS_SESSION_TTL_MINUTES`, `REFRESH_SESSION_TTL_DAYS`, `OAUTH_STATE_TTL_MINUTES`, `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX_REQUESTS`, and `LOG_LEVEL`. `DATABASE_URL` must use Supabase's shared session pooler on port 5432 for this long-running API. Prisma uses it for runtime queries and migrations, and the API establishes the connection before accepting requests. Never commit secret values. `TOKEN_ENCRYPTION_KEY` must be a Base64-encoded 32-byte key.
 
 - Health: `http://localhost:4000/api/health`
 - Google login: `http://localhost:4000/api/auth/google`
@@ -37,7 +37,7 @@ npm run build --workspace @mailmind/api
 ```
 
 Database repository tests are skipped during an ordinary local test run. To enable them, point
-`DATABASE_URL` and `DIRECT_URL` at an isolated, migrated PostgreSQL test database, set
+`DATABASE_URL` at an isolated, migrated PostgreSQL test database, set
 `RUN_DATABASE_INTEGRATION=true`, and run:
 
 ```sh

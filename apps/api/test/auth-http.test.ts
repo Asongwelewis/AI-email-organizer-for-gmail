@@ -67,7 +67,7 @@ describe('authentication HTTP routes', () => {
       session: authenticated,
       redirectPath: '/dashboard',
     });
-    mocks.denyGoogleLogin.mockResolvedValue(undefined);
+    mocks.denyGoogleLogin.mockResolvedValue('/auth/callback');
     mocks.me.mockResolvedValue({ user: { ...authenticated.user, gmailConnected: false } });
     mocks.authenticate.mockImplementation(async (request_) => {
       const cookies = request_.cookies as Record<string, string>;
@@ -102,6 +102,7 @@ describe('authentication HTTP routes', () => {
     );
     expect(response.status).toBe(302);
     expect(response.headers['location']).toContain('status=login_failed');
+    expect(response.headers['location']).toContain('/auth/callback');
     expect(response.headers['location']).not.toContain('sensitive');
     expect(mocks.denyGoogleLogin).toHaveBeenCalledWith(expect.anything(), 'denied-state');
     expect(response.headers['set-cookie']).toBeUndefined();

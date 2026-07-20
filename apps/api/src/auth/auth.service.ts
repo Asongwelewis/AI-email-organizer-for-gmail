@@ -93,10 +93,12 @@ export class AuthService {
     }
   }
 
-  async denyGoogleLogin(request: Request, state: unknown): Promise<void> {
+  async denyGoogleLogin(request: Request, state: unknown): Promise<string> {
+    let redirectPath = '/login';
     if (typeof state === 'string' && state) {
       try {
-        await oauthStateRepository.consume(sha256(state), ['LOGIN']);
+        const oauthState = await oauthStateRepository.consume(sha256(state), ['LOGIN']);
+        redirectPath = oauthState.redirect_path ?? redirectPath;
       } catch {
         // The browser still receives only the predefined failure redirect.
       }
@@ -107,6 +109,7 @@ export class AuthService {
       requestId: request.requestId,
       metadata: { code: 'AUTH_GOOGLE_CALLBACK_FAILED' },
     });
+    return redirectPath;
   }
 
   async me(userId: string, authUser: NonNullable<Request['auth']>['user']) {

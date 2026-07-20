@@ -11,4 +11,16 @@ export default defineConfig({
       '@web': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          data: ['@tanstack/react-query', 'axios'],
+          motion: ['motion'],
+          interface: ['lucide-react', 'sonner'],
+        },
+      },
+    },
+  },
 });
