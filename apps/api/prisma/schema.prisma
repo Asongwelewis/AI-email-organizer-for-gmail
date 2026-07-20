@@ -3,6 +3,160 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model audit_logs {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?      @db.Uuid
+  session_id String?      @db.Uuid
+  action     String
+  result     audit_result @default(INFO)
+  request_id String?
+  metadata   Json         @default("{}")
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  sessions   sessions?    @relation(fields: [session_id], references: [id])
+  users      users?       @relation(fields: [user_id], references: [id])
+
+  @@index([action])
+  @@index([created_at(sort: Desc)])
+  @@index([result])
+  @@index([session_id])
+  @@index([user_id, created_at(sort: Desc)], map: "audit_logs_user_created_idx")
+  @@index([user_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model connected_google_accounts {
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                    String                   @db.Uuid
+  google_subject             String
+  email                      String                   @db.Citext
+  granted_scopes             String[]                 @default([])
+  access_token_ciphertext    String?
+  access_token_iv            String?
+  access_token_auth_tag      String?
+  refresh_token_ciphertext   String?
+  refresh_token_iv           String?
+  refresh_token_auth_tag     String?
+  encryption_key_version     Int?
+  access_token_expires_at    DateTime?                @db.Timestamptz(6)
+  last_token_refresh_at      DateTime?                @db.Timestamptz(6)
+  gmail_connected            Boolean                  @default(false)
+  connection_status          google_connection_status @default(DISCONNECTED)
+  last_connection_error_code String?
+  last_connection_error_at   DateTime?                @db.Timestamptz(6)
+  created_at                 DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                 @default(now()) @db.Timestamptz(6)
+  connected_at               DateTime?                @db.Timestamptz(6)
+  disconnected_at            DateTime?                @db.Timestamptz(6)
+  users                      users                    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, google_subject], map: "connected_google_accounts_user_subject_unique_idx")
+  @@index([email])
+  @@index([google_subject])
+  @@index([connection_status], map: "connected_google_accounts_status_idx")
+  @@index([user_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model oauth_states {
+  id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  state_hash               String        @unique(map: "oauth_states_state_hash_unique_idx")
+  purpose                  oauth_purpose
+  initiating_user_id       String?       @db.Uuid
+  initiating_session_id    String?       @db.Uuid
+  code_verifier_ciphertext String?
+  code_verifier_iv         String?
+  code_verifier_auth_tag   String?
+  encryption_key_version   Int?
+  redirect_path            String?
+  expires_at               DateTime      @db.Timestamptz(6)
+  used_at                  DateTime?     @db.Timestamptz(6)
+  created_at               DateTime      @default(now()) @db.Timestamptz(6)
+  sessions                 sessions?     @relation(fields: [initiating_session_id], references: [id])
+  users                    users?        @relation(fields: [initiating_user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at], map: "oauth_states_expiry_idx")
+  @@index([initiating_user_id], map: "oauth_states_initiating_user_idx")
+  @@index([purpose])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sessions {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String         @db.Uuid
+  session_token_hash String         @unique(map: "sessions_token_hash_unique_idx")
+  user_agent         String?
+  ip_hash            String?
+  expires_at         DateTime       @db.Timestamptz(6)
+  last_used_at       DateTime       @default(now()) @db.Timestamptz(6)
+  revoked_at         DateTime?      @db.Timestamptz(6)
+  revocation_reason  String?
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  audit_logs         audit_logs[]
+  oauth_states       oauth_states[]
+  users              users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at, revoked_at], map: "sessions_cleanup_idx")
+  @@index([expires_at])
+  @@index([user_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  google_subject            String                      @unique(map: "users_google_subject_unique_idx")
+  email                     String                      @db.Citext
+  normalized_email          String                      @unique(map: "users_normalized_email_unique_idx") @db.Citext
+  email_verified            Boolean                     @default(false)
+  display_name              String?
+  avatar_url                String?
+  status                    user_status                 @default(ACTIVE)
+  last_login_at             DateTime?                   @db.Timestamptz(6)
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  deleted_at                DateTime?                   @db.Timestamptz(6)
+  audit_logs                audit_logs[]
+  connected_google_accounts connected_google_accounts[]
+  oauth_states              oauth_states[]
+  sessions                  sessions[]
+
+  @@index([created_at(sort: Desc)])
+  @@index([status])
+}
+
+enum audit_result {
+  SUCCESS
+  FAILURE
+  DENIED
+  INFO
+}
+
+enum google_connection_status {
+  CONNECTED
+  REAUTH_REQUIRED
+  REVOKED
+  DISCONNECTED
+  ERROR
+}
+
+enum oauth_purpose {
+  LOGIN
+  CONNECT_GMAIL
+  REAUTHORIZE_GMAIL
+}
+
+enum user_status {
+  ACTIVE
+  SUSPENDED
+  DELETED
 }

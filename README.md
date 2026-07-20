@@ -14,7 +14,8 @@ MailMind AI is a production-ready SaaS foundation for AI-powered Gmail organizat
 
 - Node.js 22+
 - npm 10+
-- PostgreSQL 16+
+- Docker Desktop
+- Supabase CLI 2+
 
 ## Setup
 
@@ -59,6 +60,26 @@ The landing page includes a disabled `Connect Gmail` button until Gmail OAuth an
 ## Environment Variables
 
 The root `.env.example` contains the full set of environment variables used by the scaffold. API and web apps also include local examples in their own folders.
+
+## Local Supabase
+
+Start Docker Desktop, then initialize the local database and apply every migration:
+
+```bash
+supabase start
+supabase db reset
+```
+
+The local PostgreSQL connection is available on port `54322`. Run `supabase status` to print the local service URLs and development credentials. Stop the stack with `supabase stop`.
+
+To run the API against that local database, use these development-only values in `apps/api/.env`:
+
+```dotenv
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+DIRECT_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+```
+
+Application tables are backend-only. Row-level security is enabled and the `anon` and `authenticated` database roles have no privileges on them; the API accesses them through Prisma.
 
 ## Docker
 
