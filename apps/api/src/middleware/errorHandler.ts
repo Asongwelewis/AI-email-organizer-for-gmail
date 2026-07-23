@@ -14,7 +14,14 @@ export function errorHandler(
       ? error
       : new AppError('INTERNAL_SERVER_ERROR', 'An unexpected error occurred.', 500);
   if (appError.statusCode >= 500) {
-    logger.error({ error, requestId: request.requestId, code: appError.code }, 'request failed');
+    logger.error(
+      {
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+        requestId: request.requestId,
+        code: appError.code,
+      },
+      'request failed',
+    );
   }
   response.status(appError.statusCode).json({
     error: { code: appError.code, message: appError.message },

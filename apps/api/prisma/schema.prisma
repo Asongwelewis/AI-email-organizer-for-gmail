@@ -62,6 +62,7 @@ model connected_google_accounts {
   @@index([email])
   @@index([google_subject])
   @@index([connection_status], map: "connected_google_accounts_status_idx")
+  @@index([access_token_expires_at], map: "connected_google_accounts_access_token_expires_at_idx")
   @@index([user_id])
 }
 
@@ -86,7 +87,9 @@ model oauth_states {
 
   @@index([expires_at], map: "oauth_states_expiry_idx")
   @@index([initiating_user_id], map: "oauth_states_initiating_user_idx")
+  @@index([initiating_session_id], map: "oauth_states_initiating_session_idx")
   @@index([purpose])
+  @@index([used_at], map: "oauth_states_used_at_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -108,6 +111,7 @@ model sessions {
 
   @@index([expires_at, revoked_at], map: "sessions_cleanup_idx")
   @@index([expires_at])
+  @@index([revoked_at], map: "sessions_revoked_at_idx")
   @@index([user_id])
 }
 

@@ -8,6 +8,7 @@ import {
 import { requireSession } from '@api/sessions/session.middleware.js';
 import { asyncHandler } from '@api/utils/asyncHandler.js';
 import { googleIntegrationController } from './google-integration.controller.js';
+import { requireTrustedOrigin } from '@api/middleware/trustedOrigin.js';
 
 export const googleIntegrationRouter = Router();
 
@@ -31,6 +32,7 @@ googleIntegrationRouter.get(
 googleIntegrationRouter.post(
   '/disconnect',
   authGeneralLimiter,
+  requireTrustedOrigin,
   requireSession,
   asyncHandler((req, res) => googleIntegrationController.disconnect(req, res)),
 );

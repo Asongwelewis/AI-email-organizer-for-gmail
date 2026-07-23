@@ -15,12 +15,6 @@ const statuses = {
     copy: 'Your secure session is ready.',
     destination: '/dashboard',
   },
-  login_succeeded: {
-    kind: 'success',
-    title: 'Welcome to MailMind.',
-    copy: 'Your secure session is ready.',
-    destination: '/dashboard',
-  },
   login_failed: {
     kind: 'error',
     title: 'Sign-in paused.',
@@ -57,12 +51,6 @@ const statuses = {
     copy: 'Gmail could not be connected. Your MailMind account is unchanged.',
     destination: '/settings/connections',
   },
-  gmail_failed: {
-    kind: 'error',
-    title: 'Connection interrupted.',
-    copy: 'Gmail could not be connected. Your MailMind account is unchanged.',
-    destination: '/settings/connections',
-  },
 } as const;
 
 export function AuthCallbackPage() {
@@ -83,7 +71,7 @@ export function AuthCallbackPage() {
   );
 
   useEffect(() => {
-    if (statusKey === 'login_success' || statusKey === 'login_succeeded') {
+    if (statusKey === 'login_success') {
       void queryClient.invalidateQueries({ queryKey: queryKeys.authMe });
     }
     if (statusKey.startsWith('gmail_')) {

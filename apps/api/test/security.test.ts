@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { EncryptionService } from '../src/security/encryption.service.js';
 import { sha256 } from '../src/security/hashing.service.js';
 import { generateSecureToken } from '../src/security/random.service.js';
-import { safeRedirectPath } from '../src/security/safe-redirect.js';
+import { CALLBACK_STATUSES, safeRedirectPath } from '../src/security/safe-redirect.js';
 
 describe('security primitives', () => {
   it('generates high-entropy URL-safe tokens and stores deterministic hashes', () => {
@@ -52,5 +52,17 @@ describe('security primitives', () => {
     expect(safeRedirectPath('https://evil.example', '/login')).toBe('/login');
     expect(safeRedirectPath('//evil.example', '/login')).toBe('/login');
     expect(safeRedirectPath('/not-allowed', '/login')).toBe('/login');
+  });
+
+  it('allowlists only the public callback status contract', () => {
+    expect(CALLBACK_STATUSES).toEqual([
+      'login_success',
+      'login_failed',
+      'gmail_connected',
+      'gmail_denied',
+      'gmail_permission_incomplete',
+      'gmail_reauth_required',
+      'gmail_connection_failed',
+    ]);
   });
 });

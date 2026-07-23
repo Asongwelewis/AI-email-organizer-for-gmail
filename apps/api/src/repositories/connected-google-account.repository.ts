@@ -40,6 +40,12 @@ export class ConnectedGoogleAccountRepository {
     data: Omit<Prisma.connected_google_accountsUncheckedCreateInput, 'user_id' | 'google_subject'>,
   ) {
     return prisma.$transaction(async (transaction) => {
+      // Serialize identity replacement per MailMind user across API instances.
+      // This prevents two separately valid OAuth states from leaving two active accounts.
+      await transaction.$queryRaw`
+        select true as acquired
+        from pg_advisory_xact_lock(hashtextextended(${userId}, 0))
+      `;
       await transaction.connected_google_accounts.updateMany({
         where: { user_id: userId, google_subject: { not: googleSubject } },
         data: {

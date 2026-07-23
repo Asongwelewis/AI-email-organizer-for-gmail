@@ -1,6 +1,6 @@
 # MailMind API authentication testing
 
-Stage 2 implements backend-only Google identity login, opaque MailMind sessions, and a separate incremental Gmail authorization flow. Frontend callback handling belongs to Prompt 4.
+Stage 2 implements backend-only Google identity login, opaque MailMind sessions, a separate incremental Gmail authorization flow, and the matching frontend integration. See the repository's `docs/stage-2-setup.md` for the full setup and release-readiness guide.
 
 ## Start and inspect
 
@@ -13,7 +13,8 @@ npm run dev:api
 
 Required configuration names are `NODE_ENV`, `PORT`, `WEB_APP_URL`, `API_BASE_URL`, `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_LOGIN_REDIRECT_URI`, `GOOGLE_GMAIL_REDIRECT_URI`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_VERSION`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `COOKIE_SAME_SITE`, `ACCESS_SESSION_TTL_MINUTES`, `REFRESH_SESSION_TTL_DAYS`, `OAUTH_STATE_TTL_MINUTES`, `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX_REQUESTS`, and `LOG_LEVEL`. `DATABASE_URL` must use Supabase's shared session pooler on port 5432 for this long-running API. Prisma uses it for runtime queries and migrations, and the API establishes the connection before accepting requests. Never commit secret values. `TOKEN_ENCRYPTION_KEY` must be a Base64-encoded 32-byte key.
 
-- Health: `http://localhost:4000/api/health`
+- Liveness: `http://localhost:4000/health` (legacy `/api/health` is preserved)
+- Readiness: `http://localhost:4000/ready`
 - Google login: `http://localhost:4000/api/auth/google`
 - Gmail connection (after login): `http://localhost:4000/api/integrations/google/connect`
 - Current user: `http://localhost:4000/api/auth/me`

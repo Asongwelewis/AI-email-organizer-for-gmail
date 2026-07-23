@@ -9,6 +9,7 @@ import { encryptionService } from '@api/security/encryption.service.js';
 import { sha256 } from '@api/security/hashing.service.js';
 import { generateSecureToken } from '@api/security/random.service.js';
 import { safeRedirectPath } from '@api/security/safe-redirect.js';
+import type { CallbackStatus } from '@api/security/safe-redirect.js';
 import { createGoogleOAuthClient } from './google-oauth.client.js';
 import { verifyGoogleIdentity } from './google-identity.service.js';
 import { GMAIL_MODIFY_SCOPE, GOOGLE_GMAIL_SCOPES } from './google-scopes.js';
@@ -66,6 +67,17 @@ export class GoogleGmailService {
           400,
         );
       }
+      if (
+        !request.auth ||
+        oauthState.initiating_user_id !== request.auth.user.id ||
+        oauthState.initiating_session_id !== request.auth.id
+      ) {
+        throw new AppError(
+          'AUTH_OAUTH_STATE_INVALID',
+          'The authorization request is invalid.',
+          400,
+        );
+      }
       const client = createGoogleOAuthClient('GMAIL');
       const { tokens } = await client.getToken(code);
       const identity = await verifyGoogleIdentity(client, tokens.id_token);
@@ -80,6 +92,23 @@ export class GoogleGmailService {
       );
       if (activeAccount && activeAccount.google_subject !== identity.subject) {
         await googleTokenService.revokeGoogleCredentials(activeAccount);
+        // Persist a safe recovery state before replacing the identity. If the new
+        // write fails, the revoked credentials are never presented as connected.
+        await connectedGoogleAccountRepository.update(activeAccount.id, {
+          access_token_ciphertext: null,
+          access_token_iv: null,
+          access_token_auth_tag: null,
+          refresh_token_ciphertext: null,
+          refresh_token_iv: null,
+          refresh_token_auth_tag: null,
+          encryption_key_version: null,
+          access_token_expires_at: null,
+          gmail_connected: false,
+          connection_status: 'REVOKED',
+          disconnected_at: new Date(),
+          last_connection_error_code: 'IDENTITY_REPLACED',
+          last_connection_error_at: new Date(),
+        });
       }
       const encryptedAccess = tokens.access_token
         ? encryptionService.encrypt(tokens.access_token)
@@ -136,12 +165,13 @@ export class GoogleGmailService {
         requestId: request.requestId,
         metadata: { connectionStatus: status, scopeCount: scopes.length },
       });
+      const callbackStatus: CallbackStatus = connected
+        ? 'gmail_connected'
+        : hasRequiredScope
+          ? 'gmail_reauth_required'
+          : 'gmail_permission_incomplete';
       return {
-        status: connected
-          ? 'gmail_connected'
-          : hasRequiredScope
-            ? 'gmail_reauth_required'
-            : 'gmail_permission_incomplete',
+        status: callbackStatus,
         redirectPath: oauthState.redirect_path ?? '/settings/connections',
       };
     } catch (error) {

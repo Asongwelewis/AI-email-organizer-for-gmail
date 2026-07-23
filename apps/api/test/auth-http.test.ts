@@ -89,7 +89,7 @@ describe('authentication HTTP routes', () => {
       '/api/auth/google/callback?code=authorization-code&state=oauth-state',
     );
     expect(callback.status).toBe(302);
-    expect(callback.headers['location']).toContain('status=login_succeeded');
+    expect(callback.headers['location']).toContain('status=login_success');
     expect(callback.headers['location']).not.toContain('raw-session-token');
     expect(callback.headers['location']).not.toContain('authorization-code');
     expect(callback.headers['set-cookie']?.[0]).toContain('mailmind_session=raw-session-token');
@@ -153,5 +153,14 @@ describe('authentication HTTP routes', () => {
     expect(all.status).toBe(200);
     expect(all.body).toEqual({ success: true, revokedSessions: 2 });
     expect(mocks.revokeAll).toHaveBeenCalledWith('authenticated-user-id');
+  });
+
+  it('rejects authenticated mutations from an untrusted browser origin', async () => {
+    const response = await request(testApp)
+      .post('/api/auth/logout')
+      .set('Origin', 'https://evil.example');
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('CSRF_ORIGIN_INVALID');
+    expect(mocks.revokeCurrent).not.toHaveBeenCalled();
   });
 });

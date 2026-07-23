@@ -94,13 +94,22 @@ describe('Gmail integration HTTP routes', () => {
   });
 
   it('redirects successful callbacks using only predefined status', async () => {
-    const response = await request(testApp).get(
-      '/api/integrations/google/callback?code=authorization-code&state=oauth-state',
-    );
+    const response = await request(testApp)
+      .get('/api/integrations/google/callback?code=authorization-code&state=oauth-state')
+      .set('Cookie', 'mailmind_session=valid-session');
     expect(response.status).toBe(302);
     expect(response.headers['location']).toContain('status=gmail_connected');
     expect(response.headers['location']).not.toContain('authorization-code');
     expect(response.headers['location']).not.toContain('oauth-state');
+  });
+
+  it('requires the initiating MailMind session for a successful Gmail callback', async () => {
+    const response = await request(testApp).get(
+      '/api/integrations/google/callback?code=authorization-code&state=oauth-state',
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers['location']).toContain('status=gmail_connection_failed');
+    expect(mocks.completeConnection).not.toHaveBeenCalled();
   });
 
   it('returns safe status and disconnects without clearing the MailMind session', async () => {
@@ -117,5 +126,15 @@ describe('Gmail integration HTTP routes', () => {
     expect(disconnected.body).toEqual({ success: true });
     expect(disconnected.headers['set-cookie']).toBeUndefined();
     expect(mocks.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('rejects Gmail disconnect from an untrusted browser origin', async () => {
+    const response = await request(testApp)
+      .post('/api/integrations/google/disconnect')
+      .set('Origin', 'https://evil.example')
+      .set('Cookie', 'mailmind_session=valid-session');
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('CSRF_ORIGIN_INVALID');
+    expect(mocks.disconnect).not.toHaveBeenCalled();
   });
 });

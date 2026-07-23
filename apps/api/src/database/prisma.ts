@@ -13,15 +13,24 @@ if (!databaseUrl.searchParams.has('connection_limit')) {
 if (!databaseUrl.searchParams.has('pool_timeout')) {
   databaseUrl.searchParams.set('pool_timeout', '60');
 }
+if (!databaseUrl.searchParams.has('connect_timeout')) {
+  databaseUrl.searchParams.set('connect_timeout', '30');
+}
 
-export const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: databaseUrl.toString(),
+const globalForPrisma = globalThis as unknown as { mailmindPrisma?: PrismaClient };
+
+export const prisma =
+  globalForPrisma.mailmindPrisma ??
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl.toString(),
+      },
     },
-  },
-  transactionOptions: {
-    maxWait: 30_000,
-    timeout: 60_000,
-  },
-});
+    transactionOptions: {
+      maxWait: 30_000,
+      timeout: 60_000,
+    },
+  });
+
+if (env.NODE_ENV !== 'production') globalForPrisma.mailmindPrisma = prisma;

@@ -12,7 +12,8 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "test": "vitest run",
-    "test:database": "vitest run database.integration.test.ts"
+    "test:database": "vitest run database.integration.test.ts",
+    "audit:database": "tsx test/database.audit.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

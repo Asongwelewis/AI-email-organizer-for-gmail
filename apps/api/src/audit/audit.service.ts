@@ -7,7 +7,11 @@ export class AuditService {
       await auditRepository.create(input);
     } catch (error) {
       logger.error(
-        { error, action: input.action, requestId: input.requestId },
+        {
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+          action: input.action,
+          requestId: input.requestId,
+        },
         'audit write failed',
       );
     }

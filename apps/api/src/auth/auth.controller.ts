@@ -25,7 +25,7 @@ export class AuthController {
         request.query['state'],
       );
       setSessionCookie(response, result.rawToken);
-      response.redirect(frontendUrl(env.WEB_APP_URL, result.redirectPath, 'login_succeeded'));
+      response.redirect(frontendUrl(env.WEB_APP_URL, result.redirectPath, 'login_success'));
     } catch {
       response.redirect(frontendUrl(env.WEB_APP_URL, '/login', 'login_failed'));
     }

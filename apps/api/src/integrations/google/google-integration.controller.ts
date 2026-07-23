@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { env } from '@api/config/env.js';
 import { frontendUrl } from '@api/security/safe-redirect.js';
 import { googleGmailService } from './google-login.service.js';
+import { sessionService } from '@api/sessions/session.service.js';
 
 export class GoogleIntegrationController {
   async connect(request: Request, response: Response): Promise<void> {
@@ -16,6 +17,7 @@ export class GoogleIntegrationController {
       return;
     }
     try {
+      request.auth = await sessionService.authenticate(request);
       const result = await googleGmailService.completeConnection(
         request,
         request.query['code'],
@@ -23,7 +25,9 @@ export class GoogleIntegrationController {
       );
       response.redirect(frontendUrl(env.WEB_APP_URL, result.redirectPath, result.status));
     } catch {
-      response.redirect(frontendUrl(env.WEB_APP_URL, '/settings/connections', 'gmail_failed'));
+      response.redirect(
+        frontendUrl(env.WEB_APP_URL, '/settings/connections', 'gmail_connection_failed'),
+      );
     }
   }
 

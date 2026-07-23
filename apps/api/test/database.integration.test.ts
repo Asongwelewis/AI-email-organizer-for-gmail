@@ -8,7 +8,10 @@ import { SessionRepository } from '../src/repositories/session.repository.js';
 import { UserRepository } from '../src/repositories/user.repository.js';
 import { sha256 } from '../src/security/hashing.service.js';
 
-const databaseTests = process.env['RUN_DATABASE_INTEGRATION'] === 'true' ? describe : describe.skip;
+const databaseUrl = new URL(process.env['DATABASE_URL'] ?? 'postgresql://localhost/test');
+const isDisposableHost = ['127.0.0.1', 'localhost', '::1'].includes(databaseUrl.hostname);
+const databaseTests =
+  process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
   await prisma.audit_logs.deleteMany();
@@ -163,33 +166,36 @@ databaseTests('PostgreSQL authentication repositories', () => {
         email_verified: true,
       },
     });
-    await connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'first-gmail-subject', {
-      email: 'first@gmail.com',
-      connection_status: 'CONNECTED',
-      gmail_connected: true,
-      granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
-      refresh_token_ciphertext: 'encrypted-refresh',
-      refresh_token_iv: 'encrypted-iv',
-      refresh_token_auth_tag: 'encrypted-tag',
-      encryption_key_version: 1,
-    });
-    await connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'second-gmail-subject', {
-      email: 'second@gmail.com',
-      connection_status: 'CONNECTED',
-      gmail_connected: true,
-      granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
-      refresh_token_ciphertext: 'new-encrypted-refresh',
-      refresh_token_iv: 'new-encrypted-iv',
-      refresh_token_auth_tag: 'new-encrypted-tag',
-      encryption_key_version: 1,
-    });
+    await Promise.all([
+      connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'first-gmail-subject', {
+        email: 'first@gmail.com',
+        connection_status: 'CONNECTED',
+        gmail_connected: true,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        refresh_token_ciphertext: 'encrypted-refresh',
+        refresh_token_iv: 'encrypted-iv',
+        refresh_token_auth_tag: 'encrypted-tag',
+        encryption_key_version: 1,
+      }),
+      connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'second-gmail-subject', {
+        email: 'second@gmail.com',
+        connection_status: 'CONNECTED',
+        gmail_connected: true,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        refresh_token_ciphertext: 'new-encrypted-refresh',
+        refresh_token_iv: 'new-encrypted-iv',
+        refresh_token_auth_tag: 'new-encrypted-tag',
+        encryption_key_version: 1,
+      }),
+    ]);
     const accounts = await prisma.connected_google_accounts.findMany({
       where: { user_id: user.id },
       orderBy: { email: 'asc' },
     });
     expect(accounts).toHaveLength(2);
     expect(accounts.filter((account) => account.gmail_connected)).toHaveLength(1);
-    const previous = accounts.find((account) => account.google_subject === 'first-gmail-subject');
+    const active = accounts.find((account) => account.gmail_connected);
+    const previous = accounts.find((account) => account.id !== active?.id);
     expect(previous).toMatchObject({
       connection_status: 'DISCONNECTED',
       gmail_connected: false,
@@ -198,7 +204,6 @@ databaseTests('PostgreSQL authentication repositories', () => {
       refresh_token_auth_tag: null,
     });
     await expect(connectedGoogleAccountRepository.findForUser(user.id)).resolves.toMatchObject({
-      google_subject: 'second-gmail-subject',
       gmail_connected: true,
     });
   });

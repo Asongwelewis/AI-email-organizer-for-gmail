@@ -24,7 +24,7 @@ function renderCallback(entry: string) {
 describe('AuthCallbackPage', () => {
   it('shows a safe success message without rendering callback secrets', () => {
     renderCallback(
-      '/auth/callback?status=login_succeeded&code=secret-code&access_token=secret-token',
+      '/auth/callback?status=login_success&code=secret-code&access_token=secret-token',
     );
 
     expect(screen.getByRole('heading', { name: 'Welcome to MailMind.' })).toBeInTheDocument();

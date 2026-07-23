@@ -18,6 +18,21 @@ export const LOG_REDACTION_PATHS = [
   'sessionToken',
   'session_token',
   'token',
+  'password',
+  'databaseUrl',
+  'DATABASE_URL',
+  'DIRECT_URL',
+  'TOKEN_ENCRYPTION_KEY',
+  '*.authorization',
+  '*.cookie',
+  '*.code',
+  '*.state',
+  '*.access_token',
+  '*.refresh_token',
+  '*.id_token',
+  '*.client_secret',
+  '*.sessionToken',
+  '*.session_token',
 ];
 
 export const logger = pino({

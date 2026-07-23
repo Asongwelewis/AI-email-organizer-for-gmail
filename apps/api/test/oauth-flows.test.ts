@@ -251,6 +251,19 @@ describe('OAuth start and safe status contracts', () => {
     expect(JSON.stringify(saved)).not.toContain('plaintext-refresh');
   });
 
+  it('rejects Gmail state that is not bound to the current MailMind session', async () => {
+    mocks.oauthConsume.mockResolvedValueOnce({
+      initiating_user_id: 'user-id',
+      initiating_session_id: 'different-session-id',
+      redirect_path: '/settings/connections',
+    });
+    await expect(
+      new GoogleGmailService().completeConnection(authRequest, 'authorization-code', 'raw-state'),
+    ).rejects.toMatchObject({ code: 'AUTH_OAUTH_STATE_INVALID' });
+    expect(mocks.getToken).not.toHaveBeenCalled();
+    expect(mocks.replaceActiveForUser).not.toHaveBeenCalled();
+  });
+
   it('revokes the previous Gmail identity before replacing it', async () => {
     mocks.findByUserAndSubject.mockResolvedValue(null);
     mocks.findForUser.mockResolvedValue({
@@ -270,6 +283,17 @@ describe('OAuth start and safe status contracts', () => {
       expect.objectContaining({ id: 'previous-account-id' }),
     );
     expect(mocks.revoke.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.replaceActiveForUser.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.update).toHaveBeenCalledWith(
+      'previous-account-id',
+      expect.objectContaining({
+        connection_status: 'REVOKED',
+        gmail_connected: false,
+        refresh_token_ciphertext: null,
+      }),
+    );
+    expect(mocks.update.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.replaceActiveForUser.mock.invocationCallOrder[0]!,
     );
   });

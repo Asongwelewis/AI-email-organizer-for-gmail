@@ -9,6 +9,7 @@ import {
   sessionRefreshLimiter,
 } from '@api/middleware/rateLimiters.js';
 import { authController } from './auth.controller.js';
+import { requireTrustedOrigin } from '@api/middleware/trustedOrigin.js';
 
 export const authRouter = Router();
 
@@ -31,16 +32,19 @@ authRouter.get(
 authRouter.post(
   '/refresh',
   sessionRefreshLimiter,
+  requireTrustedOrigin,
   asyncHandler((req, res) => authController.refresh(req, res)),
 );
 authRouter.post(
   '/logout',
   authGeneralLimiter,
+  requireTrustedOrigin,
   asyncHandler((req, res) => authController.logout(req, res)),
 );
 authRouter.post(
   '/logout-all',
   authGeneralLimiter,
+  requireTrustedOrigin,
   requireSession,
   asyncHandler((req, res) => authController.logoutAll(req, res)),
 );

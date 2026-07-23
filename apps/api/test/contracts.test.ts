@@ -19,6 +19,9 @@ describe('API security contracts', () => {
     const response = await request(app).get('/api/health');
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
+    const unprefixed = await request(app).get('/health');
+    expect(unprefixed.status).toBe(200);
+    expect(unprefixed.body.status).toBe('ok');
   });
 
   it('returns the safe error shape and ignores frontend user IDs without a session', async () => {
@@ -36,6 +39,7 @@ describe('API security contracts', () => {
     expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:5173');
     expect(allowed.headers['access-control-allow-credentials']).toBe('true');
     const denied = await request(app).get('/api/health').set('Origin', 'https://evil.example');
+    expect(denied.status).toBe(403);
     expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
 
@@ -75,6 +79,8 @@ describe('API security contracts', () => {
         'id_token',
         'client_secret',
         'session_token',
+        'DATABASE_URL',
+        'TOKEN_ENCRYPTION_KEY',
       ]),
     );
   });
