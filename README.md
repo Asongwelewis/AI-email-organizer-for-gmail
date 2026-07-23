@@ -40,6 +40,9 @@ See [Stage 4.5 dynamic label discovery](docs/stage-4.5-dynamic-label-discovery.m
 public-suffix-aware source grouping, controlled hierarchy, scoring, approval decisions, merge
 safety, and the Stage 5 boundary.
 
+See the [documentation index](docs/README.md) for the backend guide, frontend guide, system
+architecture, and complete HTTP API reference.
+
 ## Commands
 
 - `npm run dev` — run frontend and API
