@@ -1828,3 +1828,37 @@ img {
     transition-duration: 0.001ms !important;
   }
 }
+.gmail-sync-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  margin-block: 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 1rem;
+}
+
+.gmail-sync-panel > div:first-child {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.gmail-sync-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.gmail-sync-panel__actions button {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.gmail-sync-panel__actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}

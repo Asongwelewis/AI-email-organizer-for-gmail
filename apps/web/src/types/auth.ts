@@ -36,3 +36,33 @@ export interface ApiErrorPayload {
     message?: string;
   };
 }
+
+export type GmailSyncState =
+  | 'NOT_STARTED'
+  | 'INITIAL_SYNC_RUNNING'
+  | 'READY'
+  | 'INCREMENTAL_SYNC_RUNNING'
+  | 'LABEL_SYNC_RUNNING'
+  | 'FAILED'
+  | 'REAUTH_REQUIRED'
+  | 'HISTORY_EXPIRED';
+
+export interface GmailSyncStatus {
+  status: GmailSyncState;
+  initialSyncCompleted: boolean;
+  lastSuccessfulSyncAt: string | null;
+  lastErrorCode: string | null;
+  nextRetryAt: string | null;
+  messageCount: number;
+  syncRunning: boolean;
+}
+
+export interface GmailSyncResult {
+  success: boolean;
+  messagesExamined: number;
+  messagesUpserted: number;
+  messagesDeleted: number;
+  labelsUpserted: number;
+  checkpointHistoryId: string | null;
+  messageCount: number;
+}

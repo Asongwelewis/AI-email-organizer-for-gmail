@@ -57,6 +57,10 @@ model connected_google_accounts {
   connected_at               DateTime?                @db.Timestamptz(6)
   disconnected_at            DateTime?                @db.Timestamptz(6)
   users                      users                    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  gmail_labels               gmail_labels[]
+  gmail_message_metadata     gmail_message_metadata[]
+  gmail_sync_runs            gmail_sync_runs[]
+  gmail_sync_state           gmail_sync_states?
 
   @@unique([user_id, google_subject], map: "connected_google_accounts_user_subject_unique_idx")
   @@index([email])
@@ -64,6 +68,110 @@ model connected_google_accounts {
   @@index([connection_status], map: "connected_google_accounts_status_idx")
   @@index([access_token_expires_at], map: "connected_google_accounts_access_token_expires_at_idx")
   @@index([user_id])
+}
+
+/// Gmail label metadata only. This model contains row level security and requires migration setup.
+model gmail_labels {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  gmail_label_id              String
+  name                        String
+  type                        String
+  message_list_visibility     String?
+  label_list_visibility       String?
+  is_managed                  Boolean                   @default(false)
+  managed_purpose             String?
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, gmail_label_id], map: "gmail_labels_account_label_unique_idx")
+  @@unique([connected_google_account_id, name], map: "gmail_labels_account_name_unique_idx")
+  @@index([connected_google_account_id])
+  @@index([connected_google_account_id, is_managed], map: "gmail_labels_account_managed_idx")
+}
+
+/// Metadata-only Gmail message projection. No bodies, attachments, or raw MIME are stored.
+model gmail_message_metadata {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  gmail_message_id            String
+  gmail_thread_id             String?
+  history_id                  String?
+  internal_date               DateTime?                 @db.Timestamptz(6)
+  subject                     String?
+  sender_name                 String?
+  sender_email                String?
+  recipient_summary           String?
+  snippet                     String?
+  label_ids                   String[]                  @default([])
+  has_attachments             Boolean                   @default(false)
+  size_estimate               Int?
+  is_unread                   Boolean                   @default(false)
+  is_starred                  Boolean                   @default(false)
+  is_important                Boolean                   @default(false)
+  is_draft                    Boolean                   @default(false)
+  is_sent                     Boolean                   @default(false)
+  is_trashed                  Boolean                   @default(false)
+  first_seen_at               DateTime                  @default(now()) @db.Timestamptz(6)
+  last_synced_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  deleted_at                  DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
+  @@index([connected_google_account_id])
+  @@index([connected_google_account_id, gmail_thread_id], map: "gmail_messages_account_thread_idx")
+  @@index([connected_google_account_id, internal_date(sort: Desc)], map: "gmail_messages_account_date_idx")
+  @@index([connected_google_account_id, deleted_at], map: "gmail_messages_account_deleted_idx")
+  @@index([connected_google_account_id, history_id], map: "gmail_messages_account_history_idx")
+}
+
+/// Durable sync checkpoint and expiring cross-instance lease.
+model gmail_sync_states {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @unique(map: "gmail_sync_states_account_unique_idx") @db.Uuid
+  status                      gmail_sync_status         @default(NOT_STARTED)
+  last_history_id             String?
+  initial_sync_completed_at   DateTime?                 @db.Timestamptz(6)
+  last_sync_started_at        DateTime?                 @db.Timestamptz(6)
+  last_sync_completed_at      DateTime?                 @db.Timestamptz(6)
+  last_successful_sync_at     DateTime?                 @db.Timestamptz(6)
+  next_retry_at               DateTime?                 @db.Timestamptz(6)
+  failure_count               Int                       @default(0)
+  last_error_code             String?
+  last_error_at               DateTime?                 @db.Timestamptz(6)
+  lease_token                 String?
+  lease_expires_at            DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([lease_expires_at], map: "gmail_sync_states_lease_expiry_idx")
+  @@index([next_retry_at], map: "gmail_sync_states_next_retry_idx")
+}
+
+/// Bounded operational history for safe status reporting and troubleshooting.
+model gmail_sync_runs {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  sync_type                   gmail_sync_type
+  status                      gmail_sync_run_status     @default(RUNNING)
+  started_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  completed_at                DateTime?                 @db.Timestamptz(6)
+  messages_examined           Int                       @default(0)
+  messages_upserted           Int                       @default(0)
+  messages_deleted            Int                       @default(0)
+  labels_upserted             Int                       @default(0)
+  checkpoint_history_id       String?
+  error_code                  String?
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@index([connected_google_account_id, started_at(sort: Desc)], map: "gmail_sync_runs_account_started_idx")
+  @@index([status])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -164,4 +272,27 @@ enum user_status {
   ACTIVE
   SUSPENDED
   DELETED
+}
+
+enum gmail_sync_status {
+  NOT_STARTED
+  INITIAL_SYNC_RUNNING
+  READY
+  INCREMENTAL_SYNC_RUNNING
+  LABEL_SYNC_RUNNING
+  FAILED
+  REAUTH_REQUIRED
+  HISTORY_EXPIRED
+}
+
+enum gmail_sync_type {
+  INITIAL
+  INCREMENTAL
+  LABELS
+}
+
+enum gmail_sync_run_status {
+  RUNNING
+  COMPLETED
+  FAILED
 }

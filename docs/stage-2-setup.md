@@ -203,5 +203,6 @@ approved cleanup/retention; domain setup; and incident/recovery procedures.
 
 Optional improvement: separate runtime/migration roles and a distributed Google-refresh lock.
 
-Stage 3—not implemented here—contains Gmail message synchronization/storage, label creation, AI
-classification, background jobs/queues, analytics, billing, and production email organization.
+Stage 3 now provides metadata-only Gmail synchronization and managed-label initialization; see
+[Stage 3 Gmail synchronization](stage-3-gmail-sync.md). AI classification, background jobs/queues,
+analytics, billing, and production email organization remain out of scope.

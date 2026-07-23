@@ -6,6 +6,7 @@ on:
       - main
       - develop
       - feature/google-auth
+      - feature/gmail-sync-foundation
       - feat-foundation-and-project-setup
   pull_request:
 
@@ -15,19 +16,19 @@ jobs:
     env:
       NODE_ENV: test
       RUN_DATABASE_INTEGRATION: 'true'
-      DATABASE_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_stage2_test
-      DIRECT_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_stage2_test
+      DATABASE_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
+      DIRECT_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
 
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_PASSWORD: mailmind_test_password
-          POSTGRES_DB: mailmind_stage2_test
+          POSTGRES_DB: mailmind_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d mailmind_stage2_test"
+          --health-cmd "pg_isready -U postgres -d mailmind_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -47,7 +48,7 @@ jobs:
 
       - name: Prepare database roles used by the migrations
         run: |
-          docker exec ${{ job.services.postgres.id }} psql -U postgres -d mailmind_stage2_test -v ON_ERROR_STOP=1 -c "create schema extensions; create role anon; create role authenticated; create role service_role;"
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -d mailmind_test -v ON_ERROR_STOP=1 -c "create schema extensions; create role anon; create role authenticated; create role service_role;"
 
       - name: Apply Prisma migrations to the empty database
         run: npm exec --workspace @mailmind/api -- prisma migrate deploy
@@ -72,6 +73,9 @@ jobs:
 
       - name: Test backend and frontend
         run: npm test
+
+      - name: Test database lifecycle
+        run: npm run test:database --workspace @mailmind/api
 
       - name: Build
         run: npm run build

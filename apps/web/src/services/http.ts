@@ -3,6 +3,8 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
   AuthMeResponse,
   GmailConnectionStatus,
+  GmailSyncResult,
+  GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
 
@@ -104,6 +106,28 @@ export const api = {
 
   async disconnectGmail(): Promise<void> {
     await http.post('/integrations/google/disconnect');
+  },
+
+  async getGmailSyncStatus(): Promise<GmailSyncStatus> {
+    const response = await http.get<GmailSyncStatus>('/gmail/sync/status');
+    return response.data;
+  },
+
+  async initializeGmailLabels(): Promise<{ success: boolean; labelsUpserted: number }> {
+    const response = await http.post<{ success: boolean; labelsUpserted: number }>(
+      '/gmail/labels/initialize',
+    );
+    return response.data;
+  },
+
+  async initialGmailSync(): Promise<GmailSyncResult> {
+    const response = await http.post<GmailSyncResult>('/gmail/sync/initial');
+    return response.data;
+  },
+
+  async incrementalGmailSync(): Promise<GmailSyncResult> {
+    const response = await http.post<GmailSyncResult>('/gmail/sync/incremental');
+    return response.data;
   },
 };
 
