@@ -1,24 +1,29 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import { env } from '@api/config/env.js';
 import { logger } from '@api/config/logger.js';
 import { AppError } from '@api/errors/AppError.js';
 
 export function errorHandler(
   error: unknown,
-  _request: Request,
+  request: Request,
   response: Response,
   _next: NextFunction,
 ): void {
-  const appError = error instanceof AppError ? error : new AppError('Unexpected server error', 500);
-  const statusCode = appError.statusCode;
-
-  if (env.NODE_ENV !== 'test') {
-    logger.error({ error }, appError.message);
+  const appError =
+    error instanceof AppError
+      ? error
+      : new AppError('INTERNAL_SERVER_ERROR', 'An unexpected error occurred.', 500);
+  if (appError.statusCode >= 500) {
+    logger.error(
+      {
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+        requestId: request.requestId,
+        code: appError.code,
+      },
+      'request failed',
+    );
   }
-
-  response.status(statusCode).json({
-    message: appError.message,
-    status: 'error',
+  response.status(appError.statusCode).json({
+    error: { code: appError.code, message: appError.message },
   });
 }

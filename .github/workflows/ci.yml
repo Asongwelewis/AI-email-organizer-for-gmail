@@ -4,12 +4,33 @@ on:
   push:
     branches:
       - main
+      - develop
+      - feature/google-auth
       - feat-foundation-and-project-setup
   pull_request:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      RUN_DATABASE_INTEGRATION: 'true'
+      DATABASE_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_stage2_test
+      DIRECT_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_stage2_test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: mailmind_test_password
+          POSTGRES_DB: mailmind_stage2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mailmind_stage2_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -24,11 +45,53 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare database roles used by the migrations
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -d mailmind_stage2_test -v ON_ERROR_STOP=1 -c "create schema extensions; create role anon; create role authenticated; create role service_role;"
+
+      - name: Apply Prisma migrations to the empty database
+        run: npm exec --workspace @mailmind/api -- prisma migrate deploy
+
+      - name: Validate Prisma schema
+        run: npm run prisma:validate --workspace @mailmind/api
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate --workspace @mailmind/api
+
+      - name: Verify Prisma migration status
+        run: npm exec --workspace @mailmind/api -- prisma migrate status
+
       - name: Lint
         run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test backend and frontend
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Verify built API liveness and readiness
+        shell: bash
+        run: |
+          node apps/api/dist/index.js > api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4000/health > /dev/null \
+              && curl --fail --silent http://127.0.0.1:4000/ready > /dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              sed -E 's#postgres(ql)?://[^ ]+#[DATABASE_URL REDACTED]#g' api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          sed -E 's#postgres(ql)?://[^ ]+#[DATABASE_URL REDACTED]#g' api.log
+          exit 1

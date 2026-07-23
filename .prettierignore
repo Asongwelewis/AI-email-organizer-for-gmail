@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+supabase/.temp
+apps/*/dist
+packages/*/dist

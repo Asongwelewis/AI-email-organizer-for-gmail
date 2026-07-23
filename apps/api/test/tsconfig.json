@@ -1,0 +1,14 @@
+{
+  "extends": "../../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "baseUrl": "..",
+    "paths": {
+      "@api/*": ["src/*"]
+    },
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["./**/*.ts", "../src/**/*.ts"],
+  "exclude": ["../dist", "../node_modules"]
+}

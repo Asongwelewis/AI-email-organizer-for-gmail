@@ -11,6 +11,7 @@
     "dev:web": "npm run dev --workspace @mailmind/web",
     "dev:api": "npm run dev --workspace @mailmind/api",
     "build": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
+    "test": "npm test --workspace @mailmind/api && npm test --workspace @mailmind/web",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -53,5 +54,8 @@
     "@tailwindcss/oxide-linux-x64-musl": "4.3.3",
     "lightningcss-linux-x64-gnu": "1.32.0",
     "lightningcss-linux-x64-musl": "1.32.0"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.4.0"
   }
 }
