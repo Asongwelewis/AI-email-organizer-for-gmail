@@ -14,6 +14,10 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.dynamic_label_candidate_messages.deleteMany();
+  await prisma.dynamic_label_candidates.deleteMany();
+  await prisma.label_discovery_runs.deleteMany();
+  await prisma.label_discovery_states.deleteMany();
   await prisma.user_classification_corrections.deleteMany();
   await prisma.classification_results.deleteMany();
   await prisma.classification_runs.deleteMany();
@@ -374,5 +378,195 @@ databaseTests('PostgreSQL authentication repositories', () => {
     await expect(
       repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
     ).resolves.toMatchObject({ accountId: account.id });
+  });
+
+  it('persists label discovery candidates, associations, and immutable decisions', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'labels@example.com',
+        normalized_email: 'labels@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'labels-google-subject',
+        email: 'labels@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const message = await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: account.id,
+        gmail_message_id: 'labels-message',
+      },
+    });
+    const candidate = await prisma.dynamic_label_candidates.create({
+      data: {
+        connected_google_account_id: account.id,
+        candidate_type: 'SOURCE',
+        source_key: 'github.com',
+        suggested_leaf_name: 'GitHub',
+        suggested_full_path: 'MailMind/Sources/GitHub',
+        normalized_name: 'github',
+        confidence: 0.9,
+        message_count: 1,
+        thread_count: 1,
+        category_agreement: 1,
+        source_agreement: 1,
+        discovery_version: 'mailmind-label-discovery-v1',
+        naming_version: 'mailmind-label-naming-v1',
+        input_hash: 'b'.repeat(64),
+      },
+    });
+    await prisma.dynamic_label_candidate_messages.create({
+      data: {
+        candidate_id: candidate.id,
+        gmail_message_id: message.id,
+        association_score: 0.9,
+      },
+    });
+    const decision = await prisma.label_decisions.create({
+      data: {
+        candidate_id: candidate.id,
+        user_id: user.id,
+        decision: 'APPROVE',
+        original_suggested_name: 'GitHub',
+        final_leaf_name: 'GitHub',
+        final_full_path: 'MailMind/Sources/GitHub',
+      },
+    });
+    await expect(
+      prisma.label_decisions.update({
+        where: { id: decision.id },
+        data: { decision_reason: 'mutation is forbidden' },
+      }),
+    ).rejects.toThrow();
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.dynamic_label_candidates.count()).toBe(0);
+    expect(await prisma.dynamic_label_candidate_messages.count()).toBe(0);
+    expect(await prisma.label_decisions.count()).toBe(0);
+  });
+
+  it('rejects cross-account label associations and merge cycles', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'merge@example.com',
+        normalized_email: 'merge@example.com',
+      },
+    });
+    const [accountA, accountB] = await Promise.all([
+      prisma.connected_google_accounts.create({
+        data: {
+          user_id: user.id,
+          google_subject: 'merge-account-a',
+          email: 'merge-a@gmail.com',
+        },
+      }),
+      prisma.connected_google_accounts.create({
+        data: {
+          user_id: user.id,
+          google_subject: 'merge-account-b',
+          email: 'merge-b@gmail.com',
+        },
+      }),
+    ]);
+    const messageB = await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: accountB.id,
+        gmail_message_id: 'cross-account-message',
+      },
+    });
+    const base = {
+      confidence: 0.8,
+      message_count: 3,
+      thread_count: 2,
+      category_agreement: 1,
+      source_agreement: 1,
+      discovery_version: 'mailmind-label-discovery-v1',
+      naming_version: 'mailmind-label-naming-v1',
+    };
+    const first = await prisma.dynamic_label_candidates.create({
+      data: {
+        ...base,
+        connected_google_account_id: accountA.id,
+        candidate_type: 'SOURCE',
+        source_key: 'first.example',
+        suggested_leaf_name: 'First Source',
+        suggested_full_path: 'MailMind/Sources/First Source',
+        normalized_name: 'firstsource',
+        input_hash: 'c'.repeat(64),
+      },
+    });
+    const second = await prisma.dynamic_label_candidates.create({
+      data: {
+        ...base,
+        connected_google_account_id: accountA.id,
+        candidate_type: 'SOURCE',
+        source_key: 'second.example',
+        suggested_leaf_name: 'Second Source',
+        suggested_full_path: 'MailMind/Sources/Second Source',
+        normalized_name: 'secondsource',
+        input_hash: 'd'.repeat(64),
+      },
+    });
+    await expect(
+      prisma.dynamic_label_candidate_messages.create({
+        data: {
+          candidate_id: first.id,
+          gmail_message_id: messageB.id,
+          association_score: 0.8,
+        },
+      }),
+    ).rejects.toThrow();
+    await prisma.dynamic_label_candidates.update({
+      where: { id: first.id },
+      data: { status: 'MERGED', merged_into_candidate_id: second.id },
+    });
+    await expect(
+      prisma.dynamic_label_candidates.update({
+        where: { id: second.id },
+        data: { status: 'MERGED', merged_into_candidate_id: first.id },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('prevents concurrent label discovery runs and recovers a stale lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'discovery-lease@example.com',
+        normalized_email: 'discovery-lease@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'discovery-lease-google-subject',
+        email: 'discovery-lease@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { LabelDiscoveryRepository } =
+      await import('../src/features/label-discovery/label-discovery.repository.js');
+    const repository = new LabelDiscoveryRepository();
+    const attempts = await Promise.allSettled([
+      repository.acquireLease(account.id),
+      repository.acquireLease(account.id),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(1);
+    await prisma.label_discovery_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(repository.acquireLease(account.id)).resolves.toMatchObject({
+      accountId: account.id,
+    });
   });
 });

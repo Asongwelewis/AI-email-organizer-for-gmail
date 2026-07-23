@@ -9,6 +9,7 @@ on:
       - feature/gmail-sync-foundation
       - feat-foundation-and-project-setup
       - feature/ai-classification-pipeline
+      - feature/dynamic-label-discovery
   pull_request:
 
 jobs:
@@ -22,6 +23,8 @@ jobs:
       AI_CLASSIFIER_ENABLED: 'true'
       AI_CLASSIFIER_PROVIDER: mock
       AI_CLASSIFIER_MODEL: deterministic-mock-v1
+      DYNAMIC_LABEL_DISCOVERY_ENABLED: 'true'
+      DYNAMIC_LABEL_AI_NAMING_ENABLED: 'false'
 
     services:
       postgres:

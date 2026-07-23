@@ -13,6 +13,7 @@ import type {
   ClassificationStatus,
   RecommendedAction,
 } from '@web/types/classification';
+import type { LabelCandidatesPage, LabelDiscoveryStatus } from '@web/types/labelDiscovery';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -158,6 +159,44 @@ export const api = {
     input: { category: ClassificationCategory; recommendedAction: RecommendedAction },
   ): Promise<void> {
     await http.post(`/classification/results/${id}/correct`, input);
+  },
+
+  async getLabelDiscoveryStatus(): Promise<LabelDiscoveryStatus> {
+    const response = await http.get<LabelDiscoveryStatus>('/label-discovery/status');
+    return response.data;
+  },
+
+  async getLabelCandidates(cursor?: string): Promise<LabelCandidatesPage> {
+    const response = await http.get<LabelCandidatesPage>('/label-discovery/candidates', {
+      params: { limit: 20, ...(cursor ? { cursor } : {}) },
+    });
+    return response.data;
+  },
+
+  async runLabelDiscovery(): Promise<{ success: boolean; runId: string }> {
+    const response = await http.post<{ success: boolean; runId: string }>(
+      '/label-discovery/run',
+      {},
+    );
+    return response.data;
+  },
+
+  async approveLabelCandidate(id: string, leafName?: string): Promise<void> {
+    await http.post(`/label-discovery/candidates/${id}/approve`, {
+      ...(leafName ? { leafName } : {}),
+    });
+  },
+
+  async rejectLabelCandidate(id: string): Promise<void> {
+    await http.post(`/label-discovery/candidates/${id}/reject`, {});
+  },
+
+  async deferLabelCandidate(id: string): Promise<void> {
+    await http.post(`/label-discovery/candidates/${id}/defer`, {});
+  },
+
+  async mergeLabelCandidate(id: string, targetCandidateId: string): Promise<void> {
+    await http.post(`/label-discovery/candidates/${id}/merge`, { targetCandidateId });
   },
 };
 

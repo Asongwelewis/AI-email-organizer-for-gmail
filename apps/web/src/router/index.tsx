@@ -11,6 +11,7 @@ import { DashboardPage } from '@web/pages/DashboardPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
+import { LabelDiscoveryPage } from '@web/pages/LabelDiscoveryPage';
 
 const routes: RouteObject[] = [
   {
@@ -33,6 +34,7 @@ const routes: RouteObject[] = [
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/settings/connections', element: <ConnectionsPage /> },
       { path: '/dashboard/classification', element: <ClassificationPage /> },
+      { path: '/dashboard/labels/discover', element: <LabelDiscoveryPage /> },
     ],
   },
   { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },

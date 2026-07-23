@@ -63,6 +63,18 @@ const environmentSchema = z
     AI_CLASSIFICATION_INPUT_MAX_CHARS: z.coerce.number().int().min(500).max(20_000).default(4000),
     AI_CLASSIFICATION_RULE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.9),
     AI_CLASSIFICATION_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+    DYNAMIC_LABEL_DISCOVERY_ENABLED: booleanValue.default(false),
+    DYNAMIC_LABEL_MIN_MESSAGES: z.coerce.number().int().min(3).max(100).default(3),
+    DYNAMIC_LABEL_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(365).default(90),
+    DYNAMIC_LABEL_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.75),
+    DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT: z.coerce.number().min(0.5).max(1).default(0.7),
+    DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT: z.coerce.number().min(0.5).max(1).default(0.7),
+    DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN: z.coerce.number().int().min(1).max(50).default(20),
+    DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(5000).default(1000),
+    DYNAMIC_LABEL_MAX_PENDING_CANDIDATES: z.coerce.number().int().min(1).max(500).default(50),
+    DYNAMIC_LABEL_MAX_APPROVED_LABELS: z.coerce.number().int().min(1).max(500).default(100),
+    DYNAMIC_LABEL_REDISCOVERY_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+    DYNAMIC_LABEL_AI_NAMING_ENABLED: booleanValue.default(false),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

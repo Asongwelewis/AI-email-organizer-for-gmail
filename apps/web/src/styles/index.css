@@ -2218,3 +2218,215 @@ img {
     flex-direction: column;
   }
 }
+
+.label-discovery-page {
+  display: grid;
+  gap: clamp(3rem, 6vw, 6rem);
+}
+
+.label-discovery-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.34fr);
+  gap: clamp(2rem, 7vw, 7rem);
+  align-items: end;
+}
+
+.label-discovery-hero h1 {
+  max-width: 64rem;
+  margin: 1.5rem 0 2rem;
+  font-size: clamp(3.6rem, 7vw, 8rem);
+}
+
+.label-discovery-hero p {
+  max-width: 50rem;
+  color: #adb5ba;
+  line-height: 1.75;
+}
+
+.label-discovery-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(16rem, 1.4fr);
+  gap: 1px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.label-discovery-run {
+  display: grid;
+  align-content: space-between;
+  min-height: 13rem;
+  padding: clamp(1.4rem, 3vw, 2.5rem);
+  background: var(--paper-deep);
+}
+
+.label-discovery-run button,
+.candidate-actions button {
+  min-height: 3rem;
+  padding: 0.8rem 1rem;
+  color: white;
+  border: 0;
+  background: var(--cobalt);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.label-discovery-run button:disabled,
+.candidate-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.label-discovery-run small,
+.candidate-actions small {
+  color: var(--ink-soft);
+}
+
+.label-candidate-section {
+  color: var(--ink);
+  background: var(--paper-light);
+}
+
+.label-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.label-candidate-card {
+  display: grid;
+  align-content: start;
+  gap: 1.2rem;
+  padding: clamp(2rem, 5vw, 4rem);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.label-candidate-card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.label-candidate-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(1.8rem, 3vw, 3.2rem);
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.candidate-status {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.58rem;
+}
+
+.candidate-status--approved {
+  color: #1d6446;
+  border-color: #77a88d;
+}
+
+.candidate-status--rejected {
+  color: #9a3428;
+  border-color: #d48b82;
+}
+
+.candidate-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.candidate-facts div {
+  padding: 1rem;
+  background: var(--paper-deep);
+}
+
+.candidate-facts dt,
+.candidate-actions label {
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.candidate-facts dd {
+  margin: 0.45rem 0 0;
+}
+
+.candidate-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.candidate-reasons span {
+  padding: 0.35rem 0.55rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  font-size: 0.62rem;
+}
+
+.candidate-warning {
+  padding: 0.8rem;
+  color: #7a2d23;
+  background: #fae1dc;
+}
+
+.candidate-actions,
+.candidate-merge,
+.candidate-actions label {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.candidate-actions input,
+.candidate-actions select {
+  width: 100%;
+  min-height: 2.8rem;
+  padding-inline: 0.7rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: white;
+}
+
+.candidate-actions button.secondary {
+  color: var(--cobalt);
+  border: 1px solid var(--cobalt);
+  background: transparent;
+}
+
+.candidate-actions button.quiet {
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.candidate-actions__row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.7rem;
+}
+
+@media (max-width: 1050px) {
+  .label-discovery-hero,
+  .label-candidate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .label-discovery-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .label-discovery-overview,
+  .candidate-facts {
+    grid-template-columns: 1fr;
+  }
+}
