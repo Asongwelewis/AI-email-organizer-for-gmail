@@ -6,6 +6,9 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const applicationTables = [
   'audit_logs',
+  'classification_results',
+  'classification_runs',
+  'classification_states',
   'connected_google_accounts',
   'gmail_labels',
   'gmail_message_metadata',
@@ -13,6 +16,7 @@ const applicationTables = [
   'gmail_sync_states',
   'oauth_states',
   'sessions',
+  'user_classification_corrections',
   'users',
 ];
 
@@ -20,6 +24,17 @@ const requiredIndexes = [
   'audit_logs_action_idx',
   'audit_logs_created_at_idx',
   'audit_logs_user_id_idx',
+  'classification_corrections_result_created_idx',
+  'classification_corrections_user_created_idx',
+  'classification_results_account_category_idx',
+  'classification_results_account_classified_idx',
+  'classification_results_active_version_hash_unique_idx',
+  'classification_results_gmail_message_id_idx',
+  'classification_results_review_queue_idx',
+  'classification_runs_account_started_idx',
+  'classification_runs_status_idx',
+  'classification_states_account_unique_idx',
+  'classification_states_lease_expiry_idx',
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
@@ -49,6 +64,8 @@ const requiredIndexes = [
   'sessions_revoked_at_idx',
   'sessions_token_hash_unique_idx',
   'sessions_user_id_idx',
+  'user_classification_corrections_connected_google_account_id_idx',
+  'user_classification_corrections_gmail_message_id_idx',
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
   'users_status_idx',
@@ -68,13 +85,15 @@ try {
     where n.nspname = 'public'
       and c.relname in (
         'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
-        'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states'
+        'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
+        'classification_results', 'classification_runs', 'classification_states',
+        'user_classification_corrections'
       )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all nine application tables must exist',
+    'all thirteen application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -103,7 +122,9 @@ try {
     from unnest(array['public', 'anon', 'authenticated']) as roles(role_name)
     cross join unnest(array[
       'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
-      'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states'
+      'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
+      'classification_results', 'classification_runs', 'classification_states',
+      'user_classification_corrections'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -122,6 +143,17 @@ try {
         'audit_logs_action_idx',
         'audit_logs_created_at_idx',
         'audit_logs_user_id_idx',
+        'classification_corrections_result_created_idx',
+        'classification_corrections_user_created_idx',
+        'classification_results_account_category_idx',
+        'classification_results_account_classified_idx',
+        'classification_results_active_version_hash_unique_idx',
+        'classification_results_gmail_message_id_idx',
+        'classification_results_review_queue_idx',
+        'classification_runs_account_started_idx',
+        'classification_runs_status_idx',
+        'classification_states_account_unique_idx',
+        'classification_states_lease_expiry_idx',
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
@@ -154,6 +186,8 @@ try {
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
         'users_status_idx'
+        ,'user_classification_corrections_connected_google_account_id_idx'
+        ,'user_classification_corrections_gmail_message_id_idx'
       )
     order by indexname
   `;
@@ -171,13 +205,17 @@ try {
         'public.connected_google_accounts'::regclass,
         'public.gmail_labels'::regclass,
         'public.gmail_message_metadata'::regclass,
-        'public.gmail_sync_states'::regclass
+        'public.gmail_sync_states'::regclass,
+        'public.classification_results'::regclass,
+        'public.classification_states'::regclass
       )
     order by tgname
   `;
   assert(
     JSON.stringify(triggers.map((trigger) => trigger.trigger_name)) ===
       JSON.stringify([
+        'classification_results_set_updated_at',
+        'classification_states_set_updated_at',
         'connected_google_accounts_set_updated_at',
         'gmail_labels_set_updated_at',
         'gmail_message_metadata_set_updated_at',
@@ -205,6 +243,8 @@ try {
          and t.typname in (
            'audit_result', 'google_connection_status', 'oauth_purpose', 'user_status',
            'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
+           ,'classification_category', 'recommended_action', 'classification_source',
+           'classification_status', 'classification_run_status'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
@@ -231,13 +271,10 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 7n, 'all seven enum types must exist');
-  assert(summary.foreign_key_count === 10n, 'all ten foreign keys must exist');
+  assert(summary?.enum_count === 12n, 'all twelve enum types must exist');
+  assert(summary.foreign_key_count === 18n, 'all eighteen foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(
-    summary.migration_count === 3n,
-    'exactly three intended Prisma migrations must be applied',
-  );
+  assert(summary.migration_count === 4n, 'exactly four intended Prisma migrations must be applied');
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

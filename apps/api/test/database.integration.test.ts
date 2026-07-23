@@ -14,6 +14,10 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.user_classification_corrections.deleteMany();
+  await prisma.classification_results.deleteMany();
+  await prisma.classification_runs.deleteMany();
+  await prisma.classification_states.deleteMany();
   await prisma.gmail_sync_runs.deleteMany();
   await prisma.gmail_message_metadata.deleteMany();
   await prisma.gmail_labels.deleteMany();
@@ -275,5 +279,100 @@ databaseTests('PostgreSQL authentication repositories', () => {
     await prisma.connected_google_accounts.delete({ where: { id: account.id } });
     expect(await prisma.gmail_sync_states.count()).toBe(0);
     expect(await prisma.gmail_message_metadata.count()).toBe(0);
+  });
+
+  it('persists classification results and immutable correction history', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'classify@example.com',
+        normalized_email: 'classify@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'classification-google-subject',
+        email: 'classify@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const message = await prisma.gmail_message_metadata.create({
+      data: { connected_google_account_id: account.id, gmail_message_id: 'classified-message' },
+    });
+    const result = await prisma.classification_results.create({
+      data: {
+        gmail_message_id: message.id,
+        connected_google_account_id: account.id,
+        category: 'RECEIPTS',
+        recommended_action: 'ARCHIVE_RECOMMENDED',
+        confidence: 0.91,
+        requires_review: false,
+        explanation: 'Receipt terms are present.',
+        reason_codes: ['RECEIPT_TERMS'],
+        source: 'RULE',
+        classifier_version: 'mailmind-classifier-v1',
+        prompt_version: 'mailmind-prompt-v1',
+        taxonomy_version: 'mailmind-taxonomy-v1',
+        provider: 'rules',
+        input_hash: 'a'.repeat(64),
+        message_metadata_hash: 'a'.repeat(64),
+        status: 'COMPLETED',
+      },
+    });
+    await prisma.user_classification_corrections.create({
+      data: {
+        classification_result_id: result.id,
+        gmail_message_id: message.id,
+        connected_google_account_id: account.id,
+        user_id: user.id,
+        original_category: 'RECEIPTS',
+        corrected_category: 'FINANCE',
+        original_recommended_action: 'ARCHIVE_RECOMMENDED',
+        corrected_recommended_action: 'KEEP_IN_INBOX',
+      },
+    });
+    expect(await prisma.classification_results.count()).toBe(1);
+    expect(await prisma.user_classification_corrections.count()).toBe(1);
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.classification_results.count()).toBe(0);
+    expect(await prisma.user_classification_corrections.count()).toBe(0);
+  });
+
+  it('prevents concurrent classification runs and recovers a stale lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'lease@example.com',
+        normalized_email: 'lease@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'lease-google-subject',
+        email: 'lease@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { ClassificationRepository } =
+      await import('../src/features/classification/repositories/classification.repository.js');
+    const repository = new ClassificationRepository();
+    const attempts = await Promise.allSettled([
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    await prisma.classification_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+    ).resolves.toMatchObject({ accountId: account.id });
   });
 });
