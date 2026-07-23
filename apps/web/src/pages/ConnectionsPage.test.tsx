@@ -1,8 +1,20 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConnectionsPage } from './ConnectionsPage';
+
+function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ConnectionsPage />
+    </QueryClientProvider>,
+  );
+}
 
 const authState = vi.hoisted(() => ({
   gmailConnection: null as null | {
@@ -50,13 +62,13 @@ describe('ConnectionsPage', () => {
     ['ERROR', 'Gmail could not be reached.'],
   ] as const)('renders the %s state safely', (status, heading) => {
     setStatus(status);
-    render(<ConnectionsPage />);
+    renderPage();
     expect(screen.getByText(heading)).toBeInTheDocument();
   });
 
   it('renders connected account details with raw scopes behind disclosure', () => {
     setStatus('CONNECTED', true);
-    render(<ConnectionsPage />);
+    renderPage();
     expect(screen.getByRole('heading', { name: 'ada@gmail.com' })).toBeInTheDocument();
     expect(screen.getByText('Technical permission details')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect Gmail' })).toBeInTheDocument();
@@ -65,7 +77,7 @@ describe('ConnectionsPage', () => {
   it('starts the backend Gmail connection flow', async () => {
     const user = userEvent.setup();
     setStatus('DISCONNECTED');
-    render(<ConnectionsPage />);
+    renderPage();
     await user.click(screen.getByRole('button', { name: 'Connect Gmail' }));
     expect(authState.connectGmail).toHaveBeenCalledTimes(1);
   });
@@ -74,7 +86,7 @@ describe('ConnectionsPage', () => {
     const user = userEvent.setup();
     authState.disconnectGmail.mockResolvedValue();
     setStatus('CONNECTED', true);
-    render(<ConnectionsPage />);
+    renderPage();
 
     await user.click(screen.getByRole('button', { name: 'Disconnect Gmail' }));
     expect(screen.getByRole('dialog', { name: 'Disconnect Gmail?' })).toBeInTheDocument();

@@ -14,6 +14,7 @@ import { MagneticButton } from '@web/components/MagneticButton';
 import { RouteLoader } from '@web/components/RouteLoader';
 import { useAuth } from '@web/context/useAuth';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
+import { useGmailSyncActions, useGmailSyncStatusQuery } from '@web/queries/gmailQueries';
 
 export function ConnectionsPage() {
   const { gmailConnection, connectGmail, disconnectGmail, isDisconnecting, isRedirecting } =
@@ -141,6 +142,28 @@ function ConnectedState({
   scopes: string[];
   onDisconnect: () => void;
 }) {
+  const syncStatus = useGmailSyncStatusQuery(true);
+  const actions = useGmailSyncActions();
+  const busy =
+    Boolean(syncStatus.data?.syncRunning) ||
+    actions.labels.isPending ||
+    actions.initial.isPending ||
+    actions.incremental.isPending;
+
+  const run = async (
+    action: () => Promise<unknown>,
+    successMessage: string,
+    failureMessage: string,
+  ) => {
+    try {
+      await action();
+      toast.success(successMessage);
+    } catch (error) {
+      toast.error(getSafeErrorMessage(error, failureMessage));
+      await syncStatus.refetch();
+    }
+  };
+
   return (
     <div className="connected-state">
       <div className="connected-state__status">
@@ -167,6 +190,69 @@ function ConnectedState({
           ))}
         </ul>
       </details>
+      <div className="gmail-sync-panel">
+        <div>
+          <strong>Gmail synchronization</strong>
+          {syncStatus.isLoading ? (
+            <span>Checking sync state…</span>
+          ) : syncStatus.isError ? (
+            <span>Sync status is temporarily unavailable.</span>
+          ) : (
+            <span>
+              {syncStatus.data?.messageCount ?? 0} message records
+              {syncStatus.data?.lastSuccessfulSyncAt
+                ? ` · Last synced ${new Intl.DateTimeFormat(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(syncStatus.data.lastSuccessfulSyncAt))}`
+                : ' · Not synced yet'}
+            </span>
+          )}
+          {syncStatus.data?.status === 'HISTORY_EXPIRED' && (
+            <span>The Gmail history window expired. Run a fresh initial sync.</span>
+          )}
+          {syncStatus.data?.status === 'REAUTH_REQUIRED' && (
+            <span>Reconnect Gmail before synchronizing again.</span>
+          )}
+          {syncStatus.data?.status === 'FAILED' && (
+            <span>The last sync failed safely. Your previous checkpoint was preserved.</span>
+          )}
+        </div>
+        <div className="gmail-sync-panel__actions">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(
+                actions.labels.mutateAsync,
+                'MailMind labels are ready.',
+                'Labels could not be initialized.',
+              )
+            }
+          >
+            Prepare labels
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(
+                syncStatus.data?.initialSyncCompleted
+                  ? actions.incremental.mutateAsync
+                  : actions.initial.mutateAsync,
+                'Gmail synchronization completed.',
+                'Gmail could not be synchronized.',
+              )
+            }
+          >
+            {busy
+              ? 'Syncing…'
+              : syncStatus.data?.initialSyncCompleted
+                ? 'Sync now'
+                : 'Start initial sync'}
+          </button>
+        </div>
+      </div>
       <MagneticButton variant="danger" onClick={onDisconnect}>
         Disconnect Gmail
       </MagneticButton>

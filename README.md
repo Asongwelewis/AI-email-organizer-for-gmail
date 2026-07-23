@@ -1,8 +1,8 @@
 # MailMind AI
 
-MailMind AI currently provides the Stage 2 authentication and Gmail-authorization foundation for a
-future Gmail organization product. Message synchronization, labeling, AI classification,
-background jobs, and billing are not implemented yet.
+MailMind AI provides the Stage 2 authentication foundation and the Stage 3 metadata-only Gmail
+synchronization and managed-label foundation. AI classification, background jobs, and billing are
+not implemented yet.
 
 ## Monorepo
 
@@ -27,6 +27,9 @@ npm run dev
 See [Stage 2 setup and release readiness](docs/stage-2-setup.md) for Supabase role/pooler setup,
 Prisma migrations, Google OAuth, security behavior, cleanup, CI, manual verification, and public
 deployment requirements.
+
+See [Stage 3 Gmail synchronization](docs/stage-3-gmail-sync.md) for the metadata boundary, managed
+labels, sync lifecycle, retry/checkpoint behavior, environment controls, and verification steps.
 
 ## Commands
 

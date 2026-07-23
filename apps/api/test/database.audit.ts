@@ -7,6 +7,10 @@ function assert(condition: unknown, message: string): asserts condition {
 const applicationTables = [
   'audit_logs',
   'connected_google_accounts',
+  'gmail_labels',
+  'gmail_message_metadata',
+  'gmail_sync_runs',
+  'gmail_sync_states',
   'oauth_states',
   'sessions',
   'users',
@@ -19,6 +23,22 @@ const requiredIndexes = [
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
+  'gmail_labels_account_label_unique_idx',
+  'gmail_labels_account_managed_idx',
+  'gmail_labels_account_name_unique_idx',
+  'gmail_labels_connected_google_account_id_idx',
+  'gmail_message_metadata_connected_google_account_id_idx',
+  'gmail_messages_account_date_idx',
+  'gmail_messages_account_deleted_idx',
+  'gmail_messages_account_history_idx',
+  'gmail_messages_account_message_unique_idx',
+  'gmail_messages_account_thread_idx',
+  'gmail_sync_runs_account_started_idx',
+  'gmail_sync_runs_status_idx',
+  'gmail_sync_states_account_unique_idx',
+  'gmail_sync_states_lease_expiry_idx',
+  'gmail_sync_states_next_retry_idx',
+  'gmail_sync_states_status_idx',
   'oauth_states_expiry_idx',
   'oauth_states_initiating_session_idx',
   'oauth_states_initiating_user_idx',
@@ -46,12 +66,15 @@ try {
     from pg_catalog.pg_class c
     join pg_catalog.pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
-      and c.relname in ('users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs')
+      and c.relname in (
+        'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+        'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states'
+      )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'the five application tables must exist',
+    'all nine application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -78,7 +101,10 @@ try {
              )
            ) as privilege_count
     from unnest(array['public', 'anon', 'authenticated']) as roles(role_name)
-    cross join unnest(array['users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs']) as tables(table_name)
+    cross join unnest(array[
+      'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+      'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states'
+    ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
     order by roles.role_name
@@ -99,6 +125,22 @@ try {
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
+        'gmail_labels_account_label_unique_idx',
+        'gmail_labels_account_managed_idx',
+        'gmail_labels_account_name_unique_idx',
+        'gmail_labels_connected_google_account_id_idx',
+        'gmail_message_metadata_connected_google_account_id_idx',
+        'gmail_messages_account_date_idx',
+        'gmail_messages_account_deleted_idx',
+        'gmail_messages_account_history_idx',
+        'gmail_messages_account_message_unique_idx',
+        'gmail_messages_account_thread_idx',
+        'gmail_sync_runs_account_started_idx',
+        'gmail_sync_runs_status_idx',
+        'gmail_sync_states_account_unique_idx',
+        'gmail_sync_states_lease_expiry_idx',
+        'gmail_sync_states_next_retry_idx',
+        'gmail_sync_states_status_idx',
         'oauth_states_expiry_idx',
         'oauth_states_initiating_session_idx',
         'oauth_states_initiating_user_idx',
@@ -124,13 +166,25 @@ try {
     select tgname as trigger_name
     from pg_catalog.pg_trigger
     where not tgisinternal
-      and tgrelid in ('public.users'::regclass, 'public.connected_google_accounts'::regclass)
+      and tgrelid in (
+        'public.users'::regclass,
+        'public.connected_google_accounts'::regclass,
+        'public.gmail_labels'::regclass,
+        'public.gmail_message_metadata'::regclass,
+        'public.gmail_sync_states'::regclass
+      )
     order by tgname
   `;
   assert(
     JSON.stringify(triggers.map((trigger) => trigger.trigger_name)) ===
-      JSON.stringify(['connected_google_accounts_set_updated_at', 'users_set_updated_at']),
-    'both updated_at triggers must exist',
+      JSON.stringify([
+        'connected_google_accounts_set_updated_at',
+        'gmail_labels_set_updated_at',
+        'gmail_message_metadata_set_updated_at',
+        'gmail_sync_states_set_updated_at',
+        'users_set_updated_at',
+      ]),
+    'all updated_at triggers must exist',
   );
 
   const catalog = await prisma.$queryRaw<
@@ -148,7 +202,10 @@ try {
       (select count(*) from pg_catalog.pg_type t
        join pg_catalog.pg_namespace n on n.oid = t.typnamespace
        where n.nspname = 'public'
-         and t.typname in ('audit_result', 'google_connection_status', 'oauth_purpose', 'user_status')) as enum_count,
+         and t.typname in (
+           'audit_result', 'google_connection_status', 'oauth_purpose', 'user_status',
+           'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
+         )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
          and connamespace = 'public'::regnamespace) as foreign_key_count,
@@ -164,14 +221,23 @@ try {
         +
         (select count(*) from public.connected_google_accounts
          where google_subject in ('first-gmail-subject', 'second-gmail-subject'))
+        +
+        (select count(*) from public.gmail_message_metadata
+         where gmail_message_id = 'message-cascade')
+        +
+        (select count(*) from public.gmail_sync_runs
+         where error_code = 'STALE_SYNC_LEASE_RECOVERED')
       ) as test_artifact_count,
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 4n, 'all four enum types must exist');
-  assert(summary.foreign_key_count === 6n, 'all six foreign keys must exist');
+  assert(summary?.enum_count === 7n, 'all seven enum types must exist');
+  assert(summary.foreign_key_count === 10n, 'all ten foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(summary.migration_count === 2n, 'exactly two intended Prisma migrations must be applied');
+  assert(
+    summary.migration_count === 3n,
+    'exactly three intended Prisma migrations must be applied',
+  );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

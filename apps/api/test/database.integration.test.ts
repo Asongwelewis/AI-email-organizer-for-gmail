@@ -14,6 +14,10 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.gmail_sync_runs.deleteMany();
+  await prisma.gmail_message_metadata.deleteMany();
+  await prisma.gmail_labels.deleteMany();
+  await prisma.gmail_sync_states.deleteMany();
   await prisma.audit_logs.deleteMany();
   await prisma.oauth_states.deleteMany();
   await prisma.connected_google_accounts.deleteMany();
@@ -206,5 +210,70 @@ databaseTests('PostgreSQL authentication repositories', () => {
     await expect(connectedGoogleAccountRepository.findForUser(user.id)).resolves.toMatchObject({
       gmail_connected: true,
     });
+  });
+
+  it('allows only one active Gmail sync lease and recovers an expired lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'sync@example.com',
+        normalized_email: 'sync@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'sync-google-subject',
+        email: 'sync@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { GmailRepository } = await import('../src/integrations/gmail/gmail.repository.js');
+    const repository = new GmailRepository();
+    const results = await Promise.allSettled([
+      repository.acquireLease(account.id, 'INITIAL_SYNC_RUNNING', 'INITIAL'),
+      repository.acquireLease(account.id, 'INITIAL_SYNC_RUNNING', 'INITIAL'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    await prisma.gmail_sync_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      repository.acquireLease(account.id, 'INCREMENTAL_SYNC_RUNNING', 'INCREMENTAL'),
+    ).resolves.toMatchObject({ accountId: account.id });
+  });
+
+  it('cascades Gmail metadata when a connected account is removed', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'cascade@example.com',
+        normalized_email: 'cascade@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'cascade-google-subject',
+        email: 'cascade@gmail.com',
+      },
+    });
+    await prisma.gmail_sync_states.create({
+      data: { connected_google_account_id: account.id },
+    });
+    await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: account.id,
+        gmail_message_id: 'message-cascade',
+      },
+    });
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.gmail_sync_states.count()).toBe(0);
+    expect(await prisma.gmail_message_metadata.count()).toBe(0);
   });
 });
