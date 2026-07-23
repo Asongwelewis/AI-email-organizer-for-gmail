@@ -1,0 +1,17 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@api/*": ["src/*"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "prisma/**/*.prisma"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../../packages/shared" }]
+}

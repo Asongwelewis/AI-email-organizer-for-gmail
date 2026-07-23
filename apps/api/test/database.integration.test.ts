@@ -1,0 +1,572 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { prisma } from '../src/database/prisma.js';
+import { connectedGoogleAccountRepository } from '../src/repositories/connected-google-account.repository.js';
+import { OAuthStateRepository } from '../src/repositories/oauth-state.repository.js';
+import { SessionRepository } from '../src/repositories/session.repository.js';
+import { UserRepository } from '../src/repositories/user.repository.js';
+import { sha256 } from '../src/security/hashing.service.js';
+
+const databaseUrl = new URL(process.env['DATABASE_URL'] ?? 'postgresql://localhost/test');
+const isDisposableHost = ['127.0.0.1', 'localhost', '::1'].includes(databaseUrl.hostname);
+const databaseTests =
+  process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
+
+async function cleanDatabase() {
+  await prisma.dynamic_label_candidate_messages.deleteMany();
+  await prisma.dynamic_label_candidates.deleteMany();
+  await prisma.label_discovery_runs.deleteMany();
+  await prisma.label_discovery_states.deleteMany();
+  await prisma.user_classification_corrections.deleteMany();
+  await prisma.classification_results.deleteMany();
+  await prisma.classification_runs.deleteMany();
+  await prisma.classification_states.deleteMany();
+  await prisma.gmail_sync_runs.deleteMany();
+  await prisma.gmail_message_metadata.deleteMany();
+  await prisma.gmail_labels.deleteMany();
+  await prisma.gmail_sync_states.deleteMany();
+  await prisma.audit_logs.deleteMany();
+  await prisma.oauth_states.deleteMany();
+  await prisma.connected_google_accounts.deleteMany();
+  await prisma.sessions.deleteMany();
+  await prisma.users.deleteMany();
+}
+
+databaseTests('PostgreSQL authentication repositories', () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+  }, 30_000);
+
+  beforeEach(cleanDatabase);
+
+  afterAll(async () => {
+    await cleanDatabase();
+    await prisma.$disconnect();
+  }, 30_000);
+
+  it('atomically creates one user and a hashed session, then updates by stable Google subject', async () => {
+    const repository = new UserRepository();
+    const subject = `subject-${randomUUID()}`;
+    const first = await repository.upsertGoogleIdentityAndCreateSession(
+      {
+        googleSubject: subject,
+        email: 'first@example.com',
+        displayName: 'First Name',
+        avatarUrl: null,
+        emailVerified: true,
+      },
+      {
+        session_token_hash: sha256('first-raw-session-token'),
+        expires_at: new Date(Date.now() + 60_000),
+      },
+    );
+    const second = await repository.upsertGoogleIdentityAndCreateSession(
+      {
+        googleSubject: subject,
+        email: 'changed@example.com',
+        displayName: 'Changed Name',
+        avatarUrl: null,
+        emailVerified: true,
+      },
+      {
+        session_token_hash: sha256('second-raw-session-token'),
+        expires_at: new Date(Date.now() + 60_000),
+      },
+    );
+    expect(second.user.id).toBe(first.user.id);
+    expect(second.user.email).toBe('changed@example.com');
+    expect(await prisma.users.count()).toBe(1);
+    expect(await prisma.sessions.count()).toBe(2);
+    const stored = await prisma.sessions.findUniqueOrThrow({ where: { id: first.session.id } });
+    expect(stored.session_token_hash).toBe(sha256('first-raw-session-token'));
+    expect(stored.session_token_hash).not.toBe('first-raw-session-token');
+  });
+
+  it.each(['SUSPENDED', 'DELETED'] as const)(
+    'rolls back session creation for a %s user',
+    async (status) => {
+      const repository = new UserRepository();
+      const subject = `subject-${randomUUID()}`;
+      const created = await repository.upsertGoogleIdentityAndCreateSession(
+        {
+          googleSubject: subject,
+          email: `${status.toLowerCase()}@example.com`,
+          displayName: null,
+          avatarUrl: null,
+          emailVerified: true,
+        },
+        {
+          session_token_hash: sha256('initial-session'),
+          expires_at: new Date(Date.now() + 60_000),
+        },
+      );
+      await prisma.users.update({
+        where: { id: created.user.id },
+        data: {
+          status,
+          ...(status === 'DELETED' ? { deleted_at: new Date() } : {}),
+        },
+      });
+      await expect(
+        repository.upsertGoogleIdentityAndCreateSession(
+          {
+            googleSubject: subject,
+            email: `${status.toLowerCase()}@example.com`,
+            displayName: null,
+            avatarUrl: null,
+            emailVerified: true,
+          },
+          {
+            session_token_hash: sha256(`forbidden-${status}`),
+            expires_at: new Date(Date.now() + 60_000),
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: status === 'SUSPENDED' ? 'AUTH_USER_SUSPENDED' : 'AUTH_USER_DELETED',
+      });
+      expect(await prisma.sessions.count({ where: { user_id: created.user.id } })).toBe(1);
+    },
+  );
+
+  it('allows only one concurrent OAuth-state consumer', async () => {
+    const repository = new OAuthStateRepository();
+    await repository.create({
+      state_hash: sha256('raw-oauth-state'),
+      purpose: 'LOGIN',
+      expires_at: new Date(Date.now() + 60_000),
+    });
+    const results = await Promise.allSettled([
+      repository.consume(sha256('raw-oauth-state'), ['LOGIN']),
+      repository.consume(sha256('raw-oauth-state'), ['LOGIN']),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+  });
+
+  it('allows only one concurrent session rotation winner', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'rotate@example.com',
+        normalized_email: 'rotate@example.com',
+        email_verified: true,
+      },
+    });
+    const original = await prisma.sessions.create({
+      data: {
+        user_id: user.id,
+        session_token_hash: sha256('original-token'),
+        expires_at: new Date(Date.now() + 60_000),
+      },
+    });
+    const repository = new SessionRepository();
+    const results = await Promise.all([
+      repository.rotate(original.id, sha256('replacement-one'), new Date(Date.now() + 60_000)),
+      repository.rotate(original.id, sha256('replacement-two'), new Date(Date.now() + 60_000)),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await prisma.sessions.count({ where: { user_id: user.id, revoked_at: null } })).toBe(1);
+  });
+
+  it('keeps only one active Gmail identity and clears previous token material', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'connections@example.com',
+        normalized_email: 'connections@example.com',
+        email_verified: true,
+      },
+    });
+    await Promise.all([
+      connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'first-gmail-subject', {
+        email: 'first@gmail.com',
+        connection_status: 'CONNECTED',
+        gmail_connected: true,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        refresh_token_ciphertext: 'encrypted-refresh',
+        refresh_token_iv: 'encrypted-iv',
+        refresh_token_auth_tag: 'encrypted-tag',
+        encryption_key_version: 1,
+      }),
+      connectedGoogleAccountRepository.replaceActiveForUser(user.id, 'second-gmail-subject', {
+        email: 'second@gmail.com',
+        connection_status: 'CONNECTED',
+        gmail_connected: true,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        refresh_token_ciphertext: 'new-encrypted-refresh',
+        refresh_token_iv: 'new-encrypted-iv',
+        refresh_token_auth_tag: 'new-encrypted-tag',
+        encryption_key_version: 1,
+      }),
+    ]);
+    const accounts = await prisma.connected_google_accounts.findMany({
+      where: { user_id: user.id },
+      orderBy: { email: 'asc' },
+    });
+    expect(accounts).toHaveLength(2);
+    expect(accounts.filter((account) => account.gmail_connected)).toHaveLength(1);
+    const active = accounts.find((account) => account.gmail_connected);
+    const previous = accounts.find((account) => account.id !== active?.id);
+    expect(previous).toMatchObject({
+      connection_status: 'DISCONNECTED',
+      gmail_connected: false,
+      refresh_token_ciphertext: null,
+      refresh_token_iv: null,
+      refresh_token_auth_tag: null,
+    });
+    await expect(connectedGoogleAccountRepository.findForUser(user.id)).resolves.toMatchObject({
+      gmail_connected: true,
+    });
+  });
+
+  it('allows only one active Gmail sync lease and recovers an expired lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'sync@example.com',
+        normalized_email: 'sync@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'sync-google-subject',
+        email: 'sync@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { GmailRepository } = await import('../src/integrations/gmail/gmail.repository.js');
+    const repository = new GmailRepository();
+    const results = await Promise.allSettled([
+      repository.acquireLease(account.id, 'INITIAL_SYNC_RUNNING', 'INITIAL'),
+      repository.acquireLease(account.id, 'INITIAL_SYNC_RUNNING', 'INITIAL'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    await prisma.gmail_sync_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      repository.acquireLease(account.id, 'INCREMENTAL_SYNC_RUNNING', 'INCREMENTAL'),
+    ).resolves.toMatchObject({ accountId: account.id });
+  });
+
+  it('cascades Gmail metadata when a connected account is removed', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'cascade@example.com',
+        normalized_email: 'cascade@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'cascade-google-subject',
+        email: 'cascade@gmail.com',
+      },
+    });
+    await prisma.gmail_sync_states.create({
+      data: { connected_google_account_id: account.id },
+    });
+    await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: account.id,
+        gmail_message_id: 'message-cascade',
+      },
+    });
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.gmail_sync_states.count()).toBe(0);
+    expect(await prisma.gmail_message_metadata.count()).toBe(0);
+  });
+
+  it('persists classification results and immutable correction history', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'classify@example.com',
+        normalized_email: 'classify@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'classification-google-subject',
+        email: 'classify@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const message = await prisma.gmail_message_metadata.create({
+      data: { connected_google_account_id: account.id, gmail_message_id: 'classified-message' },
+    });
+    const result = await prisma.classification_results.create({
+      data: {
+        gmail_message_id: message.id,
+        connected_google_account_id: account.id,
+        category: 'RECEIPTS',
+        recommended_action: 'ARCHIVE_RECOMMENDED',
+        confidence: 0.91,
+        requires_review: false,
+        explanation: 'Receipt terms are present.',
+        reason_codes: ['RECEIPT_TERMS'],
+        source: 'RULE',
+        classifier_version: 'mailmind-classifier-v1',
+        prompt_version: 'mailmind-prompt-v1',
+        taxonomy_version: 'mailmind-taxonomy-v1',
+        provider: 'rules',
+        input_hash: 'a'.repeat(64),
+        message_metadata_hash: 'a'.repeat(64),
+        status: 'COMPLETED',
+      },
+    });
+    await prisma.user_classification_corrections.create({
+      data: {
+        classification_result_id: result.id,
+        gmail_message_id: message.id,
+        connected_google_account_id: account.id,
+        user_id: user.id,
+        original_category: 'RECEIPTS',
+        corrected_category: 'FINANCE',
+        original_recommended_action: 'ARCHIVE_RECOMMENDED',
+        corrected_recommended_action: 'KEEP_IN_INBOX',
+      },
+    });
+    expect(await prisma.classification_results.count()).toBe(1);
+    expect(await prisma.user_classification_corrections.count()).toBe(1);
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.classification_results.count()).toBe(0);
+    expect(await prisma.user_classification_corrections.count()).toBe(0);
+  });
+
+  it('prevents concurrent classification runs and recovers a stale lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'lease@example.com',
+        normalized_email: 'lease@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'lease-google-subject',
+        email: 'lease@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { ClassificationRepository } =
+      await import('../src/features/classification/repositories/classification.repository.js');
+    const repository = new ClassificationRepository();
+    const attempts = await Promise.allSettled([
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    await prisma.classification_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
+    ).resolves.toMatchObject({ accountId: account.id });
+  });
+
+  it('persists label discovery candidates, associations, and immutable decisions', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'labels@example.com',
+        normalized_email: 'labels@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'labels-google-subject',
+        email: 'labels@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const message = await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: account.id,
+        gmail_message_id: 'labels-message',
+      },
+    });
+    const candidate = await prisma.dynamic_label_candidates.create({
+      data: {
+        connected_google_account_id: account.id,
+        candidate_type: 'SOURCE',
+        source_key: 'github.com',
+        suggested_leaf_name: 'GitHub',
+        suggested_full_path: 'MailMind/Sources/GitHub',
+        normalized_name: 'github',
+        confidence: 0.9,
+        message_count: 1,
+        thread_count: 1,
+        category_agreement: 1,
+        source_agreement: 1,
+        discovery_version: 'mailmind-label-discovery-v1',
+        naming_version: 'mailmind-label-naming-v1',
+        input_hash: 'b'.repeat(64),
+      },
+    });
+    await prisma.dynamic_label_candidate_messages.create({
+      data: {
+        candidate_id: candidate.id,
+        gmail_message_id: message.id,
+        association_score: 0.9,
+      },
+    });
+    const decision = await prisma.label_decisions.create({
+      data: {
+        candidate_id: candidate.id,
+        user_id: user.id,
+        decision: 'APPROVE',
+        original_suggested_name: 'GitHub',
+        final_leaf_name: 'GitHub',
+        final_full_path: 'MailMind/Sources/GitHub',
+      },
+    });
+    await expect(
+      prisma.label_decisions.update({
+        where: { id: decision.id },
+        data: { decision_reason: 'mutation is forbidden' },
+      }),
+    ).rejects.toThrow();
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.dynamic_label_candidates.count()).toBe(0);
+    expect(await prisma.dynamic_label_candidate_messages.count()).toBe(0);
+    expect(await prisma.label_decisions.count()).toBe(0);
+  });
+
+  it('rejects cross-account label associations and merge cycles', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'merge@example.com',
+        normalized_email: 'merge@example.com',
+      },
+    });
+    const [accountA, accountB] = await Promise.all([
+      prisma.connected_google_accounts.create({
+        data: {
+          user_id: user.id,
+          google_subject: 'merge-account-a',
+          email: 'merge-a@gmail.com',
+        },
+      }),
+      prisma.connected_google_accounts.create({
+        data: {
+          user_id: user.id,
+          google_subject: 'merge-account-b',
+          email: 'merge-b@gmail.com',
+        },
+      }),
+    ]);
+    const messageB = await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: accountB.id,
+        gmail_message_id: 'cross-account-message',
+      },
+    });
+    const base = {
+      confidence: 0.8,
+      message_count: 3,
+      thread_count: 2,
+      category_agreement: 1,
+      source_agreement: 1,
+      discovery_version: 'mailmind-label-discovery-v1',
+      naming_version: 'mailmind-label-naming-v1',
+    };
+    const first = await prisma.dynamic_label_candidates.create({
+      data: {
+        ...base,
+        connected_google_account_id: accountA.id,
+        candidate_type: 'SOURCE',
+        source_key: 'first.example',
+        suggested_leaf_name: 'First Source',
+        suggested_full_path: 'MailMind/Sources/First Source',
+        normalized_name: 'firstsource',
+        input_hash: 'c'.repeat(64),
+      },
+    });
+    const second = await prisma.dynamic_label_candidates.create({
+      data: {
+        ...base,
+        connected_google_account_id: accountA.id,
+        candidate_type: 'SOURCE',
+        source_key: 'second.example',
+        suggested_leaf_name: 'Second Source',
+        suggested_full_path: 'MailMind/Sources/Second Source',
+        normalized_name: 'secondsource',
+        input_hash: 'd'.repeat(64),
+      },
+    });
+    await expect(
+      prisma.dynamic_label_candidate_messages.create({
+        data: {
+          candidate_id: first.id,
+          gmail_message_id: messageB.id,
+          association_score: 0.8,
+        },
+      }),
+    ).rejects.toThrow();
+    await prisma.dynamic_label_candidates.update({
+      where: { id: first.id },
+      data: { status: 'MERGED', merged_into_candidate_id: second.id },
+    });
+    await expect(
+      prisma.dynamic_label_candidates.update({
+        where: { id: second.id },
+        data: { status: 'MERGED', merged_into_candidate_id: first.id },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('prevents concurrent label discovery runs and recovers a stale lease', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'discovery-lease@example.com',
+        normalized_email: 'discovery-lease@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'discovery-lease-google-subject',
+        email: 'discovery-lease@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { LabelDiscoveryRepository } =
+      await import('../src/features/label-discovery/label-discovery.repository.js');
+    const repository = new LabelDiscoveryRepository();
+    const attempts = await Promise.allSettled([
+      repository.acquireLease(account.id),
+      repository.acquireLease(account.id),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(1);
+    await prisma.label_discovery_states.update({
+      where: { connected_google_account_id: account.id },
+      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    });
+    await expect(repository.acquireLease(account.id)).resolves.toMatchObject({
+      accountId: account.id,
+    });
+  });
+});
