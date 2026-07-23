@@ -7,6 +7,12 @@ import type {
   GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
+import type {
+  ClassificationCategory,
+  ClassificationResultsPage,
+  ClassificationStatus,
+  RecommendedAction,
+} from '@web/types/classification';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -128,6 +134,30 @@ export const api = {
   async incrementalGmailSync(): Promise<GmailSyncResult> {
     const response = await http.post<GmailSyncResult>('/gmail/sync/incremental');
     return response.data;
+  },
+
+  async getClassificationStatus(): Promise<ClassificationStatus> {
+    const response = await http.get<ClassificationStatus>('/classification/status');
+    return response.data;
+  },
+
+  async getClassificationResults(cursor?: string): Promise<ClassificationResultsPage> {
+    const response = await http.get<ClassificationResultsPage>('/classification/results', {
+      params: { requiresReview: true, limit: 20, ...(cursor ? { cursor } : {}) },
+    });
+    return response.data;
+  },
+
+  async runClassification(): Promise<{ success: boolean; runId: string }> {
+    const response = await http.post<{ success: boolean; runId: string }>('/classification/run');
+    return response.data;
+  },
+
+  async correctClassification(
+    id: string,
+    input: { category: ClassificationCategory; recommendedAction: RecommendedAction },
+  ): Promise<void> {
+    await http.post(`/classification/results/${id}/correct`, input);
   },
 };
 

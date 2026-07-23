@@ -1,0 +1,54 @@
+export const CLASSIFIER_VERSION = 'mailmind-classifier-v1';
+export const PROMPT_VERSION = 'mailmind-prompt-v1';
+export const TAXONOMY_VERSION = 'mailmind-taxonomy-v1';
+
+export const CLASSIFICATION_CATEGORIES = [
+  'PRIMARY',
+  'WORK',
+  'FINANCE',
+  'RECEIPTS',
+  'ORDERS',
+  'TRAVEL',
+  'EDUCATION',
+  'NEWSLETTERS',
+  'PROMOTIONS',
+  'SOCIAL',
+  'NOTIFICATIONS',
+  'SECURITY',
+  'SUPPORT',
+  'PERSONAL',
+  'SPAM_SUSPECTED',
+  'OTHER',
+] as const;
+
+export const RECOMMENDED_ACTIONS = [
+  'KEEP_IN_INBOX',
+  'ARCHIVE_RECOMMENDED',
+  'REVIEW_REQUIRED',
+  'IMPORTANT_RECOMMENDED',
+  'MUTE_RECOMMENDED',
+  'UNSUBSCRIBE_CANDIDATE',
+] as const;
+
+export const REASON_CODES = [
+  'GMAIL_CATEGORY_PRIMARY',
+  'GMAIL_CATEGORY_PROMOTIONS',
+  'GMAIL_CATEGORY_SOCIAL',
+  'GMAIL_CATEGORY_UPDATES',
+  'GMAIL_CATEGORY_FORUMS',
+  'RECEIPT_TERMS',
+  'FINANCE_TERMS',
+  'ORDER_TERMS',
+  'TRAVEL_TERMS',
+  'SECURITY_TERMS',
+  'EDUCATION_DOMAIN',
+  'AUTOMATED_SENDER',
+  'NEWSLETTER_TERMS',
+  'PERSONAL_SIGNAL',
+  'MODEL_METADATA_EVIDENCE',
+  'INSUFFICIENT_EVIDENCE',
+] as const;
+
+export type ClassificationCategory = (typeof CLASSIFICATION_CATEGORIES)[number];
+export type RecommendedAction = (typeof RECOMMENDED_ACTIONS)[number];
+export type ReasonCode = (typeof REASON_CODES)[number];

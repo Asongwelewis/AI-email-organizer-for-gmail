@@ -1,8 +1,8 @@
 # MailMind AI
 
-MailMind AI provides the Stage 2 authentication foundation and the Stage 3 metadata-only Gmail
-synchronization and managed-label foundation. AI classification, background jobs, and billing are
-not implemented yet.
+MailMind AI provides the Stage 2 authentication foundation, Stage 3 metadata-only Gmail
+synchronization, and the Stage 4 AI classification and recommendation pipeline. Automatic Gmail
+organization, distributed background jobs, and billing are not implemented.
 
 ## Monorepo
 
@@ -30,6 +30,10 @@ deployment requirements.
 
 See [Stage 3 Gmail synchronization](docs/stage-3-gmail-sync.md) for the metadata boundary, managed
 labels, sync lifecycle, retry/checkpoint behavior, environment controls, and verification steps.
+
+See [Stage 4 AI classification](docs/stage-4-ai-classification.md) for the rules-first
+recommendation architecture, privacy boundary, review queue, corrections, and no-Gmail-mutation
+guarantee.
 
 ## Commands
 
