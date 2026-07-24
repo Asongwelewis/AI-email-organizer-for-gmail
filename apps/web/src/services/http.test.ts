@@ -60,11 +60,13 @@ describe('session refresh interceptor', () => {
   });
 
   it('constructs safe backend navigation URLs from the API base', () => {
+    const apiBaseUrl = http.defaults.baseURL;
+
     expect(getBackendRedirectUrl('/auth/google')).toBe(
-      'http://localhost:4000/api/auth/google?redirect=%2Fauth%2Fcallback',
+      `${apiBaseUrl}/auth/google?redirect=%2Fauth%2Fcallback`,
     );
     expect(getBackendRedirectUrl('/integrations/google/connect')).toBe(
-      'http://localhost:4000/api/integrations/google/connect?redirect=%2Fauth%2Fcallback',
+      `${apiBaseUrl}/integrations/google/connect?redirect=%2Fauth%2Fcallback`,
     );
   });
 });

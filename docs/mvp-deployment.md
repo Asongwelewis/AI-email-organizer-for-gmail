@@ -94,9 +94,9 @@ credentials.
 
 ### Frontend
 
-| Name           | Deployment value or purpose                                                                                                         |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL` | Complete public API prefix, including `/api`, such as `https://api.example.com/api`. This value is embedded at frontend build time. |
+| Name                | Deployment value or purpose                                                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_BASE_URL` | Public backend origin, such as `https://api.mailmindai.tech`. The frontend appends `/api`; this value is embedded at frontend build time. |
 
 ## Callback paths
 

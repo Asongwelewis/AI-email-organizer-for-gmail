@@ -33,12 +33,12 @@ The production output directory is `apps/web/dist`.
 
 ## Environment and API client
 
-`VITE_API_URL` is the complete public API prefix, for example
-`http://localhost:4000/api` in development. It is the only frontend environment variable. Because
-all `VITE_` values are embedded into the browser bundle, it must never contain a secret.
+`VITE_API_BASE_URL` is the public backend origin, for example `https://api.mailmindai.tech`. The
+frontend appends `/api`. It is the only frontend environment variable. Because all `VITE_` values
+are embedded into the browser bundle, it must never contain a secret.
 
-`src/services/http.ts` removes a trailing slash and uses the value as Axios `baseURL`. If it is not
-defined, development falls back to `http://localhost:4000/api`.
+`src/services/http.ts` removes trailing slashes, appends `/api`, and uses the result as the Axios
+`baseURL`. If it is not defined, development falls back to `http://localhost:4000/api`.
 
 Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
 normal client attempts one shared session refresh, retries the original request once, and clears
