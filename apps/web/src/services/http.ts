@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
+import { apiBaseUrl } from '@web/config/env';
 import type {
   AuthMeResponse,
   GmailConnectionStatus,
@@ -25,11 +26,6 @@ declare module 'axios' {
     authRetryAttempted?: boolean;
   }
 }
-
-const backendBaseUrl = (
-  import.meta.env['VITE_API_BASE_URL'] ?? 'https://api.mailmindai.tech'
-).replace(/\/+$/, '');
-const apiBaseUrl = backendBaseUrl.endsWith('/api') ? backendBaseUrl : `${backendBaseUrl}/api`;
 
 export const http = axios.create({
   baseURL: apiBaseUrl,

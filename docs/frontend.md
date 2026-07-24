@@ -37,9 +37,9 @@ The production output directory is `apps/web/dist`.
 frontend appends `/api`. It is the only frontend environment variable. Because all `VITE_` values
 are embedded into the browser bundle, it must never contain a secret.
 
-`src/services/http.ts` removes trailing slashes, appends `/api`, and uses the result as the Axios
-`baseURL`. If it is not defined, the frontend falls back to
-`https://api.mailmindai.tech/api`.
+`src/config/env.ts` requires the value at build time, removes trailing slashes, and appends `/api`.
+`src/services/http.ts` uses the result as the Axios `baseURL`. A missing value stops the frontend
+with `VITE_API_BASE_URL is not configured` instead of silently using the wrong backend.
 
 Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
 normal client attempts one shared session refresh, retries the original request once, and clears
