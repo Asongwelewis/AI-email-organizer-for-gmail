@@ -26,10 +26,9 @@ declare module 'axios' {
   }
 }
 
-const backendBaseUrl = (import.meta.env['VITE_API_BASE_URL'] ?? 'http://localhost:4000').replace(
-  /\/+$/,
-  '',
-);
+const backendBaseUrl = (
+  import.meta.env['VITE_API_BASE_URL'] ?? 'https://api.mailmindai.tech'
+).replace(/\/+$/, '');
 const apiBaseUrl = backendBaseUrl.endsWith('/api') ? backendBaseUrl : `${backendBaseUrl}/api`;
 
 export const http = axios.create({

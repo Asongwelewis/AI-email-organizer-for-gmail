@@ -38,7 +38,8 @@ frontend appends `/api`. It is the only frontend environment variable. Because a
 are embedded into the browser bundle, it must never contain a secret.
 
 `src/services/http.ts` removes trailing slashes, appends `/api`, and uses the result as the Axios
-`baseURL`. If it is not defined, development falls back to `http://localhost:4000/api`.
+`baseURL`. If it is not defined, the frontend falls back to
+`https://api.mailmindai.tech/api`.
 
 Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
 normal client attempts one shared session refresh, retries the original request once, and clears
