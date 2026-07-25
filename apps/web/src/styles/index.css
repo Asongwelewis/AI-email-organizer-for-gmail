@@ -418,9 +418,18 @@ img {
   font-style: italic;
 }
 
+.landing-hero__promise {
+  margin: 2rem 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(1.55rem, 2.5vw, 2.8rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
 .landing-hero__lede {
   max-width: 38rem;
-  margin: 2.2rem 0 0;
+  margin: 1.6rem 0 0;
   color: var(--ink-soft);
   font-size: clamp(1rem, 1.35vw, 1.28rem);
   line-height: 1.65;
@@ -622,7 +631,7 @@ img {
 
 .workflow-panel {
   display: grid;
-  grid-template-columns: 0.85fr 1.15fr;
+  grid-template-columns: 0.72fr 1.28fr;
   min-height: 38rem;
   overflow: hidden;
   color: var(--paper-light);
@@ -639,73 +648,69 @@ img {
   margin-top: 2.5rem;
 }
 
-.workflow-tabs {
+.workflow-panel__header > p {
+  max-width: 30rem;
+  margin: 2rem 0 0;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.7;
+}
+
+.workflow-steps {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-column: 2;
-  align-self: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-steps li {
+  display: flex;
+  flex-direction: column;
+  min-height: 19rem;
+  padding: clamp(2rem, 4vw, 4rem);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.workflow-tabs button {
-  position: relative;
-  min-height: 5.6rem;
-  padding: 1rem;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.68);
-  cursor: pointer;
-  border: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-  background: transparent;
-}
-
-.workflow-tabs button:last-child {
+.workflow-steps li:nth-child(even) {
   border-right: 0;
 }
 
-.workflow-tabs button[aria-selected='true'] {
-  color: var(--ink);
+.workflow-steps li:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
-.workflow-tabs button > span:first-child {
-  position: absolute;
-  inset: 0;
-  background: var(--paper-light);
+.workflow-step__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.58);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.67rem;
 }
 
-.workflow-tabs button b {
-  position: relative;
-  z-index: 1;
-  font-size: 0.78rem;
-}
-
-.workflow-detail {
-  grid-column: 2;
-  align-self: stretch;
-  padding: clamp(2rem, 6vw, 6rem);
-}
-
-.workflow-detail svg {
-  width: 2.2rem;
-  height: 2.2rem;
+.workflow-step__meta svg {
+  width: 1rem;
   color: var(--vermilion);
 }
 
-.workflow-detail h3 {
-  max-width: 34rem;
-  margin: 2rem 0 1.4rem;
+.workflow-steps h3 {
+  max-width: 24rem;
+  margin: auto 0 1.25rem;
   font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(2.3rem, 4.5vw, 4.5rem);
+  font-size: clamp(1.75rem, 2.7vw, 2.8rem);
   font-weight: 500;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.04em;
   line-height: 1;
 }
 
-.workflow-detail p {
-  max-width: 36rem;
+.workflow-steps p {
+  max-width: 25rem;
+  margin: 0;
   color: rgba(255, 255, 255, 0.72);
-  font-size: 1rem;
-  line-height: 1.75;
+  font-size: 0.92rem;
+  line-height: 1.7;
 }
 
 .landing-final-cta {
@@ -1617,8 +1622,7 @@ img {
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
 
-  .workflow-tabs,
-  .workflow-detail {
+  .workflow-steps {
     grid-column: 1;
   }
 
@@ -1686,6 +1690,22 @@ img {
     min-height: 20rem;
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-steps li,
+  .workflow-steps li:nth-child(even),
+  .workflow-steps li:nth-last-child(-n + 2) {
+    min-height: 16rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  .workflow-steps li:last-child {
+    border-bottom: 0;
   }
 
   .public-footer {
@@ -1770,16 +1790,6 @@ img {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.3rem;
-  }
-
-  .workflow-tabs {
-    grid-template-columns: 1fr;
-  }
-
-  .workflow-tabs button {
-    min-height: 3.8rem;
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
 
   .identity-card__actions,
