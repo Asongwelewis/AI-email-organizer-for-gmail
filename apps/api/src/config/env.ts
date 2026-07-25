@@ -128,13 +128,15 @@ const environmentSchema = z
 
 const testDefaults = isTest
   ? {
-      WEB_APP_URL: 'http://localhost:5173',
-      API_BASE_URL: 'http://localhost:4000',
+      WEB_APP_URL: 'https://mailmindai.tech',
+      API_BASE_URL: 'https://ai-email-organizer-for-gmail.onrender.com',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
       GOOGLE_CLIENT_ID: 'test-google-client-id',
       GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
-      GOOGLE_LOGIN_REDIRECT_URI: 'http://localhost:4000/api/auth/google/callback',
-      GOOGLE_GMAIL_REDIRECT_URI: 'http://localhost:4000/api/integrations/google/callback',
+      GOOGLE_LOGIN_REDIRECT_URI:
+        'https://ai-email-organizer-for-gmail.onrender.com/api/auth/google/callback',
+      GOOGLE_GMAIL_REDIRECT_URI:
+        'https://ai-email-organizer-for-gmail.onrender.com/api/integrations/google/callback',
       SESSION_SECRET: 'test-session-secret-long-enough',
       TOKEN_ENCRYPTION_KEY: testKey,
       TOKEN_ENCRYPTION_KEY_VERSION: '1',
