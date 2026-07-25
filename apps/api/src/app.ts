@@ -5,6 +5,7 @@ import express from 'express';
 import helmet from 'helmet';
 
 import { env } from '@api/config/env.js';
+import { isAllowedWebOrigin } from '@api/config/webOrigins.js';
 import { AppError } from '@api/errors/AppError.js';
 import { errorHandler } from '@api/middleware/errorHandler.js';
 import { requestLogger } from '@api/middleware/requestLogger.js';
@@ -23,7 +24,7 @@ app.use(requestLogger);
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || origin === env.WEB_APP_URL) {
+      if (!origin || isAllowedWebOrigin(origin)) {
         callback(null, true);
         return;
       }

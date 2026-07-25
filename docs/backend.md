@@ -50,25 +50,25 @@ printing their values.
 
 ### Core, security, and OAuth
 
-| Variable                       | Purpose                                                                        |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| `NODE_ENV`                     | `development`, `test`, or `production`. Production requires secure cookies.    |
-| `PORT`                         | HTTP port; defaults to `4000`.                                                 |
-| `WEB_APP_URL`                  | Exact trusted frontend origin used by CORS, CSRF Origin checks, and redirects. |
-| `API_BASE_URL`                 | Public backend URL used when constructing OAuth flows.                         |
-| `DATABASE_URL`                 | PostgreSQL connection string used by both Prisma runtime and migrations.       |
-| `SESSION_SECRET`               | At least 16 characters; signs cookies and protects session handling.           |
-| `TOKEN_ENCRYPTION_KEY`         | Base64-encoded key that must decode to exactly 32 bytes.                       |
-| `TOKEN_ENCRYPTION_KEY_VERSION` | Positive integer stored with encrypted OAuth tokens.                           |
-| `COOKIE_SECURE`                | Must be `true` in production and whenever SameSite is `none`.                  |
-| `COOKIE_SAME_SITE`             | `lax`, `strict`, or `none`.                                                    |
-| `COOKIE_DOMAIN`                | Optional shared cookie domain; omit for a host-only cookie.                    |
-| `GOOGLE_CLIENT_ID`             | Backend-only Google OAuth client identifier.                                   |
-| `GOOGLE_CLIENT_SECRET`         | Backend-only Google OAuth client secret.                                       |
-| `GOOGLE_LOGIN_REDIRECT_URI`    | Callback for identity login: `/api/auth/google/callback`.                      |
-| `GOOGLE_GMAIL_REDIRECT_URI`    | Separate callback for Gmail connection: `/api/integrations/google/callback`.   |
-| `LOG_LEVEL`                    | Pino log level.                                                                |
-| `TRUST_PROXY_HOPS`             | Number of trusted reverse-proxy hops, from 0 through 3.                        |
+| Variable                       | Purpose                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `NODE_ENV`                     | `development`, `test`, or `production`. Production requires secure cookies.   |
+| `PORT`                         | HTTP port; defaults to `4000`.                                                |
+| `WEB_APP_URL`                  | Primary frontend origin used for redirects and added to the origin allowlist. |
+| `API_BASE_URL`                 | Public backend URL used when constructing OAuth flows.                        |
+| `DATABASE_URL`                 | PostgreSQL connection string used by both Prisma runtime and migrations.      |
+| `SESSION_SECRET`               | At least 16 characters; signs cookies and protects session handling.          |
+| `TOKEN_ENCRYPTION_KEY`         | Base64-encoded key that must decode to exactly 32 bytes.                      |
+| `TOKEN_ENCRYPTION_KEY_VERSION` | Positive integer stored with encrypted OAuth tokens.                          |
+| `COOKIE_SECURE`                | Must be `true` in production and whenever SameSite is `none`.                 |
+| `COOKIE_SAME_SITE`             | `lax`, `strict`, or `none`.                                                   |
+| `COOKIE_DOMAIN`                | Optional shared cookie domain; omit for a host-only cookie.                   |
+| `GOOGLE_CLIENT_ID`             | Backend-only Google OAuth client identifier.                                  |
+| `GOOGLE_CLIENT_SECRET`         | Backend-only Google OAuth client secret.                                      |
+| `GOOGLE_LOGIN_REDIRECT_URI`    | Callback for identity login: `/api/auth/google/callback`.                     |
+| `GOOGLE_GMAIL_REDIRECT_URI`    | Separate callback for Gmail connection: `/api/integrations/google/callback`.  |
+| `LOG_LEVEL`                    | Pino log level.                                                               |
+| `TRUST_PROXY_HOPS`             | Number of trusted reverse-proxy hops, from 0 through 3.                       |
 
 Session lifetime and rate-limit controls:
 
@@ -151,8 +151,9 @@ Requests pass through:
 8. A centralized JSON error handler.
 
 Mutating cookie-authenticated endpoints use `requireTrustedOrigin`. Browser requests with an
-`Origin` other than `WEB_APP_URL` receive `403 CSRF_ORIGIN_INVALID`. CORS likewise permits only no
-Origin or the exact configured frontend origin; wildcard credentialed CORS is not used.
+`Origin` outside the shared frontend allowlist receive `403 CSRF_ORIGIN_INVALID`. CORS likewise
+permits only requests without an Origin or requests from an allowlisted origin; wildcard
+credentialed CORS is not used.
 
 The `mailmind_session` cookie is HttpOnly, has path `/`, uses the configured Secure, SameSite, and
 optional Domain attributes, and expires after `REFRESH_SESSION_TTL_DAYS`. Clearing the cookie uses

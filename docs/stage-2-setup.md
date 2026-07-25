@@ -123,8 +123,8 @@ Do not paste authorization codes, states, cookies, tokens, or credentials into t
   version. Missing refresh credentials force reauthorization.
 - Token refresh uses an expiry compare-and-update. Multiple instances may make one redundant Google
   request, but only one persistence update wins; no transaction remains open during Google I/O.
-- Credentialed CORS permits only `WEB_APP_URL`. Cookie-authenticated mutations reject a present
-  untrusted Origin; absent Origin remains available to trusted non-browser tooling.
+- Credentialed CORS permits only the shared frontend allowlist. Cookie-authenticated mutations
+  reject a present untrusted Origin; absent Origin remains available to trusted non-browser tooling.
 - Rate limits are process-local in Stage 2. Horizontal production needs a shared store.
 - Logs have request IDs and redaction. Responses never include Prisma, Google, or encryption internals.
 

@@ -202,8 +202,8 @@ a background job system.
 
 ## Current boundaries and trade-offs
 
-- One `WEB_APP_URL` is both the CORS allowlist and CSRF trusted origin. Multiple independent
-  frontend origins are not currently supported.
+- The deployed frontend origins and `WEB_APP_URL` form the shared CORS and CSRF allowlist. Adding
+  another frontend requires updating that shared configuration.
 - Sync, classification, and discovery run in request/response flows. Leases prevent overlap, but
   large-scale asynchronous work would require a queue/worker architecture.
 - Gmail modify scope supports explicit managed-label creation, but classification and discovery do

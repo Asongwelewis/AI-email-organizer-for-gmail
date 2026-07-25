@@ -1,11 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import { env } from '@api/config/env.js';
+import { isAllowedWebOrigin } from '@api/config/webOrigins.js';
 import { AppError } from '@api/errors/AppError.js';
 
 /**
  * SameSite cookies reduce CSRF exposure, while this check rejects browser
- * mutations explicitly initiated by any origin other than the configured UI.
+ * mutations explicitly initiated by any origin outside the trusted UI allowlist.
  * Requests without Origin remain available to non-browser clients and health tooling.
  */
 export function requireTrustedOrigin(
@@ -14,7 +14,7 @@ export function requireTrustedOrigin(
   next: NextFunction,
 ): void {
   const origin = request.get('origin');
-  if (origin && origin !== env.WEB_APP_URL) {
+  if (origin && !isAllowedWebOrigin(origin)) {
     next(new AppError('CSRF_ORIGIN_INVALID', 'The request origin is not allowed.', 403));
     return;
   }

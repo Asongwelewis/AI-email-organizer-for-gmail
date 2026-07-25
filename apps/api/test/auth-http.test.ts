@@ -163,4 +163,18 @@ describe('authentication HTTP routes', () => {
     expect(response.body.error.code).toBe('CSRF_ORIGIN_INVALID');
     expect(mocks.revokeCurrent).not.toHaveBeenCalled();
   });
+
+  it('allows authenticated mutations from every deployed frontend origin', async () => {
+    const origins = [
+      'https://mailmindai.tech',
+      'https://www.mailmindai.tech',
+      'https://ai-email-organizer-for-gmail-web.vercel.app',
+      'https://ai-email-organizer-for-gmail-5863pdgw2-lucky-5c2dbfb8.vercel.app',
+    ];
+
+    for (const origin of origins) {
+      const response = await request(testApp).post('/api/auth/logout').set('Origin', origin);
+      expect(response.status, origin).toBe(200);
+    }
+  });
 });

@@ -5,10 +5,12 @@ import { env } from '@api/config/env.js';
 export const SESSION_COOKIE_NAME = 'mailmind_session';
 
 export function sessionCookieOptions(): CookieOptions {
+  const isProduction = env.NODE_ENV === 'production';
+
   return {
     httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SAME_SITE,
+    secure: isProduction ? true : env.COOKIE_SECURE,
+    sameSite: isProduction ? 'none' : env.COOKIE_SAME_SITE,
     path: '/',
     ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
     maxAge: env.REFRESH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
