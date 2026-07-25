@@ -149,6 +149,11 @@ const candidate = {
   ...process.env,
   WEB_APP_URL: process.env['WEB_APP_URL'] ?? process.env['WEB_URL'] ?? testDefaults.WEB_APP_URL,
 };
+
+console.log({
+  GOOGLE_LOGIN_REDIRECT_URI: JSON.stringify(process.env['GOOGLE_LOGIN_REDIRECT_URI']),
+  GOOGLE_GMAIL_REDIRECT_URI: JSON.stringify(process.env['GOOGLE_GMAIL_REDIRECT_URI']),
+});
 const parsed = environmentSchema.safeParse(candidate);
 
 if (!parsed.success) {
