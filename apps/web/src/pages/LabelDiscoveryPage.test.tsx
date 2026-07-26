@@ -98,6 +98,21 @@ describe('LabelDiscoveryPage', () => {
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith({ id: 'candidate-1' }));
   });
 
+  it('explains that classification is optional when there are no suggestions yet', () => {
+    mocks.candidates.mockReturnValue({
+      isLoading: false,
+      data: { pages: [{ candidates: [], nextCursor: null }] },
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    render(<LabelDiscoveryPage />);
+
+    expect(screen.getByRole('button', { name: 'Discover labels' })).toBeEnabled();
+    expect(screen.getByText(/Classification can improve suggestions, but it is not required/i));
+  });
+
   it('supports rename, rejection, and defer controls', async () => {
     render(<LabelDiscoveryPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Rename and approve' }));

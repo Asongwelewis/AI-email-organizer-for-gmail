@@ -26,8 +26,11 @@ const validEnvironment = {
   LOG_LEVEL: 'silent',
 };
 
-async function loadWith(overrides: Record<string, string>) {
+async function loadWith(overrides: Record<string, string | undefined>) {
   process.env = { ...originalEnvironment, ...validEnvironment, ...overrides };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) delete process.env[key];
+  }
   vi.resetModules();
   return import('../src/config/env.js');
 }
@@ -42,6 +45,11 @@ describe('environment validation', () => {
     const { env } = await loadWith({});
     expect(env.TOKEN_ENCRYPTION_KEY_BYTES).toHaveLength(32);
     expect(env.TOKEN_ENCRYPTION_KEY_VERSION).toBe(1);
+  });
+
+  it('enables dynamic label discovery when no explicit override is configured', async () => {
+    const { env } = await loadWith({ DYNAMIC_LABEL_DISCOVERY_ENABLED: undefined });
+    expect(env.DYNAMIC_LABEL_DISCOVERY_ENABLED).toBe(true);
   });
 
   it.each([

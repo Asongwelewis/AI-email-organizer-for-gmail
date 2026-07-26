@@ -63,7 +63,7 @@ const environmentSchema = z
     AI_CLASSIFICATION_INPUT_MAX_CHARS: z.coerce.number().int().min(500).max(20_000).default(4000),
     AI_CLASSIFICATION_RULE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.9),
     AI_CLASSIFICATION_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
-    DYNAMIC_LABEL_DISCOVERY_ENABLED: booleanValue.default(false),
+    DYNAMIC_LABEL_DISCOVERY_ENABLED: booleanValue.default(true),
     DYNAMIC_LABEL_MIN_MESSAGES: z.coerce.number().int().min(3).max(100).default(3),
     DYNAMIC_LABEL_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(365).default(90),
     DYNAMIC_LABEL_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.75),

@@ -112,7 +112,7 @@ export function LabelDiscoveryPage() {
             ) : list.length === 0 ? (
               <Empty
                 title="No label suggestions yet."
-                detail="Run discovery after synchronizing and classifying enough messages."
+                detail="Run discovery after synchronizing enough messages. Classification can improve suggestions, but it is not required."
               />
             ) : (
               <div className="label-candidate-grid">
