@@ -36,6 +36,13 @@ authRouter.post(
   asyncHandler((req, res) => authController.refresh(req, res)),
 );
 authRouter.post(
+  '/tutorial/complete',
+  authGeneralLimiter,
+  requireTrustedOrigin,
+  requireSession,
+  asyncHandler((req, res) => authController.completeTutorial(req, res)),
+);
+authRouter.post(
   '/logout',
   authGeneralLimiter,
   requireTrustedOrigin,

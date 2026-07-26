@@ -201,6 +201,7 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Ordered migrations are sto
 4. `20260723195408_ai_classification_pipeline`
 5. `20260723203016_dynamic_label_discovery`
 6. `20260726102117_daily_automation`
+7. `20260726121553_account_scoped_tutorial`
 
 The schema groups data into identity/session/audit records, connected Google credentials, Gmail
 metadata and sync state, classification results/runs/corrections, and label candidates/runs/

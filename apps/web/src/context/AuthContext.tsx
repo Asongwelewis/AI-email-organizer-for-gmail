@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import {
   useAuthMeQuery,
+  useCompleteTutorialMutation,
   useDisconnectGmailMutation,
   useGmailConnectionQuery,
   useLogoutAllMutation,
@@ -12,6 +13,7 @@ import {
 import { queryKeys } from '@web/queries/queryKeys';
 import { getBackendRedirectUrl, setAuthenticationFailureHandler } from '@web/services/http';
 import { AuthContext, type AuthContextValue } from './useAuth';
+import type { AuthMeResponse } from '@web/types/auth';
 
 function navigateBrowser(path: string): void {
   window.location.assign(path);
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useLogoutMutation();
   const logoutAllMutation = useLogoutAllMutation();
   const disconnectMutation = useDisconnectGmailMutation();
+  const tutorialMutation = useCompleteTutorialMutation();
 
   const clearAuthentication = useCallback(() => {
     queryClient.setQueryData(queryKeys.authMe, null);
@@ -65,6 +68,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]);
   }, [disconnectMutation, queryClient]);
 
+  const completeTutorial = useCallback(
+    async (decision: 'COMPLETED' | 'SKIPPED') => {
+      const result = await tutorialMutation.mutateAsync(decision);
+      queryClient.setQueryData<AuthMeResponse>(queryKeys.authMe, (current) =>
+        current
+          ? {
+              user: {
+                ...current.user,
+                tutorialCompletedAt: result.tutorialCompletedAt,
+              },
+            }
+          : current,
+      );
+    },
+    [queryClient, tutorialMutation],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -96,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         navigateBrowser(getBackendRedirectUrl('/integrations/google/connect'));
       },
       disconnectGmail,
+      completeTutorial,
     }),
     [
       authQuery.isLoading,
@@ -104,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       gmailQuery.data,
       gmailQuery.isError,
       isRedirecting,
+      completeTutorial,
       logout,
       logoutAll,
       refreshMutation.isPending,

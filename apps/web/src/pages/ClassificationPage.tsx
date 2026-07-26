@@ -49,7 +49,7 @@ export function ClassificationPage() {
 
   return (
     <div className="classification-page">
-      <header className="classification-hero">
+      <header className="classification-hero" data-tutorial="classification-hero">
         <div>
           <span className="eyebrow">Stage 4 / Recommendations</span>
           <h1>

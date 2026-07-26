@@ -38,7 +38,7 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-grid">
-        <article className="identity-card">
+        <article className="identity-card" data-tutorial="identity-card">
           <span className="card-index">01 / Identity</span>
           <div className="identity-card__status">
             <CheckCircle2 /> MailMind session active
@@ -55,7 +55,10 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className={`connection-card ${connected ? 'connection-card--connected' : ''}`}>
+        <article
+          className={`connection-card ${connected ? 'connection-card--connected' : ''}`}
+          data-tutorial="gmail-summary"
+        >
           <span className="card-index">02 / Gmail connection</span>
           <div className="connection-card__symbol">
             <Link2 aria-hidden="true" />

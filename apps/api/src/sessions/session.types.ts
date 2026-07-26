@@ -6,6 +6,7 @@ export interface AuthenticatedUser {
   displayName: string | null;
   avatarUrl: string | null;
   status: user_status;
+  tutorialCompletedAt: string | null;
 }
 
 export interface AuthenticatedSession {

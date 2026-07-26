@@ -156,6 +156,21 @@ shows last-run and daily token/cost counters, and disables manual execution when
 disconnected or requires reauthorization. Review approval is the only UI action that applies a
 label to an uncertain message.
 
+### Guided product tutorial
+
+The protected app shell includes an eleven-step product tour for new accounts. Existing accounts
+were backfilled as already onboarded when the feature shipped. It moves through Dashboard,
+Connections, Review, Labels, and Automation while highlighting stable `data-tutorial` anchors.
+The overlay blocks all underlying controls, so advancing the tutorial cannot open OAuth, run a
+sync, purchase an AI classification, or modify Gmail.
+
+Temporary progress is account-namespaced in `sessionStorage`, while Skip and Finish persist
+`tutorial_completed_at` through the authenticated backend. This prevents the tour from returning
+on another browser or device. If persistence fails, the dialog stays open and reports the safe
+error. The header Tour button still allows any account to restart the scenario voluntarily. The
+dialog supports Escape, arrow-key navigation, a focus loop, reduced motion, mobile placement, and
+explicit progress semantics.
+
 ## Testing and build
 
 Vitest runs in jsdom with Testing Library. Tests cover route protection, landing/login and OAuth

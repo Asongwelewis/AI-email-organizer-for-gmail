@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   completeGoogleLogin: vi.fn(),
   denyGoogleLogin: vi.fn(),
   me: vi.fn(),
+  completeTutorial: vi.fn(),
   authenticate: vi.fn(),
   rotate: vi.fn(),
   revokeCurrent: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('../src/auth/auth.service.js', () => ({
     completeGoogleLogin: mocks.completeGoogleLogin,
     denyGoogleLogin: mocks.denyGoogleLogin,
     me: mocks.me,
+    completeTutorial: mocks.completeTutorial,
   },
 }));
 vi.mock('../src/sessions/session.service.js', () => ({
@@ -45,6 +47,7 @@ const authenticated = {
     displayName: 'User',
     avatarUrl: null,
     status: 'ACTIVE' as const,
+    tutorialCompletedAt: null,
   },
 };
 
@@ -69,6 +72,10 @@ describe('authentication HTTP routes', () => {
     });
     mocks.denyGoogleLogin.mockResolvedValue('/auth/callback');
     mocks.me.mockResolvedValue({ user: { ...authenticated.user, gmailConnected: false } });
+    mocks.completeTutorial.mockResolvedValue({
+      success: true,
+      tutorialCompletedAt: '2026-07-26T12:00:00.000Z',
+    });
     mocks.authenticate.mockImplementation(async (request_) => {
       const cookies = request_.cookies as Record<string, string>;
       if (cookies['mailmind_session'] !== 'valid-session') throw authenticationRequired();
@@ -153,6 +160,30 @@ describe('authentication HTTP routes', () => {
     expect(all.status).toBe(200);
     expect(all.body).toEqual({ success: true, revokedSessions: 2 });
     expect(mocks.revokeAll).toHaveBeenCalledWith('authenticated-user-id');
+  });
+
+  it('persists an authenticated skip decision and rejects invalid tutorial input', async () => {
+    const invalid = await request(testApp)
+      .post('/api/auth/tutorial/complete')
+      .set('Cookie', 'mailmind_session=valid-session')
+      .set('Origin', 'http://localhost:5173')
+      .send({ decision: 'MAYBE' });
+    expect(invalid.status).toBe(400);
+    expect(mocks.completeTutorial).not.toHaveBeenCalled();
+
+    const skipped = await request(testApp)
+      .post('/api/auth/tutorial/complete')
+      .set('Cookie', 'mailmind_session=valid-session')
+      .set('Origin', 'http://localhost:5173')
+      .send({ decision: 'SKIPPED' });
+    expect(skipped.status).toBe(200);
+    expect(mocks.completeTutorial).toHaveBeenCalledWith('authenticated-user-id');
+    expect(mocks.audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'TUTORIAL_SKIPPED',
+        metadata: { decision: 'SKIPPED' },
+      }),
+    );
   });
 
   it('rejects authenticated mutations from an untrusted browser origin', async () => {

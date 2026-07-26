@@ -7,6 +7,7 @@ export interface AuthenticatedUser {
   avatarUrl: string | null;
   status: UserStatus;
   gmailConnected: boolean;
+  tutorialCompletedAt: string | null;
 }
 
 export interface AuthMeResponse {

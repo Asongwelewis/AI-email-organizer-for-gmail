@@ -6,6 +6,7 @@ import { authService } from './auth.service.js';
 import { clearSessionCookie, setSessionCookie } from '@api/sessions/session.cookies.js';
 import { sessionService } from '@api/sessions/session.service.js';
 import { frontendUrl } from '@api/security/safe-redirect.js';
+import { AppError } from '@api/errors/AppError.js';
 
 export class AuthController {
   async startGoogle(request: Request, response: Response): Promise<void> {
@@ -77,6 +78,27 @@ export class AuthController {
       metadata: { count: result.count },
     });
     response.json({ success: true, revokedSessions: result.count });
+  }
+
+  async completeTutorial(request: Request, response: Response): Promise<void> {
+    const decision = request.body?.decision;
+    if (decision !== 'SKIPPED' && decision !== 'COMPLETED') {
+      throw new AppError(
+        'AUTH_TUTORIAL_VALIDATION_FAILED',
+        'Tutorial completion request is invalid.',
+        400,
+      );
+    }
+    const result = await authService.completeTutorial(request.auth!.user.id);
+    await auditService.record({
+      action: decision === 'SKIPPED' ? 'TUTORIAL_SKIPPED' : 'TUTORIAL_COMPLETED',
+      result: 'SUCCESS',
+      userId: request.auth!.user.id,
+      sessionId: request.auth!.id,
+      requestId: request.requestId,
+      metadata: { decision },
+    });
+    response.json(result);
   }
 }
 

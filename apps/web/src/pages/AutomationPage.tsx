@@ -66,6 +66,7 @@ export function AutomationPage() {
         </div>
         <div
           className={`automation-state automation-state--${data?.gmailConnected ? 'live' : 'off'}`}
+          data-tutorial="automation-state"
         >
           {data?.gmailConnected ? <CheckCircle2 /> : <AlertTriangle />}
           <strong>
@@ -88,7 +89,7 @@ export function AutomationPage() {
         <Metric label="Estimated today" value={`$${cost}`} />
       </section>
 
-      <section className="automation-run-panel">
+      <section className="automation-run-panel" data-tutorial="automation-run">
         <div>
           <span className="eyebrow">Last run</span>
           <h2>{last ? words(last.status) : 'No automation run yet'}</h2>
@@ -138,7 +139,7 @@ export function AutomationPage() {
         </dl>
       </section>
 
-      <section className="automation-review">
+      <section className="automation-review" data-tutorial="automation-review">
         <div className="automation-review__heading">
           <div>
             <span className="eyebrow">Uncertain classifications</span>

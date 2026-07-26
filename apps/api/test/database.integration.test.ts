@@ -88,6 +88,33 @@ databaseTests('PostgreSQL authentication repositories', () => {
     expect(stored.session_token_hash).not.toBe('first-raw-session-token');
   });
 
+  it('marks tutorial completion idempotently for a newly created account', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `tutorial-${randomUUID()}`,
+        email: 'tutorial@example.com',
+        normalized_email: 'tutorial@example.com',
+      },
+    });
+    expect(user.tutorial_completed_at).toBeNull();
+
+    const repository = new UserRepository();
+    const completedAt = new Date();
+    const firstCompletion = await repository.completeTutorial(user.id, completedAt);
+    const repeatedCompletion = await repository.completeTutorial(
+      user.id,
+      new Date(completedAt.getTime() + 60_000),
+    );
+    expect(firstCompletion).toEqual(completedAt);
+    expect(repeatedCompletion).toEqual(completedAt);
+
+    await expect(prisma.users.findUniqueOrThrow({ where: { id: user.id } })).resolves.toMatchObject(
+      {
+        tutorial_completed_at: completedAt,
+      },
+    );
+  });
+
   it.each(['SUSPENDED', 'DELETED'] as const)(
     'rolls back session creation for a %s user',
     async (status) => {

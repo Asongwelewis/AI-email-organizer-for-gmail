@@ -16,6 +16,7 @@ export interface AuthContextValue {
   refreshSession: () => Promise<void>;
   connectGmail: () => void;
   disconnectGmail: () => Promise<void>;
+  completeTutorial: (decision: 'COMPLETED' | 'SKIPPED') => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

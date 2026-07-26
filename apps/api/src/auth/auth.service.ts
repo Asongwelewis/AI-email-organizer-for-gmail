@@ -12,6 +12,7 @@ import { sessionService } from '@api/sessions/session.service.js';
 import { createGoogleOAuthClient } from '@api/integrations/google/google-oauth.client.js';
 import { verifyGoogleIdentity } from '@api/integrations/google/google-identity.service.js';
 import { GOOGLE_LOGIN_SCOPES } from '@api/integrations/google/google-scopes.js';
+import { userRepository } from '@api/repositories/user.repository.js';
 
 function oauthExpiry(): Date {
   return new Date(Date.now() + env.OAUTH_STATE_TTL_MINUTES * 60 * 1000);
@@ -121,6 +122,11 @@ export class AuthService {
           account?.gmail_connected === true && account.connection_status === 'CONNECTED',
       },
     };
+  }
+
+  async completeTutorial(userId: string) {
+    const completedAt = await userRepository.completeTutorial(userId);
+    return { success: true, tutorialCompletedAt: completedAt.toISOString() };
   }
 }
 

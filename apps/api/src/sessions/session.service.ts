@@ -27,6 +27,7 @@ function context(
       displayName: session.users.display_name,
       avatarUrl: session.users.avatar_url,
       status: session.users.status,
+      tutorialCompletedAt: session.users.tutorial_completed_at?.toISOString() ?? null,
     },
   };
 }
@@ -62,6 +63,7 @@ export class SessionService {
           displayName: result.user.display_name,
           avatarUrl: result.user.avatar_url,
           status: result.user.status,
+          tutorialCompletedAt: result.user.tutorial_completed_at?.toISOString() ?? null,
         },
       } satisfies AuthenticatedSession,
     };

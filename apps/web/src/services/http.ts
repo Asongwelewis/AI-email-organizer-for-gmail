@@ -103,6 +103,16 @@ export const api = {
     await http.post('/auth/logout-all');
   },
 
+  async completeTutorial(
+    decision: 'COMPLETED' | 'SKIPPED',
+  ): Promise<{ success: boolean; tutorialCompletedAt: string }> {
+    const response = await http.post<{ success: boolean; tutorialCompletedAt: string }>(
+      '/auth/tutorial/complete',
+      { decision },
+    );
+    return response.data;
+  },
+
   async getGmailStatus(): Promise<GmailConnectionStatus> {
     const response = await http.get<GmailConnectionStatus>('/integrations/google/status');
     return response.data;

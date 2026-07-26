@@ -106,7 +106,8 @@ Requires a session.
     "displayName": "Example Person",
     "avatarUrl": null,
     "status": "ACTIVE",
-    "gmailConnected": false
+    "gmailConnected": false,
+    "tutorialCompletedAt": null
   }
 }
 ```
@@ -141,8 +142,18 @@ Revokes the current session when present and clears the cookie. Requires trusted
 Requires a session and trusted Origin. Revokes all sessions for the current user and clears the
 cookie.
 
+### `POST /api/auth/tutorial/complete`
+
+Requires a session and trusted Origin. New accounts have `tutorialCompletedAt: null` in
+`GET /api/auth/me`. Send `{ "decision": "COMPLETED" }` after the final tutorial step or
+`{ "decision": "SKIPPED" }` when the user chooses Skip. The idempotent response contains
+`success: true` and `tutorialCompletedAt`; no tutorial content or email data is stored.
+
 ```json
-{ "success": true, "revokedSessions": 3 }
+{
+  "success": true,
+  "tutorialCompletedAt": "2026-07-26T12:30:00.000Z"
+}
 ```
 
 ## Google/Gmail connection

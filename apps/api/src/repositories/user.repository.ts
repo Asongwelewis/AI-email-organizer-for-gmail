@@ -11,6 +11,20 @@ export interface GoogleIdentityInput {
 }
 
 export class UserRepository {
+  async completeTutorial(userId: string, completedAt = new Date()) {
+    const [, user] = await prisma.$transaction([
+      prisma.users.updateMany({
+        where: { id: userId, tutorial_completed_at: null },
+        data: { tutorial_completed_at: completedAt },
+      }),
+      prisma.users.findUniqueOrThrow({
+        where: { id: userId },
+        select: { tutorial_completed_at: true },
+      }),
+    ]);
+    return user.tutorial_completed_at!;
+  }
+
   async upsertGoogleIdentityAndCreateSession(
     input: GoogleIdentityInput,
     session: Omit<Prisma.sessionsUncheckedCreateInput, 'user_id'>,

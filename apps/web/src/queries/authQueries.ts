@@ -26,3 +26,4 @@ export const useRefreshSessionMutation = () => useMutation({ mutationFn: api.ref
 export const useLogoutMutation = () => useMutation({ mutationFn: api.logout });
 export const useLogoutAllMutation = () => useMutation({ mutationFn: api.logoutAll });
 export const useDisconnectGmailMutation = () => useMutation({ mutationFn: api.disconnectGmail });
+export const useCompleteTutorialMutation = () => useMutation({ mutationFn: api.completeTutorial });

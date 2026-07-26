@@ -11,7 +11,7 @@ const tabs = [
 
 export function MotionTabs() {
   return (
-    <nav className="motion-tabs" aria-label="Primary navigation">
+    <nav className="motion-tabs" aria-label="Primary navigation" data-tutorial="primary-navigation">
       {tabs.map((tab) => (
         <NavLink key={tab.to} to={tab.to} className="motion-tabs__item">
           {({ isActive }) => (

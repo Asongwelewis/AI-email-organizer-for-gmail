@@ -47,7 +47,7 @@ export function LabelDiscoveryPage() {
 
   return (
     <div className="label-discovery-page">
-      <header className="label-discovery-hero">
+      <header className="label-discovery-hero" data-tutorial="label-discovery-hero">
         <div>
           <span className="eyebrow">Stage 4.5 / Label discovery</span>
           <h1>

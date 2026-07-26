@@ -48,7 +48,7 @@ export function ConnectionsPage() {
         </p>
       </header>
 
-      <section className="connection-stage" aria-live="polite">
+      <section className="connection-stage" aria-live="polite" data-tutorial="connection-stage">
         {gmailConnection.status === 'CONNECTED' && gmailConnection.connected ? (
           <ConnectedState
             email={gmailConnection.email}

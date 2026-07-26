@@ -471,6 +471,7 @@ model users {
   created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   deleted_at                      DateTime?                         @db.Timestamptz(6)
+  tutorial_completed_at           DateTime?                         @db.Timestamptz(6)
   audit_logs                      audit_logs[]
   connected_google_accounts       connected_google_accounts[]
   oauth_states                    oauth_states[]
