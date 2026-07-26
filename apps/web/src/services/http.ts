@@ -15,6 +15,7 @@ import type {
   RecommendedAction,
 } from '@web/types/classification';
 import type { LabelCandidatesPage, LabelDiscoveryStatus } from '@web/types/labelDiscovery';
+import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -193,6 +194,32 @@ export const api = {
 
   async mergeLabelCandidate(id: string, targetCandidateId: string): Promise<void> {
     await http.post(`/label-discovery/candidates/${id}/merge`, { targetCandidateId });
+  },
+
+  async getAutomationStatus(): Promise<AutomationStatus> {
+    const response = await http.get<AutomationStatus>('/automation/status');
+    return response.data;
+  },
+
+  async getAutomationReview(): Promise<AutomationReviewQueue> {
+    const response = await http.get<AutomationReviewQueue>('/automation/review');
+    return response.data;
+  },
+
+  async runAutomation(): Promise<{ success: boolean; runId: string; status: string }> {
+    const response = await http.post<{ success: boolean; runId: string; status: string }>(
+      '/automation/run',
+      {},
+    );
+    return response.data;
+  },
+
+  async approveAutomationReview(id: string, category: ClassificationCategory): Promise<void> {
+    await http.post(`/automation/review/${id}/approve`, { category });
+  },
+
+  async skipAutomationReview(id: string): Promise<void> {
+    await http.post(`/automation/review/${id}/skip`, {});
   },
 };
 

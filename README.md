@@ -1,9 +1,8 @@
 # MailMind AI
 
-MailMind AI provides the Stage 2 authentication foundation, Stage 3 metadata-only Gmail
-synchronization, the Stage 4 AI classification and recommendation pipeline, and Stage 4.5 dynamic
-label discovery and approval. Automatic Gmail organization, distributed background jobs, and
-billing are not implemented.
+MailMind AI provides secure Google authentication, metadata-only Gmail synchronization,
+recommendation and label discovery workflows, and Stage 5 daily Gmail automation. Automation uses
+OpenAI for new messages, reuses learned sender patterns, and applies confident labels in Gmail.
 
 ## Monorepo
 
@@ -39,6 +38,9 @@ guarantee.
 See [Stage 4.5 dynamic label discovery](docs/stage-4.5-dynamic-label-discovery.md) for
 public-suffix-aware source grouping, controlled hierarchy, scoring, approval decisions, merge
 safety, and the Stage 5 boundary.
+
+See [Stage 5 daily automation](docs/stage-5-daily-automation.md) for scheduling, OpenAI and Gmail
+boundaries, budgets, idempotency, retries, review, and deployment configuration.
 
 See the [documentation index](docs/README.md) for the backend guide, frontend guide, system
 architecture, and complete HTTP API reference.

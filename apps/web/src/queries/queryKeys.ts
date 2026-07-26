@@ -6,4 +6,6 @@ export const queryKeys = {
   classificationResults: ['classification', 'results'] as const,
   labelDiscoveryStatus: ['label-discovery', 'status'] as const,
   labelCandidates: ['label-discovery', 'candidates'] as const,
+  automationStatus: ['automation', 'status'] as const,
+  automationReview: ['automation', 'review'] as const,
 };

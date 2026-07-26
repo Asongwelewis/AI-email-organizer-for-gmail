@@ -5,13 +5,14 @@
 MailMind AI is a human-in-the-loop Gmail organization MVP. It securely separates identity login
 from optional Gmail access, synchronizes a bounded metadata projection, produces explainable
 classification recommendations, and proposes controlled label hierarchies for explicit user
-review.
+review. Daily automation applies confident classifications while preserving human review for
+uncertainty.
 
 The current architecture prioritizes:
 
 - No Gmail access as a side effect of signing in.
 - No storage of full message bodies, raw MIME, or attachment content.
-- No automatic mutation of Gmail messages from classification or discovery.
+- No Gmail mutation from recommendation or discovery; only dedicated automation may apply labels.
 - Backend-only secrets and Google tokens.
 - Account-scoped persistence, auditability, bounded work, and recoverable sync checkpoints.
 - A deployable static frontend and a single stateless HTTP API backed by PostgreSQL.
@@ -25,13 +26,13 @@ flowchart LR
     A[Express API]
     P[(PostgreSQL / Supabase)]
     G[Google OAuth and Gmail API]
-    C[Optional classifier provider]
+    C[OpenAI Responses API]
 
     U --> W
     W -->|HTTPS JSON + HttpOnly cookie| A
     A -->|Prisma| P
-    A -->|OAuth, metadata sync, label initialization| G
-    A -->|Bounded normalized metadata, when enabled| C
+    A -->|OAuth, metadata sync, label create/apply| G
+    A -->|Bounded metadata, strict structured output| C
 ```
 
 Only the API crosses the PostgreSQL, Google, and classifier trust boundaries. The SPA receives
@@ -155,6 +156,18 @@ A user may approve, rename and approve, reject, defer, or merge a candidate. App
 persists intent only: it returns `gmailLabelCreated: false`, and no Gmail message or label is
 changed.
 
+## Daily automation
+
+The scheduler and manual endpoint share one resumable service. Account leases prevent overlap;
+scheduled account/date keys and unique message actions provide idempotency. Learned sender-domain
+patterns are reused only after repeated, consistent successful applications. Remaining messages
+use OpenAI in bounded batches. Confident outcomes create or reuse `MailMind/<Category>` and call
+Gmail `messages.modify`; uncertain outcomes enter a review queue.
+
+Run records store counters, tokens, cached input, estimated micro-USD cost, stop reason, and safe
+error codes. Message actions store classification evidence and retry state. External calls occur
+outside database transactions, so partial work remains durable and recoverable.
+
 ## Data architecture
 
 The main relational groups are:
@@ -166,6 +179,7 @@ The main relational groups are:
 | Gmail projection      | `gmail_labels`, `gmail_message_metadata`, `gmail_sync_states`, `gmail_sync_runs`                                                    |
 | Classification        | `classification_results`, `classification_states`, `classification_runs`, `user_classification_corrections`                         |
 | Label discovery       | `dynamic_label_candidates`, `dynamic_label_candidate_messages`, `label_discovery_states`, `label_discovery_runs`, `label_decisions` |
+| Daily automation      | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns`      |
 
 State tables contain one account-scoped lease/checkpoint row. Run tables retain bounded operational
 history. Results and decisions retain explainability and user intent. Foreign keys cascade
@@ -197,17 +211,17 @@ Liveness is independent of the database; readiness performs a database query wit
 timeout.
 
 The API is stateless apart from PostgreSQL-backed sessions, OAuth state, checkpoints, and leases, so
-multiple instances can share the database. Work is currently initiated by HTTP requests rather than
-a background job system.
+multiple instances can share the database. Daily work is initiated by an in-process poller and can
+also be triggered manually.
 
 ## Current boundaries and trade-offs
 
 - The deployed frontend origins and `WEB_APP_URL` form the shared CORS and CSRF allowlist. Adding
   another frontend requires updating that shared configuration.
-- Sync, classification, and discovery run in request/response flows. Leases prevent overlap, but
-  large-scale asynchronous work would require a queue/worker architecture.
-- Gmail modify scope supports explicit managed-label creation, but classification and discovery do
-  not mutate messages.
+- Automation uses an in-process scheduler. A larger deployment may move the same lease-protected
+  service behind a durable queue without changing message idempotency.
+- Gmail modify scope supports automation label writes; recommendation and discovery remain
+  non-mutating.
 - The legal pages are placeholders in the current router, and `/support` and `/data-deletion` are
   not implemented.
 - `API_BASE_URL` and both OAuth callback URIs are explicit configuration, keeping provider URLs out

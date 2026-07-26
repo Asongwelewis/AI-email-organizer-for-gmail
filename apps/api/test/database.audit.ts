@@ -6,6 +6,10 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const applicationTables = [
   'audit_logs',
+  'automation_message_actions',
+  'automation_runs',
+  'automation_settings',
+  'automation_states',
   'classification_results',
   'classification_runs',
   'classification_states',
@@ -19,6 +23,7 @@ const applicationTables = [
   'label_decisions',
   'label_discovery_runs',
   'label_discovery_states',
+  'learned_classification_patterns',
   'oauth_states',
   'sessions',
   'user_classification_corrections',
@@ -29,6 +34,19 @@ const requiredIndexes = [
   'audit_logs_action_idx',
   'audit_logs_created_at_idx',
   'audit_logs_user_id_idx',
+  'automation_actions_message_unique_idx',
+  'automation_actions_retry_idx',
+  'automation_actions_review_idx',
+  'automation_actions_run_status_idx',
+  'automation_actions_user_created_idx',
+  'automation_runs_account_started_idx',
+  'automation_runs_idempotency_unique_idx',
+  'automation_runs_status_started_idx',
+  'automation_settings_account_unique_idx',
+  'automation_states_account_unique_idx',
+  'automation_states_lease_expiry_idx',
+  'automation_states_next_run_idx',
+  'automation_states_retry_idx',
   'classification_corrections_result_created_idx',
   'classification_corrections_user_created_idx',
   'classification_results_account_category_idx',
@@ -72,6 +90,8 @@ const requiredIndexes = [
   'label_discovery_runs_status_idx',
   'label_discovery_states_account_unique_idx',
   'label_discovery_states_lease_expiry_idx',
+  'learned_patterns_account_sender_unique_idx',
+  'learned_patterns_reuse_idx',
   'oauth_states_expiry_idx',
   'oauth_states_initiating_session_idx',
   'oauth_states_initiating_user_idx',
@@ -103,6 +123,8 @@ try {
     where n.nspname = 'public'
       and c.relname in (
         'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+        'automation_settings', 'automation_states', 'automation_runs',
+        'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
         'classification_results', 'classification_runs', 'classification_states',
         'user_classification_corrections', 'dynamic_label_candidates',
@@ -113,7 +135,7 @@ try {
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all eighteen application tables must exist',
+    'all twenty-three application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -142,6 +164,8 @@ try {
     from unnest(array['public', 'anon', 'authenticated']) as roles(role_name)
     cross join unnest(array[
       'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+      'automation_settings', 'automation_states', 'automation_runs',
+      'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
       'classification_results', 'classification_runs', 'classification_states',
       'user_classification_corrections', 'dynamic_label_candidates',
@@ -165,6 +189,19 @@ try {
         'audit_logs_action_idx',
         'audit_logs_created_at_idx',
         'audit_logs_user_id_idx',
+        'automation_actions_message_unique_idx',
+        'automation_actions_retry_idx',
+        'automation_actions_review_idx',
+        'automation_actions_run_status_idx',
+        'automation_actions_user_created_idx',
+        'automation_runs_account_started_idx',
+        'automation_runs_idempotency_unique_idx',
+        'automation_runs_status_started_idx',
+        'automation_settings_account_unique_idx',
+        'automation_states_account_unique_idx',
+        'automation_states_lease_expiry_idx',
+        'automation_states_next_run_idx',
+        'automation_states_retry_idx',
         'classification_corrections_result_created_idx',
         'classification_corrections_user_created_idx',
         'classification_results_account_category_idx',
@@ -208,6 +245,8 @@ try {
         'label_discovery_runs_status_idx',
         'label_discovery_states_account_unique_idx',
         'label_discovery_states_lease_expiry_idx',
+        'learned_patterns_account_sender_unique_idx',
+        'learned_patterns_reuse_idx',
         'oauth_states_expiry_idx',
         'oauth_states_initiating_session_idx',
         'oauth_states_initiating_user_idx',
@@ -243,6 +282,10 @@ try {
         'public.gmail_sync_states'::regclass,
         'public.classification_results'::regclass,
         'public.classification_states'::regclass
+        ,'public.automation_settings'::regclass
+        ,'public.automation_states'::regclass
+        ,'public.automation_message_actions'::regclass
+        ,'public.learned_classification_patterns'::regclass
         ,'public.dynamic_label_candidates'::regclass
         ,'public.dynamic_label_candidate_messages'::regclass
         ,'public.label_decisions'::regclass
@@ -253,6 +296,10 @@ try {
   assert(
     JSON.stringify(triggers.map((trigger) => trigger.trigger_name)) ===
       JSON.stringify([
+        'automation_actions_account_guard',
+        'automation_actions_set_updated_at',
+        'automation_settings_set_updated_at',
+        'automation_states_set_updated_at',
         'classification_results_set_updated_at',
         'classification_states_set_updated_at',
         'connected_google_accounts_set_updated_at',
@@ -264,6 +311,7 @@ try {
         'gmail_sync_states_set_updated_at',
         'label_decisions_immutable_guard',
         'label_discovery_states_set_updated_at',
+        'learned_patterns_set_updated_at',
         'users_set_updated_at',
       ]),
     'all updated_at triggers must exist',
@@ -291,6 +339,8 @@ try {
            'classification_status', 'classification_run_status'
            ,'dynamic_label_candidate_type', 'dynamic_label_candidate_status',
            'label_candidate_decision', 'label_discovery_run_status'
+           ,'automation_run_status', 'automation_trigger', 'automation_action_status',
+           'automation_classification_source'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
@@ -317,10 +367,10 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 16n, 'all sixteen enum types must exist');
-  assert(summary.foreign_key_count === 27n, 'all twenty-seven foreign keys must exist');
+  assert(summary?.enum_count === 20n, 'all twenty enum types must exist');
+  assert(summary.foreign_key_count === 35n, 'all thirty-five foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(summary.migration_count === 5n, 'exactly five intended Prisma migrations must be applied');
+  assert(summary.migration_count === 6n, 'exactly six intended Prisma migrations must be applied');
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

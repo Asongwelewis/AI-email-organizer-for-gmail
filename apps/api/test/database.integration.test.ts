@@ -14,6 +14,11 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.automation_message_actions.deleteMany();
+  await prisma.learned_classification_patterns.deleteMany();
+  await prisma.automation_runs.deleteMany();
+  await prisma.automation_states.deleteMany();
+  await prisma.automation_settings.deleteMany();
   await prisma.dynamic_label_candidate_messages.deleteMany();
   await prisma.dynamic_label_candidates.deleteMany();
   await prisma.label_discovery_runs.deleteMany();
@@ -594,6 +599,60 @@ databaseTests('PostgreSQL authentication repositories', () => {
     });
     await expect(repository.acquireLease(account.id)).resolves.toMatchObject({
       accountId: account.id,
+    });
+  });
+
+  it('enforces one durable automation action per message and persists bounded usage', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'automation@example.com',
+        normalized_email: 'automation@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'automation-google-subject',
+        email: 'automation@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const message = await prisma.gmail_message_metadata.create({
+      data: {
+        connected_google_account_id: account.id,
+        gmail_message_id: 'automation-message',
+      },
+    });
+    const run = await prisma.automation_runs.create({
+      data: {
+        connected_google_account_id: account.id,
+        idempotency_key: `manual:${randomUUID()}`,
+        trigger: 'MANUAL',
+        input_tokens: 100,
+        output_tokens: 20,
+        estimated_cost_microusd: 1100,
+      },
+    });
+    const actionData = {
+      automation_run_id: run.id,
+      connected_google_account_id: account.id,
+      gmail_message_id: message.id,
+      user_id: user.id,
+      category: 'WORK' as const,
+      label_path: 'MailMind/Work',
+      confidence: 0.9,
+      source: 'OPENAI' as const,
+      explanation: 'Work metadata.',
+      input_hash: 'e'.repeat(64),
+    };
+    await prisma.automation_message_actions.create({ data: actionData });
+    await expect(prisma.automation_message_actions.create({ data: actionData })).rejects.toThrow();
+    expect(await prisma.automation_runs.findUnique({ where: { id: run.id } })).toMatchObject({
+      input_tokens: 100,
+      output_tokens: 20,
+      estimated_cost_microusd: 1100,
     });
   });
 });

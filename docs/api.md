@@ -597,6 +597,22 @@ Returns 201:
 }
 ```
 
+## Daily automation
+
+All endpoints require a session; mutations require a trusted Origin. Status and review responses
+send `Cache-Control: no-store`.
+
+- `GET /api/automation/status` returns Gmail connection/reauthorization state, scheduler state,
+  last-run counters/errors, today’s token and cost usage, configured limits, and pending review
+  count.
+- `POST /api/automation/run` performs a manual resumable run and returns `runId` plus
+  `COMPLETED`, `PARTIAL`, or `FAILED` status.
+- `GET /api/automation/review` returns uncertain metadata classifications. It never includes OAuth
+  or provider credentials.
+- `POST /api/automation/review/:id/approve` accepts `{ "category": "WORK" }`, applies the
+  corresponding Gmail label, and teaches the sender pattern.
+- `POST /api/automation/review/:id/skip` resolves the item without modifying Gmail.
+
 ## Privacy boundary
 
 API response examples use fabricated identifiers and values. The implemented Gmail sync consumes a

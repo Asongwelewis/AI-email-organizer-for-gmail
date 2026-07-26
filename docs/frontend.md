@@ -105,6 +105,7 @@ All protected routes render inside `ProtectedRoute` and `AppShell`:
 | `/settings/connections`      | Connect, inspect, disconnect, and synchronize Gmail                  |
 | `/dashboard/classification`  | Run classification and review/correct recommendations                |
 | `/dashboard/labels/discover` | Discover, approve, rename, reject, defer, or merge label suggestions |
+| `/dashboard/automation`      | Inspect daily runs/usage/errors, run now, and review uncertain mail  |
 
 The app shell provides primary tabs, user identity, logout, logout-all, route transitions, and the
 nested route outlet.
@@ -147,6 +148,13 @@ correction mutations invalidate both status and results.
 The label screen loads status plus cursor-paginated candidates. It supports discovery, approval
 with an optional renamed leaf, rejection, deferral, and merge. Mutations refresh both candidate and
 status data. These decisions do not apply labels in Gmail.
+
+### Daily automation
+
+The automation control room reflects backend Gmail state directly, polls while a run is active,
+shows last-run and daily token/cost counters, and disables manual execution when Gmail is
+disconnected or requires reauthorization. Review approval is the only UI action that applies a
+label to an uncertain message.
 
 ## Testing and build
 

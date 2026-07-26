@@ -12,6 +12,7 @@ import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
 import { LabelDiscoveryPage } from '@web/pages/LabelDiscoveryPage';
+import { AutomationPage } from '@web/pages/AutomationPage';
 
 const routes: RouteObject[] = [
   {
@@ -35,6 +36,7 @@ const routes: RouteObject[] = [
       { path: '/settings/connections', element: <ConnectionsPage /> },
       { path: '/dashboard/classification', element: <ClassificationPage /> },
       { path: '/dashboard/labels/discover', element: <LabelDiscoveryPage /> },
+      { path: '/dashboard/automation', element: <AutomationPage /> },
     ],
   },
   { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },

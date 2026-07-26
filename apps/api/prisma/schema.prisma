@@ -68,6 +68,11 @@ model connected_google_accounts {
   dynamic_label_candidates        dynamic_label_candidates[]
   label_discovery_runs            label_discovery_runs[]
   label_discovery_state           label_discovery_states?
+  automation_settings             automation_settings?
+  automation_state                automation_states?
+  automation_runs                 automation_runs[]
+  automation_message_actions      automation_message_actions[]
+  learned_classification_patterns learned_classification_patterns[]
 
   @@unique([user_id, google_subject], map: "connected_google_accounts_user_subject_unique_idx")
   @@index([email])
@@ -129,6 +134,7 @@ model gmail_message_metadata {
   classificationResults         classification_results[]
   userClassificationCorrections user_classification_corrections[]
   dynamicLabelAssociations       dynamic_label_candidate_messages[]
+  automationAction               automation_message_actions?
 
   @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
   @@index([connected_google_account_id])
@@ -471,6 +477,7 @@ model users {
   sessions                        sessions[]
   user_classification_corrections user_classification_corrections[]
   label_decisions                  label_decisions[]
+  automation_message_actions       automation_message_actions[]
 
   @@index([created_at(sort: Desc)])
   @@index([status])
@@ -607,4 +614,151 @@ enum label_discovery_run_status {
   RUNNING
   COMPLETED
   FAILED
+}
+
+enum automation_run_status {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum automation_trigger {
+  SCHEDULED
+  MANUAL
+}
+
+enum automation_action_status {
+  PENDING
+  REVIEW_REQUIRED
+  APPLIED
+  SKIPPED
+  FAILED
+}
+
+enum automation_classification_source {
+  OPENAI
+  LEARNED_PATTERN
+  USER
+}
+
+/// Per-account daily automation policy. Secrets and provider credentials are never stored here.
+model automation_settings {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @unique(map: "automation_settings_account_unique_idx") @db.Uuid
+  enabled                     Boolean                   @default(true)
+  schedule_hour_utc           Int                       @default(2)
+  confidence_threshold        Float                     @default(0.8)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+}
+
+/// Expiring lease and recovery checkpoint for cross-instance-safe automation.
+model automation_states {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @unique(map: "automation_states_account_unique_idx") @db.Uuid
+  lease_token                 String?
+  lease_expires_at            DateTime?                 @db.Timestamptz(6)
+  active_run_id               String?                   @db.Uuid
+  next_run_at                 DateTime?                 @db.Timestamptz(6)
+  last_run_started_at         DateTime?                 @db.Timestamptz(6)
+  last_run_completed_at       DateTime?                 @db.Timestamptz(6)
+  last_successful_run_at      DateTime?                 @db.Timestamptz(6)
+  failure_count               Int                       @default(0)
+  last_error_code             String?
+  retry_at                    DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@index([lease_expires_at], map: "automation_states_lease_expiry_idx")
+  @@index([next_run_at], map: "automation_states_next_run_idx")
+  @@index([retry_at], map: "automation_states_retry_idx")
+}
+
+/// One bounded, auditable attempt to classify and apply Gmail labels.
+model automation_runs {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  idempotency_key             String                    @unique(map: "automation_runs_idempotency_unique_idx")
+  trigger                     automation_trigger
+  status                      automation_run_status      @default(RUNNING)
+  messages_seen               Int                       @default(0)
+  pattern_reused_count        Int                       @default(0)
+  openai_classified_count     Int                       @default(0)
+  review_required_count       Int                       @default(0)
+  labels_created_count        Int                       @default(0)
+  labels_reused_count         Int                       @default(0)
+  messages_labeled_count      Int                       @default(0)
+  failed_count                Int                       @default(0)
+  provider_call_count         Int                       @default(0)
+  input_tokens                Int                       @default(0)
+  cached_input_tokens         Int                       @default(0)
+  output_tokens               Int                       @default(0)
+  estimated_cost_microusd     Int                       @default(0)
+  stopped_reason              String?
+  last_error_code             String?
+  started_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  completed_at                DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  actions                     automation_message_actions[]
+
+  @@index([connected_google_account_id, started_at(sort: Desc)], map: "automation_runs_account_started_idx")
+  @@index([status, started_at], map: "automation_runs_status_started_idx")
+}
+
+/// Durable message-level idempotency record; Gmail writes may be safely retried.
+model automation_message_actions {
+  id                          String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  automation_run_id           String                           @db.Uuid
+  connected_google_account_id String                           @db.Uuid
+  gmail_message_id            String                           @unique(map: "automation_actions_message_unique_idx") @db.Uuid
+  user_id                     String                           @db.Uuid
+  status                      automation_action_status         @default(PENDING)
+  category                    classification_category
+  label_path                  String
+  gmail_label_id              String?
+  confidence                  Float
+  source                      automation_classification_source
+  explanation                 String
+  reason_codes                String[]                         @default([])
+  input_hash                  String
+  attempt_count               Int                              @default(0)
+  next_retry_at               DateTime?                        @db.Timestamptz(6)
+  last_error_code             String?
+  applied_at                  DateTime?                        @db.Timestamptz(6)
+  reviewed_at                 DateTime?                        @db.Timestamptz(6)
+  created_at                  DateTime                         @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                         @default(now()) @db.Timestamptz(6)
+  run                         automation_runs                  @relation(fields: [automation_run_id], references: [id], onDelete: Cascade)
+  connected_google_accounts   connected_google_accounts        @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  message                     gmail_message_metadata            @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
+  user                        users                             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([automation_run_id, status], map: "automation_actions_run_status_idx")
+  @@index([connected_google_account_id, status, created_at(sort: Desc)], map: "automation_actions_review_idx")
+  // A partial retry index is created in SQL because Prisma cannot express its predicate.
+  @@index([user_id, created_at(sort: Desc)], map: "automation_actions_user_created_idx")
+}
+
+/// Learned sender-domain outcome used only after enough successful examples.
+model learned_classification_patterns {
+  id                          String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                           @db.Uuid
+  sender_domain               String
+  category                    classification_category
+  label_path                  String
+  confidence                  Float
+  sample_count                Int                              @default(1)
+  successful_apply_count      Int                              @default(0)
+  active                      Boolean                          @default(true)
+  last_used_at                DateTime?                        @db.Timestamptz(6)
+  created_at                  DateTime                         @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                         @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts        @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, sender_domain], map: "learned_patterns_account_sender_unique_idx")
+  @@index([connected_google_account_id, active, confidence], map: "learned_patterns_reuse_idx")
 }

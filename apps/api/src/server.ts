@@ -2,6 +2,10 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './database/prisma.js';
+import {
+  startAutomationScheduler,
+  stopAutomationScheduler,
+} from './features/automation/automation.scheduler.js';
 
 try {
   await prisma.$connect();
@@ -16,6 +20,7 @@ try {
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, 'MailMind AI API is ready');
+  startAutomationScheduler();
 });
 
 let shuttingDown = false;
@@ -23,6 +28,7 @@ let shuttingDown = false;
 function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
+  stopAutomationScheduler();
   logger.info({ signal }, 'Shutting down API server');
   const forcedExit = setTimeout(() => {
     logger.error('Graceful shutdown timed out');

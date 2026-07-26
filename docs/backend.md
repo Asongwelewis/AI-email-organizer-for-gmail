@@ -4,7 +4,8 @@
 
 The MailMind API is an Express 5 and TypeScript service in `apps/api`. It owns authentication,
 encrypted Google credentials, metadata-only Gmail synchronization, classification recommendations,
-dynamic-label suggestions, audit records, and all PostgreSQL access through Prisma.
+dynamic-label suggestions, daily OpenAI/Gmail automation, audit records, and all PostgreSQL access
+through Prisma.
 
 The backend is the only application component allowed to access the database, Google client secret,
 Gmail OAuth tokens, session secrets, token-encryption key, or an external classifier credential.
@@ -137,6 +138,14 @@ Discovery analyzes synchronized metadata and classification/correction signals. 
 rejection, deferral, and merge operations only store user decisions. The current status contract
 explicitly reports `gmailLabelCreationSupported: false`.
 
+### Daily automation
+
+Stage 5 configuration is documented in [Stage 5 daily automation](stage-5-daily-automation.md).
+Without `OPENAI_API_KEY`, automation remains unavailable without preventing the existing API from
+starting. The scheduler starts only after Prisma connects and stops during graceful shutdown.
+Provider and Gmail errors are logged
+through safe structured fields; request bodies, tokens, secrets, and message content are excluded.
+
 ## Request pipeline
 
 Requests pass through:
@@ -173,6 +182,7 @@ tokens, session tokens, passwords, database URLs, and the token-encryption key.
 | Gmail sync            | `src/integrations/gmail`                 | Labels, initial sync, history-based incremental sync   |
 | Classification        | `src/features/classification`            | Rules/provider pipeline, review queue, corrections     |
 | Label discovery       | `src/features/label-discovery`           | Candidate discovery and human decisions                |
+| Daily automation      | `src/features/automation`                | Scheduler, OpenAI, Gmail apply, budgets, review        |
 | Persistence           | `src/repositories`, feature repositories | Account-scoped Prisma queries and leases               |
 | Security              | `src/security`, `src/middleware`         | Encryption, hashing, safe redirects, CORS/CSRF, limits |
 | Audit                 | `src/audit`                              | Security and user-action audit records                 |
@@ -190,6 +200,7 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Ordered migrations are sto
 3. `20260723162227_gmail_sync_foundation`
 4. `20260723195408_ai_classification_pipeline`
 5. `20260723203016_dynamic_label_discovery`
+6. `20260726102117_daily_automation`
 
 The schema groups data into identity/session/audit records, connected Google credentials, Gmail
 metadata and sync state, classification results/runs/corrections, and label candidates/runs/

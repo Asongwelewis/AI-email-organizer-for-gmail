@@ -2229,6 +2229,269 @@ img {
   }
 }
 
+.automation-page {
+  display: grid;
+  gap: 2rem;
+  padding-bottom: 5rem;
+}
+
+.automation-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.7fr);
+  gap: 2rem;
+  align-items: end;
+}
+
+.automation-hero h1 {
+  margin: 0.5rem 0 1rem;
+  font-size: clamp(2.8rem, 7vw, 6.6rem);
+  line-height: 0.87;
+}
+
+.automation-hero p {
+  max-width: 48rem;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.automation-state {
+  display: grid;
+  gap: 0.65rem;
+  min-height: 12rem;
+  padding: 1.5rem;
+  align-content: end;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.automation-state svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.automation-state--live svg {
+  color: #0a7658;
+}
+
+.automation-state--off {
+  background: #fae1dc;
+}
+
+.automation-state span,
+.automation-run-panel p,
+.automation-empty span {
+  color: var(--ink-soft);
+}
+
+.automation-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-block: 1px solid var(--line);
+}
+
+.automation-metric {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1.4rem;
+  border-right: 1px solid var(--line);
+}
+
+.automation-metric:last-child {
+  border-right: 0;
+}
+
+.automation-metric span {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.automation-metric strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 4vw, 3rem);
+}
+
+.automation-metric--accent {
+  color: white;
+  background: var(--cobalt);
+}
+
+.automation-metric--accent span {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.automation-run-panel,
+.automation-usage {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2rem;
+  align-items: center;
+  padding: 1.6rem;
+  border: 1px solid var(--line);
+  background: white;
+}
+
+.automation-run-panel h2,
+.automation-usage h2,
+.automation-review h2 {
+  margin: 0.4rem 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 4vw, 3rem);
+}
+
+.automation-run-panel button,
+.automation-review-card button {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0 1rem;
+  color: white;
+  border: 0;
+  background: var(--cobalt);
+  cursor: pointer;
+}
+
+.automation-run-panel button:disabled,
+.automation-review-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.automation-error {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: #8b2e24 !important;
+}
+
+.automation-error svg {
+  width: 1rem;
+}
+
+.automation-usage dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(7rem, 1fr));
+  margin: 0;
+}
+
+.automation-usage dl div {
+  padding: 0.75rem 1rem;
+  border-left: 1px solid var(--line);
+}
+
+.automation-usage dt {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.automation-usage dd {
+  margin: 0.45rem 0 0;
+  font-weight: 700;
+}
+
+.automation-review {
+  display: grid;
+  gap: 1rem;
+}
+
+.automation-review__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.automation-review-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.automation-review-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr);
+  gap: 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.automation-review-card h3 {
+  margin: 0.5rem 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+}
+
+.automation-review-card p {
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.automation-review-card__decision,
+.automation-review-card__decision label {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.automation-review-card select {
+  min-height: 2.8rem;
+  padding-inline: 0.7rem;
+  border: 1px solid var(--line);
+  background: white;
+}
+
+.automation-review-card__decision > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.automation-review-card button.quiet {
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.automation-empty {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  padding: 3rem;
+  text-align: center;
+  border: 1px dashed var(--line);
+}
+
+@media (max-width: 950px) {
+  .automation-hero,
+  .automation-review-card,
+  .automation-run-panel,
+  .automation-usage {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .automation-usage dl {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .automation-metrics,
+  .automation-usage dl {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
 .label-discovery-page {
   display: grid;
   gap: clamp(3rem, 6vw, 6rem);

@@ -75,6 +75,36 @@ const environmentSchema = z
     DYNAMIC_LABEL_MAX_APPROVED_LABELS: z.coerce.number().int().min(1).max(500).default(100),
     DYNAMIC_LABEL_REDISCOVERY_DAYS: z.coerce.number().int().min(1).max(365).default(14),
     DYNAMIC_LABEL_AI_NAMING_ENABLED: booleanValue.default(false),
+    AUTOMATION_ENABLED: booleanValue.default(true),
+    AUTOMATION_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(2),
+    AUTOMATION_POLL_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
+    AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
+    AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
+    AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
+    AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(1000000).default(100000),
+    AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(100000).default(10000),
+    AUTOMATION_MAX_COST_MICRO_USD: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(2000000000)
+      .default(500000),
+    AUTOMATION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.8),
+    AUTOMATION_PATTERN_MIN_SAMPLES: z.coerce.number().int().min(1).max(100).default(2),
+    AUTOMATION_PATTERN_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.9),
+    AUTOMATION_MAX_ACTION_RETRIES: z.coerce.number().int().min(1).max(10).default(3),
+    OPENAI_API_KEY: optionalSecret,
+    OPENAI_MODEL: z.string().min(1).max(200).default('gpt-5.6-sol'),
+    OPENAI_RESPONSES_URL: z.string().url().default('https://api.openai.com/v1/responses'),
+    OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
+    OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+    OPENAI_INPUT_COST_PER_MILLION_MICRO_USD: z.coerce.number().int().positive().default(5000000),
+    OPENAI_CACHED_INPUT_COST_PER_MILLION_MICRO_USD: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(500000),
+    OPENAI_OUTPUT_COST_PER_MILLION_MICRO_USD: z.coerce.number().int().positive().default(30000000),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -150,10 +180,6 @@ const candidate = {
   WEB_APP_URL: process.env['WEB_APP_URL'] ?? process.env['WEB_URL'] ?? testDefaults.WEB_APP_URL,
 };
 
-console.log({
-  GOOGLE_LOGIN_REDIRECT_URI: JSON.stringify(process.env['GOOGLE_LOGIN_REDIRECT_URI']),
-  GOOGLE_GMAIL_REDIRECT_URI: JSON.stringify(process.env['GOOGLE_GMAIL_REDIRECT_URI']),
-});
 const parsed = environmentSchema.safeParse(candidate);
 
 if (!parsed.success) {
