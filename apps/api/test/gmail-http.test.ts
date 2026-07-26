@@ -117,6 +117,9 @@ describe('Gmail integration HTTP routes', () => {
       .get('/api/integrations/google/status')
       .set('Cookie', 'mailmind_session=valid-session');
     expect(status.status).toBe(200);
+    expect(status.headers['cache-control']).toBe('private, no-store, max-age=0');
+    expect(status.headers['pragma']).toBe('no-cache');
+    expect(status.headers['expires']).toBe('0');
     expect(JSON.stringify(status.body)).not.toMatch(/token|ciphertext|authTag|googleSubject/i);
 
     const disconnected = await request(testApp)

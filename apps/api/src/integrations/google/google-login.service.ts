@@ -2,6 +2,7 @@ import type { Request } from 'express';
 
 import { auditService } from '@api/audit/audit.service.js';
 import { env } from '@api/config/env.js';
+import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { AppError } from '@api/errors/AppError.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
 import { oauthStateRepository } from '@api/repositories/oauth-state.repository.js';
@@ -175,11 +176,28 @@ export class GoogleGmailService {
         redirectPath: oauthState.redirect_path ?? '/settings/connections',
       };
     } catch (error) {
+      const safeError = safeErrorDetails(error);
+      logger.error(
+        {
+          requestId: request.requestId,
+          operation: 'gmail_oauth_token_storage',
+          ...safeError,
+        },
+        'Gmail OAuth connection failed',
+      );
       await auditService.record({
         action: 'GMAIL_CONNECTION_FAILED',
         result: 'FAILURE',
         requestId: request.requestId,
-        metadata: { code: error instanceof AppError ? error.code : 'GMAIL_CONNECTION_FAILED' },
+        metadata: {
+          code:
+            error instanceof AppError
+              ? error.code
+              : (safeError.databaseCode ?? safeError.errorCode ?? 'GMAIL_CONNECTION_FAILED'),
+          ...(safeError.databaseConstraint
+            ? { databaseConstraint: safeError.databaseConstraint }
+            : {}),
+        },
       });
       if (error instanceof AppError) throw error;
       throw new AppError('GMAIL_CONNECTION_FAILED', 'Gmail could not be connected.', 400);

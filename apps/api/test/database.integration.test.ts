@@ -220,6 +220,33 @@ databaseTests('PostgreSQL authentication repositories', () => {
     });
   });
 
+  it('uses the callback timestamp as created_at for a newly connected Gmail account', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'callback-timestamp@example.com',
+        normalized_email: 'callback-timestamp@example.com',
+        email_verified: true,
+      },
+    });
+    const callbackTimestamp = new Date(Date.now() - 1_000);
+
+    const account = await connectedGoogleAccountRepository.replaceActiveForUser(
+      user.id,
+      'callback-timestamp-gmail-subject',
+      {
+        email: 'callback-timestamp@gmail.com',
+        connection_status: 'CONNECTED',
+        gmail_connected: true,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        connected_at: callbackTimestamp,
+      },
+    );
+
+    expect(account.created_at).toEqual(callbackTimestamp);
+    expect(account.connected_at).toEqual(callbackTimestamp);
+  });
+
   it('allows only one active Gmail sync lease and recovers an expired lease', async () => {
     const user = await prisma.users.create({
       data: {

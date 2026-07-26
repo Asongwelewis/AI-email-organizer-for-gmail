@@ -64,7 +64,15 @@ export class ConnectedGoogleAccountRepository {
       });
       return transaction.connected_google_accounts.upsert({
         where: { user_id_google_subject: { user_id: userId, google_subject: googleSubject } },
-        create: { ...data, user_id: userId, google_subject: googleSubject },
+        create: {
+          ...data,
+          user_id: userId,
+          google_subject: googleSubject,
+          // The callback timestamp is generated before this insert. Use it for
+          // both sides of the database invariant instead of allowing the later
+          // database default for created_at to make connected_at look earlier.
+          ...(data.connected_at instanceof Date ? { created_at: data.connected_at } : {}),
+        },
         update: data,
       });
     });
