@@ -12,7 +12,7 @@ import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
-import { openAiAutomationProvider } from './openai-automation.provider.js';
+import { OpenAiProviderError, openAiAutomationProvider } from './openai-automation.provider.js';
 import type {
   AutomationClassification,
   AutomationClassifier,
@@ -38,6 +38,9 @@ const CATEGORY_LABELS: Record<classification_category, string> = {
   SPAM_SUSPECTED: 'Spam suspected',
   OTHER: 'Other',
 };
+const AUTOMATION_CLASSIFIER_VERSION = 'mailmind-automation-classifier-v2';
+const AUTOMATION_PROMPT_VERSION = 'mailmind-automation-prompt-v2';
+const AUTOMATION_TAXONOMY_VERSION = 'mailmind-taxonomy-v1';
 
 type RunCounters = {
   messagesSeen: number;
@@ -53,6 +56,9 @@ type RunCounters = {
   costMicrousd: number;
   stoppedReason: string | null;
   lastErrorCode: string | null;
+  lastProviderStatus: number | null;
+  lastProviderCode: string | null;
+  lastProviderRequestId: string | null;
 };
 
 const emptyCounters = (): RunCounters => ({
@@ -69,6 +75,9 @@ const emptyCounters = (): RunCounters => ({
   costMicrousd: 0,
   stoppedReason: null,
   lastErrorCode: null,
+  lastProviderStatus: null,
+  lastProviderCode: null,
+  lastProviderRequestId: null,
 });
 
 function senderDomain(message: Pick<gmail_message_metadata, 'sender_email'>): string {
@@ -95,12 +104,23 @@ function nextDailyRun(hourUtc: number, from = new Date()): Date {
   return next;
 }
 
-function scheduledKey(accountId: string, now: Date): string {
-  return `${accountId}:scheduled:${now.toISOString().slice(0, 10)}`;
+function scheduledKey(accountId: string, now: Date, failureCount: number): string {
+  return `${accountId}:scheduled:${now.toISOString().slice(0, 10)}:attempt:${failureCount}`;
 }
 
 function errorCode(error: unknown): string {
   return error instanceof AppError ? error.code : 'AUTOMATION_FAILED';
+}
+
+function safeProviderDetails(error: unknown) {
+  return error instanceof OpenAiProviderError
+    ? {
+        providerStatus: error.providerStatus,
+        providerCode: error.providerCode,
+        providerRequestId: error.requestId,
+        retryable: error.retryable,
+      }
+    : {};
 }
 
 function estimatedCost(usage: AutomationUsage): number {
@@ -180,6 +200,7 @@ export class AutomationService {
       enabled: (settings?.enabled ?? env.AUTOMATION_ENABLED) && Boolean(env.OPENAI_API_KEY),
       running: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
       nextRunAt: state?.next_run_at?.toISOString() ?? null,
+      retryAt: state?.retry_at?.toISOString() ?? null,
       lastErrorCode: state?.last_error_code ?? null,
       lastRun: lastRun ? this.serializeRun(lastRun) : null,
       usageToday: {
@@ -329,11 +350,7 @@ export class AutomationService {
     }
     const now = new Date();
     const token = randomUUID();
-    const idempotencyKey =
-      trigger === 'SCHEDULED'
-        ? scheduledKey(accountId, now)
-        : `${accountId}:manual:${randomUUID()}`;
-    await Promise.all([
+    const [, initialState] = await Promise.all([
       prisma.automation_settings.upsert({
         where: { connected_google_account_id: accountId },
         create: {
@@ -352,6 +369,10 @@ export class AutomationService {
         update: {},
       }),
     ]);
+    const idempotencyKey =
+      trigger === 'SCHEDULED'
+        ? scheduledKey(accountId, now, initialState.failure_count)
+        : `${accountId}:manual:${randomUUID()}`;
     const acquired = await prisma.automation_states.updateMany({
       where: {
         connected_google_account_id: accountId,
@@ -396,10 +417,13 @@ export class AutomationService {
       }
       throw error;
     }
-    await prisma.automation_states.updateMany({
+    const runAttached = await prisma.automation_states.updateMany({
       where: { connected_google_account_id: accountId, lease_token: token },
       data: { active_run_id: run.id },
     });
+    if (runAttached.count !== 1) {
+      throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease was replaced.', 409);
+    }
     const counters = emptyCounters();
     await auditService.record({
       action: 'automation.run.started',
@@ -409,8 +433,11 @@ export class AutomationService {
     });
 
     try {
+      await this.renewLease(accountId, token);
       await this.refreshMailbox(userId);
-      await this.retryFailedActions(accountId, counters);
+      await this.renewLease(accountId, token);
+      await this.retryFailedActions(accountId, token, counters);
+      await this.renewLease(accountId, token);
       const dailyUsage = await prisma.automation_runs.aggregate({
         where: {
           connected_google_account_id: accountId,
@@ -438,37 +465,8 @@ export class AutomationService {
       });
       const bySender = new Map(patterns.map((pattern) => [pattern.sender_domain, pattern]));
 
-      const openAiMessages: gmail_message_metadata[] = [];
-      for (const message of messages) {
-        const pattern = bySender.get(senderDomain(message));
-        if (!pattern) {
-          openAiMessages.push(message);
-          continue;
-        }
-        counters.patternReused += 1;
-        await this.persistAndApply(
-          run.id,
-          userId,
-          accountId,
-          message,
-          {
-            key: message.id,
-            category: pattern.category,
-            confidence: pattern.confidence,
-            explanation: 'Reused a learned sender pattern.',
-            reasonCodes: ['LEARNED_SENDER_PATTERN'],
-          },
-          'LEARNED_PATTERN',
-          counters,
-        );
-        await prisma.learned_classification_patterns.update({
-          where: { id: pattern.id },
-          data: { last_used_at: new Date() },
-        });
-      }
-
-      for (let index = 0; index < openAiMessages.length; index += env.AUTOMATION_BATCH_SIZE) {
-        const batch = openAiMessages.slice(index, index + env.AUTOMATION_BATCH_SIZE);
+      for (let index = 0; index < messages.length; index += env.AUTOMATION_BATCH_SIZE) {
+        const batch = messages.slice(index, index + env.AUTOMATION_BATCH_SIZE);
         const roughTokens = Math.ceil(
           batch.reduce(
             (total, message) =>
@@ -479,22 +477,36 @@ export class AutomationService {
             0,
           ) / 4,
         );
+        const remainingOutputTokens =
+          env.AUTOMATION_MAX_OUTPUT_TOKENS - outputTokensUsed - counters.usage.outputTokens;
+        const outputTokenReserve = Math.min(2000, remainingOutputTokens);
+        const projectedCost = estimatedCost({
+          inputTokens: roughTokens,
+          cachedInputTokens: 0,
+          outputTokens: Math.max(0, outputTokenReserve),
+        });
         if (
           inputTokensUsed + counters.usage.inputTokens + roughTokens >
             env.AUTOMATION_MAX_INPUT_TOKENS ||
-          outputTokensUsed + counters.usage.outputTokens >= env.AUTOMATION_MAX_OUTPUT_TOKENS ||
-          costUsed + counters.costMicrousd >= env.AUTOMATION_MAX_COST_MICRO_USD
+          remainingOutputTokens < 100 ||
+          costUsed + counters.costMicrousd + projectedCost > env.AUTOMATION_MAX_COST_MICRO_USD
         ) {
           counters.stoppedReason = 'DAILY_BUDGET_REACHED';
           break;
         }
         try {
+          await this.renewLease(accountId, token);
           const providerInputs = batch.map((message, batchIndex) => ({
-            ...this.providerInput(message),
+            ...this.providerInput(message, bySender.get(senderDomain(message))),
             key: `m${batchIndex + 1}`,
           }));
-          const result = await this.classifier.classify(providerInputs);
           counters.providerCalls += 1;
+          counters.patternReused += providerInputs.filter(
+            (message) => message.learnedPattern,
+          ).length;
+          const result = await this.classifier.classify(providerInputs, {
+            maxOutputTokens: outputTokenReserve,
+          });
           counters.openaiClassified += result.classifications.length;
           counters.usage.inputTokens += result.usage.inputTokens;
           counters.usage.cachedInputTokens += result.usage.cachedInputTokens;
@@ -508,15 +520,33 @@ export class AutomationService {
               accountId,
               message,
               byKey.get(`m${batchIndex + 1}`)!,
-              'OPENAI',
               counters,
             );
+          }
+          const usedPatternIds = batch
+            .map((message) => bySender.get(senderDomain(message))?.id)
+            .filter((id): id is string => Boolean(id));
+          if (usedPatternIds.length > 0) {
+            await prisma.learned_classification_patterns.updateMany({
+              where: { id: { in: usedPatternIds } },
+              data: { last_used_at: new Date() },
+            });
           }
         } catch (error) {
           counters.failed += batch.length;
           counters.lastErrorCode = errorCode(error);
+          if (error instanceof OpenAiProviderError) {
+            counters.lastProviderStatus = error.providerStatus;
+            counters.lastProviderCode = error.providerCode;
+            counters.lastProviderRequestId = error.requestId;
+          }
           logger.error(
-            { ...safeErrorDetails(error), runId: run.id, accountId },
+            {
+              ...safeErrorDetails(error),
+              ...safeProviderDetails(error),
+              runId: run.id,
+              accountId,
+            },
             'automation classification batch failed',
           );
           break;
@@ -560,7 +590,14 @@ export class AutomationService {
     }
   }
 
-  private providerInput(message: gmail_message_metadata): AutomationMessageInput {
+  private providerInput(
+    message: gmail_message_metadata,
+    pattern?: {
+      category: classification_category;
+      confidence: number;
+      label_path: string;
+    },
+  ): AutomationMessageInput {
     return {
       key: message.id,
       subject: (message.subject ?? '').slice(0, 500),
@@ -570,6 +607,15 @@ export class AutomationService {
       isUnread: message.is_unread,
       isImportant: message.is_important,
       hasAttachments: message.has_attachments,
+      ...(pattern
+        ? {
+            learnedPattern: {
+              category: pattern.category,
+              confidence: pattern.confidence,
+              labelPath: pattern.label_path,
+            },
+          }
+        : {}),
     };
   }
 
@@ -594,29 +640,56 @@ export class AutomationService {
     accountId: string,
     message: gmail_message_metadata,
     classification: AutomationClassification,
-    source: 'OPENAI' | 'LEARNED_PATTERN',
     counters: RunCounters,
   ): Promise<void> {
-    const labelPath =
-      source === 'OPENAI'
-        ? await this.labelPathForMessage(message.id, classification.category)
-        : `MailMind/${CATEGORY_LABELS[classification.category]}`;
+    const labelPath = await this.labelPathForMessage(message.id, classification.category);
     const needsReview = classification.confidence < env.AUTOMATION_CONFIDENCE_THRESHOLD;
-    const action = await prisma.automation_message_actions.create({
-      data: {
-        automation_run_id: runId,
-        connected_google_account_id: accountId,
-        gmail_message_id: message.id,
-        user_id: userId,
-        status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
-        category: classification.category,
-        label_path: labelPath,
-        confidence: classification.confidence,
-        source,
-        explanation: classification.explanation.slice(0, 500),
-        reason_codes: classification.reasonCodes.slice(0, 16),
-        input_hash: hashMessage(message),
-      },
+    const inputHash = hashMessage(message);
+    const action = await prisma.$transaction(async (transaction) => {
+      await transaction.classification_results.updateMany({
+        where: {
+          gmail_message_id: message.id,
+          status: { in: ['PENDING', 'COMPLETED', 'NEEDS_REVIEW'] },
+        },
+        data: { status: 'SUPERSEDED' },
+      });
+      await transaction.classification_results.create({
+        data: {
+          connected_google_account_id: accountId,
+          gmail_message_id: message.id,
+          category: classification.category,
+          recommended_action: needsReview ? 'REVIEW_REQUIRED' : 'KEEP_IN_INBOX',
+          confidence: classification.confidence,
+          requires_review: needsReview,
+          explanation: classification.explanation.slice(0, 500),
+          reason_codes: classification.reasonCodes.slice(0, 16),
+          source: 'AI',
+          classifier_version: AUTOMATION_CLASSIFIER_VERSION,
+          prompt_version: AUTOMATION_PROMPT_VERSION,
+          taxonomy_version: AUTOMATION_TAXONOMY_VERSION,
+          provider: 'openai',
+          model: env.OPENAI_MODEL,
+          input_hash: inputHash,
+          message_metadata_hash: inputHash,
+          status: needsReview ? 'NEEDS_REVIEW' : 'COMPLETED',
+        },
+      });
+      return transaction.automation_message_actions.create({
+        data: {
+          automation_run_id: runId,
+          connected_google_account_id: accountId,
+          gmail_message_id: message.id,
+          user_id: userId,
+          status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
+          category: classification.category,
+          label_path: labelPath,
+          confidence: classification.confidence,
+          source: 'OPENAI',
+          explanation: classification.explanation.slice(0, 500),
+          reason_codes: classification.reasonCodes.slice(0, 16),
+          input_hash: inputHash,
+        },
+      });
     });
     if (needsReview) {
       counters.reviewRequired += 1;
@@ -629,7 +702,7 @@ export class AutomationService {
       labelPath,
       counters,
     );
-    if (source === 'OPENAI' && applied) {
+    if (applied) {
       await this.learn(
         accountId,
         senderDomain(message),
@@ -692,7 +765,11 @@ export class AutomationService {
     }
   }
 
-  private async retryFailedActions(accountId: string, counters: RunCounters): Promise<void> {
+  private async retryFailedActions(
+    accountId: string,
+    token: string,
+    counters: RunCounters,
+  ): Promise<void> {
     const actions = await prisma.automation_message_actions.findMany({
       where: {
         connected_google_account_id: accountId,
@@ -704,6 +781,7 @@ export class AutomationService {
       take: env.AUTOMATION_BATCH_SIZE,
     });
     for (const action of actions) {
+      await this.renewLease(accountId, token);
       await this.applyAction(
         action.id,
         accountId,
@@ -794,7 +872,10 @@ export class AutomationService {
     try {
       await gmailSyncService.incrementalSync(userId);
     } catch (error) {
-      if (error instanceof AppError && error.code === 'GMAIL_INITIAL_SYNC_REQUIRED') {
+      if (
+        error instanceof AppError &&
+        (error.code === 'GMAIL_INITIAL_SYNC_REQUIRED' || error.code === 'GMAIL_HISTORY_EXPIRED')
+      ) {
         await gmailSyncService.initialSync(userId);
         return;
       }
@@ -809,8 +890,38 @@ export class AutomationService {
     status: 'COMPLETED' | 'PARTIAL' | 'FAILED',
     counters: RunCounters,
   ): Promise<void> {
-    await prisma.$transaction([
-      prisma.automation_runs.update({
+    await prisma.$transaction(async (transaction) => {
+      const released = await transaction.automation_states.updateMany({
+        where: {
+          connected_google_account_id: accountId,
+          lease_token: token,
+          lease_expires_at: { gt: new Date() },
+        },
+        data: {
+          lease_token: null,
+          lease_expires_at: null,
+          active_run_id: null,
+          last_run_completed_at: new Date(),
+          ...(status === 'COMPLETED'
+            ? { last_successful_run_at: new Date(), failure_count: 0 }
+            : { failure_count: { increment: 1 } }),
+          last_error_code: counters.lastErrorCode,
+          retry_at:
+            status !== 'COMPLETED' && counters.lastErrorCode
+              ? new Date(
+                  Date.now() +
+                    (counters.lastErrorCode === 'OPENAI_INSUFFICIENT_QUOTA'
+                      ? 6 * 60 * 60_000
+                      : 15 * 60_000),
+                )
+              : null,
+          next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
+        },
+      });
+      if (released.count !== 1) {
+        throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease expired.', 409);
+      }
+      await transaction.automation_runs.update({
         where: { id: runId },
         data: {
           status,
@@ -830,24 +941,28 @@ export class AutomationService {
           estimated_cost_microusd: counters.costMicrousd,
           stopped_reason: counters.stoppedReason,
           last_error_code: counters.lastErrorCode,
+          last_provider_status: counters.lastProviderStatus,
+          last_provider_code: counters.lastProviderCode,
+          last_provider_request_id: counters.lastProviderRequestId,
         },
-      }),
-      prisma.automation_states.updateMany({
-        where: { connected_google_account_id: accountId, lease_token: token },
-        data: {
-          lease_token: null,
-          lease_expires_at: null,
-          active_run_id: null,
-          last_run_completed_at: new Date(),
-          ...(status === 'COMPLETED'
-            ? { last_successful_run_at: new Date(), failure_count: 0 }
-            : { failure_count: { increment: 1 } }),
-          last_error_code: counters.lastErrorCode,
-          retry_at: status === 'FAILED' ? new Date(Date.now() + 15 * 60_000) : null,
-          next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
-        },
-      }),
-    ]);
+      });
+    });
+  }
+
+  private async renewLease(accountId: string, token: string): Promise<void> {
+    const renewed = await prisma.automation_states.updateMany({
+      where: {
+        connected_google_account_id: accountId,
+        lease_token: token,
+        lease_expires_at: { gt: new Date() },
+      },
+      data: {
+        lease_expires_at: new Date(Date.now() + env.AUTOMATION_LEASE_SECONDS * 1000),
+      },
+    });
+    if (renewed.count !== 1) {
+      throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease expired.', 409);
+    }
   }
 
   private async releaseLease(
@@ -918,6 +1033,9 @@ export class AutomationService {
     estimated_cost_microusd: number;
     stopped_reason: string | null;
     last_error_code: string | null;
+    last_provider_status: number | null;
+    last_provider_code: string | null;
+    last_provider_request_id: string | null;
     started_at: Date;
     completed_at: Date | null;
   }) {
@@ -938,6 +1056,9 @@ export class AutomationService {
       estimatedCostMicrousd: run.estimated_cost_microusd,
       stoppedReason: run.stopped_reason,
       lastErrorCode: run.last_error_code,
+      lastProviderStatus: run.last_provider_status,
+      lastProviderCode: run.last_provider_code,
+      lastProviderRequestId: run.last_provider_request_id,
       startedAt: run.started_at.toISOString(),
       completedAt: run.completed_at?.toISOString() ?? null,
     };

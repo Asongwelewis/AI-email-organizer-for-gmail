@@ -25,7 +25,6 @@ The Session Pooler and dedicated `prisma` role setup remains documented in
 [Stage 2 setup](stage-2-setup.md). Stage 3 adds bounded operational controls:
 
 ```dotenv
-GMAIL_INITIAL_SYNC_MAX_MESSAGES=250
 GMAIL_SYNC_PAGE_SIZE=100
 GMAIL_SYNC_BATCH_SIZE=10
 GMAIL_SYNC_MAX_RETRIES=3
@@ -33,11 +32,11 @@ GMAIL_SYNC_RETRY_BASE_MS=250
 GMAIL_SYNC_LEASE_SECONDS=300
 ```
 
-The initial limit is deliberately finite. Page size is at most Gmail's 500-message maximum. Batch
-size bounds concurrent metadata reads. Retry applies only to rate limits, network failures, and
-upstream 5xx responses. The database lease prevents overlapping operations for one connected
-account across API instances and expires for crash recovery. Gmail network calls never run inside a
-database transaction.
+Historical backfill covers the full mailbox. Page size is at most Gmail's 500-message maximum and
+each successfully persisted page advances a durable resume checkpoint. Batch size bounds concurrent
+metadata reads. Retry applies only to rate limits, network failures, and upstream 5xx responses. The
+database lease prevents overlapping operations for one connected account across API instances and
+expires for crash recovery. Gmail network calls never run inside a database transaction.
 
 ## Migration
 
@@ -70,10 +69,12 @@ and use the stricter Gmail sync limiter.
 - `POST /api/gmail/sync/initial`
 - `POST /api/gmail/sync/incremental`
 
-The initial sync validates the Gmail profile identity, synchronizes labels, lists a bounded set of
-messages, requests only Gmail's metadata representation, persists idempotent upserts, and advances
-the history checkpoint only after successful processing. Incremental sync consumes Gmail history,
-refetches changed metadata, marks deleted messages, and advances the checkpoint only on success.
+The initial sync validates the Gmail profile identity, synchronizes labels, paginates through the
+full mailbox, requests only Gmail's metadata representation, persists idempotent upserts, and
+checkpoints every completed page. A failed or interrupted backfill resumes from its last durable page
+token. Its baseline history ID is advanced only after the full backfill succeeds, so incremental
+sync can then consume messages that arrived while history was being scanned. Sync status reports
+Gmail total, synchronized, classified, and unprocessed counts separately.
 An expired history ID sets `HISTORY_EXPIRED`; it preserves prior data and directs the user to run a
 fresh initial sync. Repeated POSTs while a lease is active return a safe 409 conflict.
 

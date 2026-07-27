@@ -95,6 +95,96 @@ export class GmailRepository {
     }
   }
 
+  async beginBackfill(lease: SyncLease, totalGmailMessages: number, historyId: string | null) {
+    const current = await this.state(lease.accountId);
+    const resumable = Boolean(
+      current?.backfill_started_at && !current.backfill_completed_at && current.backfill_history_id,
+    );
+    const startedAt = new Date();
+    const updated = await prisma.gmail_sync_states.updateMany({
+      where: {
+        connected_google_account_id: lease.accountId,
+        lease_token: lease.token,
+      },
+      data: resumable
+        ? { total_gmail_messages: totalGmailMessages }
+        : {
+            total_gmail_messages: totalGmailMessages,
+            backfill_page_token: null,
+            backfill_history_id: historyId,
+            backfill_messages_processed: 0,
+            backfill_pages_completed: 0,
+            backfill_started_at: startedAt,
+            backfill_checkpointed_at: null,
+            backfill_listing_completed_at: null,
+            backfill_completed_at: null,
+          },
+    });
+    if (updated.count !== 1) {
+      throw new AppError(
+        'GMAIL_SYNC_ALREADY_RUNNING',
+        'The Gmail operation lease expired or was replaced.',
+        409,
+      );
+    }
+    return (await this.state(lease.accountId))!;
+  }
+
+  async checkpointBackfillPage(
+    lease: SyncLease,
+    nextPageToken: string | null,
+    messagesProcessed: number,
+  ): Promise<void> {
+    const checkpointed = await prisma.gmail_sync_states.updateMany({
+      where: {
+        connected_google_account_id: lease.accountId,
+        lease_token: lease.token,
+      },
+      data: {
+        backfill_page_token: nextPageToken,
+        backfill_messages_processed: { increment: messagesProcessed },
+        backfill_pages_completed: { increment: 1 },
+        backfill_checkpointed_at: new Date(),
+        ...(nextPageToken ? {} : { backfill_listing_completed_at: new Date() }),
+      },
+    });
+    if (checkpointed.count !== 1) {
+      throw new AppError(
+        'GMAIL_SYNC_ALREADY_RUNNING',
+        'The Gmail operation lease expired or was replaced.',
+        409,
+      );
+    }
+  }
+
+  async updateMailboxTotal(lease: SyncLease, totalGmailMessages: number): Promise<void> {
+    const updated = await prisma.gmail_sync_states.updateMany({
+      where: {
+        connected_google_account_id: lease.accountId,
+        lease_token: lease.token,
+      },
+      data: { total_gmail_messages: totalGmailMessages },
+    });
+    if (updated.count !== 1) {
+      throw new AppError(
+        'GMAIL_SYNC_ALREADY_RUNNING',
+        'The Gmail operation lease expired or was replaced.',
+        409,
+      );
+    }
+  }
+
+  markMissingFromBackfill(accountId: string, backfillStartedAt: Date) {
+    return prisma.gmail_message_metadata.updateMany({
+      where: {
+        connected_google_account_id: accountId,
+        deleted_at: null,
+        last_synced_at: { lt: backfillStartedAt },
+      },
+      data: { deleted_at: new Date() },
+    });
+  }
+
   async complete(
     lease: SyncLease,
     counts: SyncCounts,
@@ -111,7 +201,14 @@ export class GmailRepository {
         data: {
           status: 'READY',
           ...(checkpoint ? { last_history_id: checkpoint } : {}),
-          ...(initial ? { initial_sync_completed_at: now } : {}),
+          ...(initial
+            ? {
+                initial_sync_completed_at: now,
+                backfill_page_token: null,
+                backfill_completed_at: now,
+                backfill_checkpointed_at: now,
+              }
+            : {}),
           last_sync_completed_at: now,
           last_successful_sync_at: now,
           failure_count: 0,
@@ -266,6 +363,24 @@ export class GmailRepository {
     return prisma.gmail_message_metadata.count({
       where: { connected_google_account_id: accountId, deleted_at: null },
     });
+  }
+
+  async coverage(accountId: string) {
+    const [syncedMessages, classifiedMessages] = await Promise.all([
+      this.countMessages(accountId),
+      prisma.classification_results.count({
+        where: {
+          connected_google_account_id: accountId,
+          status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+          gmail_message_metadata: { deleted_at: null },
+        },
+      }),
+    ]);
+    return {
+      syncedMessages,
+      classifiedMessages,
+      unprocessedMessages: Math.max(0, syncedMessages - classifiedMessages),
+    };
   }
 }
 

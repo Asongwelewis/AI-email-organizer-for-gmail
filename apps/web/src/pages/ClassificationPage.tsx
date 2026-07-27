@@ -3,18 +3,29 @@ import { AlertTriangle, BrainCircuit, Check, Play, ShieldCheck } from 'lucide-re
 import { toast } from 'sonner';
 
 import { RouteLoader } from '@web/components/RouteLoader';
+import {
+  CoveragePanel,
+  InfoTooltip,
+  MetricCard,
+  WorkflowRail,
+} from '@web/components/ProductWorkflow';
 import { useAuth } from '@web/context/useAuth';
+import { dedupeRecommendationResults } from '@web/features/classification/dedupeRecommendationResults';
+import {
+  groupRecommendationResults,
+  type RecommendationGroup,
+} from '@web/features/classification/groupRecommendationResults';
 import {
   useClassificationActions,
   useClassificationResults,
   useClassificationStatus,
 } from '@web/queries/classificationQueries';
+import { useGmailSyncStatusQuery } from '@web/queries/gmailQueries';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
 import {
   classificationCategories,
   recommendedActions,
   type ClassificationCategory,
-  type ClassificationResult,
   type RecommendedAction,
 } from '@web/types/classification';
 
@@ -30,6 +41,7 @@ export function ClassificationPage() {
   const connected = gmailConnection?.connected === true;
   const status = useClassificationStatus(connected);
   const results = useClassificationResults(connected);
+  const sync = useGmailSyncStatusQuery(connected);
   const actions = useClassificationActions();
 
   if (!gmailConnection || (connected && status.isLoading)) {
@@ -45,7 +57,10 @@ export function ClassificationPage() {
     }
   };
 
-  const queue = results.data?.pages.flatMap((page) => page.results) ?? [];
+  const queue = dedupeRecommendationResults(
+    results.data?.pages.flatMap((page) => page.results) ?? [],
+  );
+  const groups = groupRecommendationResults(queue);
 
   return (
     <div className="classification-page">
@@ -69,6 +84,8 @@ export function ClassificationPage() {
         </div>
       </header>
 
+      <WorkflowRail current="review" sync={sync.data} />
+
       {!connected ? (
         <section className="classification-empty">
           <AlertTriangle />
@@ -83,16 +100,28 @@ export function ClassificationPage() {
         </section>
       ) : (
         <>
+          <CoveragePanel sync={sync.data} loading={sync.isLoading} compact />
+
           <section className="classification-overview">
-            <Stat label="Classified" value={status.data?.classifiedCount ?? 0} />
-            <Stat label="Needs review" value={status.data?.reviewRequiredCount ?? 0} accent />
-            <Stat
+            <MetricCard
+              label="Classified"
+              value={status.data?.classifiedCount ?? 0}
+              tooltip="Messages with a current completed or review-required recommendation."
+            />
+            <MetricCard
+              label="Needs review"
+              value={status.data?.reviewRequiredCount ?? 0}
+              accent
+              tooltip="Low-confidence recommendations waiting for a human decision."
+            />
+            <MetricCard
               label="Rules / AI"
               value={`${status.data?.latestRun?.ruleClassifiedCount ?? 0} / ${
                 status.data?.latestRun?.aiClassifiedCount ?? 0
               }`}
+              tooltip="Rules are deterministic matches. AI handles messages where rules are not confident enough."
             />
-            <div className="classification-run-card">
+            <div className="classification-run-card" id="classification-run">
               <span className="eyebrow">
                 {status.data?.enabled ? status.data.provider : 'Rules-only mode'}
               </span>
@@ -111,16 +140,43 @@ export function ClassificationPage() {
                   External AI is disabled. High-confidence rules still produce recommendations.
                 </small>
               )}
+              {status.data?.running && status.data.latestRun && (
+                <small role="status">
+                  Processing {status.data.latestRun.processedMessageCount} of{' '}
+                  {status.data.latestRun.requestedMessageCount} selected messages.
+                </small>
+              )}
             </div>
+          </section>
+
+          <section className="classification-mode-explainer" aria-label="Rules versus AI">
+            <article>
+              <span className="eyebrow">Rules</span>
+              <h2>Fast, deterministic signals</h2>
+              <p>
+                Rules classify only when known metadata patterns are strong enough. They cost no AI
+                tokens and always produce the same result for the same metadata.
+              </p>
+            </article>
+            <article>
+              <span className="eyebrow">OpenAI</span>
+              <h2>Primary classifier for unresolved mail</h2>
+              <p>
+                OpenAI evaluates every new or unprocessed automation message in bounded batches.
+                Uncertain results are held for review instead of changing Gmail.
+              </p>
+            </article>
           </section>
 
           <section className="classification-distributions" aria-label="Recommendation summary">
             <Distribution
               title="Category distribution"
+              tooltip="How current classifications are divided across MailMind categories."
               values={status.data?.categoryDistribution ?? {}}
             />
             <Distribution
               title="Recommendation distribution"
+              tooltip="How current classifications are divided across suggested next actions."
               values={status.data?.recommendationDistribution ?? {}}
             />
           </section>
@@ -131,31 +187,61 @@ export function ClassificationPage() {
                 <span className="eyebrow">Review queue</span>
                 <h2>Recommendations needing your eye</h2>
               </div>
-              <span>{queue.length} shown</span>
+              <span>
+                {queue.length} messages · {groups.length} visual groups
+              </span>
             </div>
             {results.isLoading ? (
               <RouteLoader label="Loading recommendations" />
             ) : queue.length === 0 ? (
               <div className="classification-empty classification-empty--light">
                 <Check />
-                <h2>No recommendations need review.</h2>
-                <p>Run classification after synchronizing new Gmail metadata.</p>
+                <h2>
+                  {(sync.data?.unprocessedMessages ?? 0) > 0
+                    ? 'New messages still need classification.'
+                    : 'Review is complete.'}
+                </h2>
+                <p>
+                  {(sync.data?.unprocessedMessages ?? 0) > 0
+                    ? `Run classification for the remaining ${sync.data?.unprocessedMessages ?? 0} messages.`
+                    : 'The next useful step is to discover recurring label patterns.'}
+                </p>
+                <a
+                  className="next-action"
+                  href={
+                    (sync.data?.unprocessedMessages ?? 0) > 0
+                      ? '#classification-run'
+                      : '/dashboard/labels/discover'
+                  }
+                >
+                  {(sync.data?.unprocessedMessages ?? 0) > 0
+                    ? 'Run classification'
+                    : 'Discover labels'}
+                </a>
               </div>
             ) : (
               <div className="review-queue">
-                {queue.map((result) => (
+                {groups.map((group) => (
                   <RecommendationCard
-                    key={result.id}
-                    result={result}
+                    key={group.key}
+                    group={group}
                     busy={actions.correct.isPending}
                     onCorrect={async (category, recommendedAction) => {
                       try {
-                        await actions.correct.mutateAsync({
-                          id: result.id,
-                          category,
-                          recommendedAction,
-                        });
-                        toast.success('Correction saved. Gmail was not changed.');
+                        await Promise.all(
+                          group.members.map((result) =>
+                            actions.correct.mutateAsync({
+                              id: result.id,
+                              category,
+                              recommendedAction,
+                            }),
+                          ),
+                        );
+                        toast.success(
+                          group.members.length > 1
+                            ? `Correction saved for ${group.members.length} separate messages. Gmail was not changed.`
+                            : 'Correction saved. Gmail was not changed.',
+                        );
                       } catch (error) {
                         toast.error(getSafeErrorMessage(error, 'Correction could not be saved.'));
                       }
@@ -183,9 +269,11 @@ export function ClassificationPage() {
 
 function Distribution({
   title,
+  tooltip,
   values,
 }: {
   title: string;
+  tooltip: string;
   values: Partial<Record<string, number>>;
 }) {
   const entries = Object.entries(values)
@@ -193,7 +281,10 @@ function Distribution({
     .sort((left, right) => right[1] - left[1]);
   return (
     <article className="distribution-card">
-      <span className="eyebrow">{title}</span>
+      <span className="eyebrow metric-heading">
+        {title}
+        <InfoTooltip label={title}>{tooltip}</InfoTooltip>
+      </span>
       {entries.length === 0 ? (
         <p>No completed recommendations yet.</p>
       ) : (
@@ -210,35 +301,19 @@ function Distribution({
   );
 }
 
-function Stat({
-  label: title,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: number | string;
-  accent?: boolean;
-}) {
-  return (
-    <article className={`classification-stat${accent ? ' classification-stat--accent' : ''}`}>
-      <span>{title}</span>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
 function RecommendationCard({
-  result,
+  group,
   busy,
   onCorrect,
 }: {
-  result: ClassificationResult;
+  group: RecommendationGroup;
   busy: boolean;
   onCorrect: (
     category: ClassificationCategory,
     recommendedAction: RecommendedAction,
   ) => Promise<void>;
 }) {
+  const result = group.primary;
   const [category, setCategory] = useState(
     result.correction?.correctedCategory ?? result.recommendedCategory,
   );
@@ -259,11 +334,31 @@ function RecommendationCard({
             <span key={gmailLabel}>{gmailLabel}</span>
           ))}
         </div>
+        {group.members.length > 1 && (
+          <details className="message-group">
+            <summary>{group.members.length} visually identical messages grouped</summary>
+            <p>
+              Each Gmail message remains separate. Saving a correction updates every listed
+              recommendation independently.
+            </p>
+            <ul>
+              {group.members.map((member) => (
+                <li key={member.id}>
+                  Message ID <code>{member.messageId}</code>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
       <div className="recommendation-card__decision">
         <div className="confidence-row">
           <BrainCircuit aria-hidden="true" />
           <span>Classifier confidence</span>
+          <InfoTooltip label={`confidence for ${result.id}`}>
+            Confidence reflects the classifier’s certainty from synchronized metadata. Low values
+            are held for review.
+          </InfoTooltip>
           <strong>{Math.round(result.confidence * 100)}%</strong>
         </div>
         <div

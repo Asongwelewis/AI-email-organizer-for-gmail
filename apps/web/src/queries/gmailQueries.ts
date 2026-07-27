@@ -17,7 +17,15 @@ export function useGmailSyncActions() {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.gmailSyncStatus });
   const labels = useMutation({ mutationFn: api.initializeGmailLabels, onSuccess: refresh });
-  const initial = useMutation({ mutationFn: api.initialGmailSync, onSuccess: refresh });
-  const incremental = useMutation({ mutationFn: api.incrementalGmailSync, onSuccess: refresh });
+  const initial = useMutation({
+    mutationFn: api.initialGmailSync,
+    onMutate: refresh,
+    onSuccess: refresh,
+  });
+  const incremental = useMutation({
+    mutationFn: api.incrementalGmailSync,
+    onMutate: refresh,
+    onSuccess: refresh,
+  });
   return { labels, initial, incremental };
 }

@@ -72,6 +72,8 @@ describe('ConnectionsPage', () => {
     expect(screen.getByRole('heading', { name: 'ada@gmail.com' })).toBeInTheDocument();
     expect(screen.getByText('Technical permission details')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disconnect Gmail' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'MailMind workflow' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Explain Gmail total' })).toBeInTheDocument();
   });
 
   it('starts the backend Gmail connection flow', async () => {

@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
   activeAccountForUser: vi.fn(),
   acquireLease: vi.fn(),
   renewLease: vi.fn(),
+  beginBackfill: vi.fn(),
+  checkpointBackfillPage: vi.fn(),
+  updateMailboxTotal: vi.fn(),
+  markMissingFromBackfill: vi.fn(),
   complete: vi.fn(),
   fail: vi.fn(),
   upsertLabels: vi.fn(),
@@ -12,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   markDeleted: vi.fn(),
   state: vi.fn(),
   countMessages: vi.fn(),
+  coverage: vi.fn(),
   markReauthenticationRequired: vi.fn(),
 }));
 
@@ -24,6 +29,10 @@ vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
     activeAccountForUser: mocks.activeAccountForUser,
     acquireLease: mocks.acquireLease,
     renewLease: mocks.renewLease,
+    beginBackfill: mocks.beginBackfill,
+    checkpointBackfillPage: mocks.checkpointBackfillPage,
+    updateMailboxTotal: mocks.updateMailboxTotal,
+    markMissingFromBackfill: mocks.markMissingFromBackfill,
     complete: mocks.complete,
     fail: mocks.fail,
     upsertLabels: mocks.upsertLabels,
@@ -31,6 +40,7 @@ vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
     markDeleted: mocks.markDeleted,
     state: mocks.state,
     countMessages: mocks.countMessages,
+    coverage: mocks.coverage,
   },
 }));
 vi.mock('../src/repositories/connected-google-account.repository.js', () => ({
@@ -54,19 +64,32 @@ describe('GmailSyncService', () => {
     mocks.activeAccountForUser.mockResolvedValue(account);
     mocks.acquireLease.mockResolvedValue(lease);
     mocks.renewLease.mockResolvedValue(undefined);
+    mocks.beginBackfill.mockResolvedValue({
+      backfill_page_token: null,
+      backfill_history_id: 'history-2',
+      backfill_started_at: new Date('2026-07-26T00:00:00.000Z'),
+    });
+    mocks.checkpointBackfillPage.mockResolvedValue(undefined);
+    mocks.updateMailboxTotal.mockResolvedValue(undefined);
+    mocks.markMissingFromBackfill.mockResolvedValue({ count: 0 });
     mocks.complete.mockResolvedValue(undefined);
     mocks.fail.mockResolvedValue(undefined);
     mocks.upsertLabels.mockResolvedValue(undefined);
     mocks.upsertMessages.mockResolvedValue(undefined);
     mocks.markDeleted.mockResolvedValue({ count: 0 });
     mocks.countMessages.mockResolvedValue(1);
+    mocks.coverage.mockResolvedValue({
+      syncedMessages: 2,
+      classifiedMessages: 1,
+      unprocessedMessages: 1,
+    });
   });
 
-  it('performs a bounded metadata-only initial sync and commits the profile checkpoint', async () => {
+  it('backfills every Gmail page and checkpoints each page before completing', async () => {
     const gmail = {
       users: {
         getProfile: vi.fn().mockResolvedValue({
-          data: { emailAddress: account.email, historyId: 'history-2' },
+          data: { emailAddress: account.email, historyId: 'history-2', messagesTotal: 2 },
         }),
         labels: {
           list: vi.fn().mockResolvedValue({ data: { labels: [] } }),
@@ -77,18 +100,23 @@ describe('GmailSyncService', () => {
           ),
         },
         messages: {
-          list: vi.fn().mockResolvedValue({
-            data: { messages: [{ id: 'message-1' }] },
-          }),
-          get: vi.fn().mockResolvedValue({
-            data: {
-              id: 'message-1',
-              threadId: 'thread-1',
-              historyId: 'history-1',
-              labelIds: ['INBOX'],
-              payload: { headers: [{ name: 'Subject', value: 'Metadata only' }] },
-            },
-          }),
+          list: vi
+            .fn()
+            .mockResolvedValueOnce({
+              data: { messages: [{ id: 'message-1' }], nextPageToken: 'page-2' },
+            })
+            .mockResolvedValueOnce({ data: { messages: [{ id: 'message-2' }] } }),
+          get: vi.fn().mockImplementation(({ id }) =>
+            Promise.resolve({
+              data: {
+                id,
+                threadId: `thread-${id}`,
+                historyId: 'history-1',
+                labelIds: ['INBOX'],
+                payload: { headers: [{ name: 'Subject', value: `Metadata ${id}` }] },
+              },
+            }),
+          ),
         },
         history: { list: vi.fn() },
       },
@@ -106,16 +134,73 @@ describe('GmailSyncService', () => {
     expect(mocks.upsertMessages).toHaveBeenCalledWith(
       account.id,
       expect.arrayContaining([
-        expect.objectContaining({ gmail_message_id: 'message-1', subject: 'Metadata only' }),
+        expect.objectContaining({
+          gmail_message_id: 'message-1',
+          subject: 'Metadata message-1',
+        }),
       ]),
     );
     expect(mocks.complete).toHaveBeenCalledWith(
       lease,
-      expect.objectContaining({ messagesUpserted: 1, labelsUpserted: 3 }),
+      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 3 }),
       'history-2',
       true,
     );
+    expect(mocks.checkpointBackfillPage).toHaveBeenNthCalledWith(1, lease, 'page-2', 1);
+    expect(mocks.checkpointBackfillPage).toHaveBeenNthCalledWith(2, lease, null, 1);
+    expect(gmail.users.messages.list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ pageToken: 'page-2' }),
+    );
     expect(result).toMatchObject({ success: true, checkpointHistoryId: 'history-2' });
+  });
+
+  it('resumes a historical backfill from the durable page checkpoint', async () => {
+    mocks.beginBackfill.mockResolvedValue({
+      backfill_page_token: 'resume-token',
+      backfill_history_id: 'original-history',
+      backfill_started_at: new Date('2026-07-26T00:00:00.000Z'),
+    });
+    const gmail = {
+      users: {
+        getProfile: vi.fn().mockResolvedValue({
+          data: {
+            emailAddress: account.email,
+            historyId: 'newer-history',
+            messagesTotal: 500,
+          },
+        }),
+        labels: {
+          list: vi.fn().mockResolvedValue({
+            data: {
+              labels: [
+                { id: 'root', name: 'MailMind' },
+                { id: 'processed', name: 'MailMind/Processed' },
+                { id: 'review', name: 'MailMind/Needs Review' },
+              ],
+            },
+          }),
+          create: vi.fn(),
+        },
+        messages: {
+          list: vi.fn().mockResolvedValue({ data: { messages: [] } }),
+          get: vi.fn(),
+        },
+      },
+    };
+    mocks.createGmailClient.mockResolvedValue(gmail);
+
+    await new GmailSyncService().initialSync('user-id');
+
+    expect(gmail.users.messages.list).toHaveBeenCalledWith(
+      expect.objectContaining({ pageToken: 'resume-token' }),
+    );
+    expect(mocks.complete).toHaveBeenCalledWith(
+      lease,
+      expect.any(Object),
+      'original-history',
+      true,
+    );
   });
 
   it('preserves the checkpoint and records history expiry for a fresh initial sync', async () => {
@@ -139,6 +224,95 @@ describe('GmailSyncService', () => {
     });
     expect(mocks.complete).not.toHaveBeenCalled();
     expect(mocks.fail).toHaveBeenCalledWith(lease, 'GMAIL_HISTORY_EXPIRED');
+  });
+
+  it('keeps incremental history sync for messages arriving after the backfill baseline', async () => {
+    mocks.state.mockResolvedValue({
+      initial_sync_completed_at: new Date(),
+      last_history_id: 'baseline-history',
+    });
+    const gmail = {
+      users: {
+        getProfile: vi.fn().mockResolvedValue({
+          data: { emailAddress: account.email, historyId: 'history-3', messagesTotal: 3 },
+        }),
+        history: {
+          list: vi.fn().mockResolvedValue({
+            data: {
+              historyId: 'history-3',
+              history: [{ messagesAdded: [{ message: { id: 'new-message' } }] }],
+            },
+          }),
+        },
+        messages: {
+          get: vi.fn().mockResolvedValue({
+            data: {
+              id: 'new-message',
+              historyId: 'history-3',
+              labelIds: ['INBOX'],
+              payload: { headers: [{ name: 'Subject', value: 'Arrived during backfill' }] },
+            },
+          }),
+        },
+      },
+    };
+    mocks.createGmailClient.mockResolvedValue(gmail);
+
+    const result = await new GmailSyncService().incrementalSync('user-id');
+
+    expect(mocks.updateMailboxTotal).toHaveBeenCalledWith(lease, 3);
+    expect(mocks.upsertMessages).toHaveBeenCalledWith(
+      account.id,
+      expect.arrayContaining([
+        expect.objectContaining({
+          gmail_message_id: 'new-message',
+          subject: 'Arrived during backfill',
+        }),
+      ]),
+    );
+    expect(mocks.complete).toHaveBeenCalledWith(
+      lease,
+      expect.objectContaining({ messagesExamined: 1, messagesUpserted: 1 }),
+      'history-3',
+      false,
+    );
+    expect(result.checkpointHistoryId).toBe('history-3');
+  });
+
+  it('reports Gmail, sync, classification, unprocessed, and backfill checkpoint counts separately', async () => {
+    const checkpointedAt = new Date('2026-07-26T12:00:00.000Z');
+    mocks.state.mockResolvedValue({
+      status: 'INITIAL_SYNC_RUNNING',
+      initial_sync_completed_at: null,
+      last_successful_sync_at: null,
+      last_error_code: null,
+      next_retry_at: null,
+      lease_expires_at: new Date(Date.now() + 60_000),
+      total_gmail_messages: 500,
+      backfill_started_at: new Date(),
+      backfill_completed_at: null,
+      backfill_messages_processed: 200,
+      backfill_pages_completed: 2,
+      backfill_checkpointed_at: checkpointedAt,
+      backfill_history_id: 'baseline-history',
+    });
+
+    const result = await new GmailSyncService().status('user-id');
+
+    expect(result).toMatchObject({
+      totalGmailMessages: 500,
+      syncedMessages: 2,
+      classifiedMessages: 1,
+      unprocessedMessages: 1,
+      backfill: {
+        running: true,
+        messagesProcessed: 200,
+        remainingMessages: 300,
+        pagesCompleted: 2,
+        checkpointedAt: checkpointedAt.toISOString(),
+        checkpointHistoryId: 'baseline-history',
+      },
+    });
   });
 
   it('rejects a profile returned for a different Google identity', async () => {

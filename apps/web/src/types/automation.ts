@@ -17,6 +17,9 @@ export interface AutomationRun {
   estimatedCostMicrousd: number;
   stoppedReason: string | null;
   lastErrorCode: string | null;
+  lastProviderStatus: number | null;
+  lastProviderCode: string | null;
+  lastProviderRequestId: string | null;
   startedAt: string;
   completedAt: string | null;
 }
@@ -27,6 +30,7 @@ export interface AutomationStatus {
   enabled: boolean;
   running: boolean;
   nextRunAt: string | null;
+  retryAt?: string | null;
   lastErrorCode?: string | null;
   lastRun: AutomationRun | null;
   usageToday: {

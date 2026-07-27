@@ -54,8 +54,22 @@ export interface GmailSyncStatus {
   lastSuccessfulSyncAt: string | null;
   lastErrorCode: string | null;
   nextRetryAt: string | null;
+  totalGmailMessages: number;
+  syncedMessages: number;
+  classifiedMessages: number;
+  unprocessedMessages: number;
   messageCount: number;
   syncRunning: boolean;
+  backfill: {
+    running: boolean;
+    completed: boolean;
+    messagesProcessed: number;
+    totalMessages: number;
+    remainingMessages: number;
+    pagesCompleted: number;
+    checkpointedAt: string | null;
+    checkpointHistoryId: string | null;
+  };
 }
 
 export interface GmailSyncResult {
@@ -65,5 +79,8 @@ export interface GmailSyncResult {
   messagesDeleted: number;
   labelsUpserted: number;
   checkpointHistoryId: string | null;
+  syncedMessages: number;
+  classifiedMessages: number;
+  unprocessedMessages: number;
   messageCount: number;
 }

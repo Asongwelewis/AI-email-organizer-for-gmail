@@ -73,27 +73,44 @@ export class GmailSyncService {
       const gmail = await createGmailClient(account.id);
       const profile = await this.loadAndValidateProfile(gmail, account.email);
       counts.labelsUpserted = await this.synchronizeLabels(gmail, account.id);
-      let pageToken: string | undefined;
-      let remaining = env.GMAIL_INITIAL_SYNC_MAX_MESSAGES;
-      do {
-        await gmailRepository.renewLease(lease);
-        const response = await withGmailRetry(() =>
-          gmail.users.messages.list({
-            userId: 'me',
-            maxResults: Math.min(env.GMAIL_SYNC_PAGE_SIZE, remaining),
-            ...(pageToken ? { pageToken } : {}),
-          }),
-        );
-        const ids = (response.data.messages ?? [])
-          .map((message) => message.id)
-          .filter((id): id is string => Boolean(id));
-        counts.messagesExamined += ids.length;
-        await this.fetchAndPersistMessages(gmail, account.id, ids, counts);
-        remaining -= ids.length;
-        pageToken = response.data.nextPageToken ?? undefined;
-      } while (pageToken && remaining > 0);
-      await gmailRepository.complete(lease, counts, profile.historyId ?? null, true);
-      return this.result(account.id, counts, profile.historyId ?? null);
+      const backfill = await gmailRepository.beginBackfill(
+        lease,
+        profile.messagesTotal ?? 0,
+        profile.historyId ?? null,
+      );
+      let pageToken = backfill.backfill_page_token ?? undefined;
+      if (!backfill.backfill_listing_completed_at) {
+        do {
+          await gmailRepository.renewLease(lease);
+          const response = await withGmailRetry(() =>
+            gmail.users.messages.list({
+              userId: 'me',
+              maxResults: env.GMAIL_SYNC_PAGE_SIZE,
+              includeSpamTrash: true,
+              ...(pageToken ? { pageToken } : {}),
+            }),
+          );
+          const ids = (response.data.messages ?? [])
+            .map((message) => message.id)
+            .filter((id): id is string => Boolean(id));
+          counts.messagesExamined += ids.length;
+          await this.fetchAndPersistMessages(gmail, account.id, ids, counts);
+          pageToken = response.data.nextPageToken ?? undefined;
+          await gmailRepository.checkpointBackfillPage(lease, pageToken ?? null, ids.length);
+        } while (pageToken);
+      }
+      if (!backfill.backfill_started_at) {
+        throw new AppError('GMAIL_SYNC_FAILED', 'Backfill checkpoint is invalid.', 500);
+      }
+      await gmailRepository.renewLease(lease);
+      const missing = await gmailRepository.markMissingFromBackfill(
+        account.id,
+        backfill.backfill_started_at,
+      );
+      counts.messagesDeleted += missing.count;
+      const checkpoint = backfill.backfill_history_id ?? profile.historyId ?? null;
+      await gmailRepository.complete(lease, counts, checkpoint, true);
+      return this.result(account.id, counts, checkpoint);
     } catch (error) {
       await this.recordFailure(lease, error);
       throw classifyGmailError(error);
@@ -118,7 +135,8 @@ export class GmailSyncService {
     const counts = emptySyncCounts();
     try {
       const gmail = await createGmailClient(account.id);
-      await this.loadAndValidateProfile(gmail, account.email);
+      const profile = await this.loadAndValidateProfile(gmail, account.email);
+      await gmailRepository.updateMailboxTotal(lease, profile.messagesTotal ?? 0);
       const changed = new Set<string>();
       const deleted = new Set<string>();
       let pageToken: string | undefined;
@@ -169,27 +187,48 @@ export class GmailSyncService {
 
   async status(userId: string) {
     const account = await gmailRepository.activeAccountForUser(userId);
-    const [state, messageCount] = await Promise.all([
+    const [state, coverage] = await Promise.all([
       gmailRepository.state(account.id),
-      gmailRepository.countMessages(account.id),
+      gmailRepository.coverage(account.id),
     ]);
+    const totalGmailMessages = state?.total_gmail_messages ?? 0;
+    const backfillProcessed = state?.backfill_messages_processed ?? 0;
     return {
       status: state?.status ?? 'NOT_STARTED',
       initialSyncCompleted: Boolean(state?.initial_sync_completed_at),
       lastSuccessfulSyncAt: state?.last_successful_sync_at?.toISOString() ?? null,
       lastErrorCode: state?.last_error_code ?? null,
       nextRetryAt: state?.next_retry_at?.toISOString() ?? null,
-      messageCount,
+      totalGmailMessages,
+      syncedMessages: coverage.syncedMessages,
+      classifiedMessages: coverage.classifiedMessages,
+      unprocessedMessages: coverage.unprocessedMessages,
+      messageCount: coverage.syncedMessages,
       syncRunning: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
+      backfill: {
+        running:
+          Boolean(state?.backfill_started_at) &&
+          !state?.backfill_completed_at &&
+          Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
+        completed: Boolean(state?.backfill_completed_at),
+        messagesProcessed: backfillProcessed,
+        totalMessages: totalGmailMessages,
+        remainingMessages: Math.max(0, totalGmailMessages - backfillProcessed),
+        pagesCompleted: state?.backfill_pages_completed ?? 0,
+        checkpointedAt: state?.backfill_checkpointed_at?.toISOString() ?? null,
+        checkpointHistoryId: state?.backfill_history_id ?? null,
+      },
     };
   }
 
   private async result(accountId: string, counts: SyncCounts, checkpoint: string | null) {
+    const coverage = await gmailRepository.coverage(accountId);
     return {
       success: true,
       ...counts,
       checkpointHistoryId: checkpoint,
-      messageCount: await gmailRepository.countMessages(accountId),
+      ...coverage,
+      messageCount: coverage.syncedMessages,
     };
   }
 

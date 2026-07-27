@@ -56,7 +56,6 @@ credentials.
 | `OAUTH_STATE_TTL_MINUTES`                | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES`         | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_MAX_REQUESTS`           | `30`                                                                                       |
-| `GMAIL_INITIAL_SYNC_MAX_MESSAGES`        | `250`                                                                                      |
 | `GMAIL_SYNC_PAGE_SIZE`                   | `100`                                                                                      |
 | `GMAIL_SYNC_BATCH_SIZE`                  | `10`                                                                                       |
 | `GMAIL_SYNC_MAX_RETRIES`                 | `3`                                                                                        |

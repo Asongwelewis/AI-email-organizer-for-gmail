@@ -28,6 +28,11 @@ export interface AutomationMessageInput {
   isUnread: boolean;
   isImportant: boolean;
   hasAttachments: boolean;
+  learnedPattern?: {
+    category: classification_category;
+    confidence: number;
+    labelPath: string;
+  };
 }
 
 export interface AutomationClassification {
@@ -50,5 +55,8 @@ export interface AutomationProviderResult {
 }
 
 export interface AutomationClassifier {
-  classify(messages: AutomationMessageInput[]): Promise<AutomationProviderResult>;
+  classify(
+    messages: AutomationMessageInput[],
+    options?: { maxOutputTokens?: number },
+  ): Promise<AutomationProviderResult>;
 }

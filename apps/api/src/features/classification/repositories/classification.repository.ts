@@ -197,6 +197,13 @@ export class ClassificationRepository {
         is_draft: false,
         is_trashed: false,
         NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
+        ...(messageRecordId
+          ? {}
+          : {
+              classificationResults: {
+                none: { status: { in: ['PENDING', 'COMPLETED', 'NEEDS_REVIEW'] } },
+              },
+            }),
         ...(messageRecordId ? { id: messageRecordId } : {}),
       },
       orderBy: [{ internal_date: 'desc' }, { id: 'desc' }],
@@ -289,12 +296,14 @@ export class ClassificationRepository {
           where: {
             connected_google_account_id: accountId,
             status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+            gmail_message_metadata: { deleted_at: null },
           },
         }),
         prisma.classification_results.count({
           where: {
             connected_google_account_id: accountId,
             status: 'NEEDS_REVIEW',
+            gmail_message_metadata: { deleted_at: null },
           },
         }),
         prisma.classification_results.groupBy({
@@ -302,6 +311,7 @@ export class ClassificationRepository {
           where: {
             connected_google_account_id: accountId,
             status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+            gmail_message_metadata: { deleted_at: null },
           },
           _count: true,
         }),
@@ -310,6 +320,7 @@ export class ClassificationRepository {
           where: {
             connected_google_account_id: accountId,
             status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+            gmail_message_metadata: { deleted_at: null },
           },
           _count: true,
         }),
@@ -332,6 +343,7 @@ export class ClassificationRepository {
       where: {
         connected_google_account_id: accountId,
         status: options.status ?? { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+        gmail_message_metadata: { deleted_at: null },
         ...(options.category ? { category: options.category } : {}),
         ...(options.recommendedAction ? { recommended_action: options.recommendedAction } : {}),
         ...(options.requiresReview === undefined

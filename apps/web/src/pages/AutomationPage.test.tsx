@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   approve: vi.fn(),
   skip: vi.fn(),
+  sync: vi.fn(),
 }));
 
 vi.mock('@web/queries/automationQueries', () => ({
@@ -18,12 +19,35 @@ vi.mock('@web/queries/automationQueries', () => ({
     skip: { mutateAsync: mocks.skip, isPending: false },
   }),
 }));
+vi.mock('@web/queries/gmailQueries', () => ({
+  useGmailSyncStatusQuery: mocks.sync,
+}));
 
 import { AutomationPage } from './AutomationPage';
 
 describe('AutomationPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.sync.mockReturnValue({
+      isLoading: false,
+      data: {
+        status: 'READY',
+        initialSyncCompleted: true,
+        totalGmailMessages: 257,
+        syncedMessages: 257,
+        classifiedMessages: 7,
+        unprocessedMessages: 250,
+        syncRunning: false,
+        backfill: {
+          running: false,
+          completed: true,
+          messagesProcessed: 257,
+          totalMessages: 257,
+          pagesCompleted: 2,
+          checkpointedAt: '2026-07-26T00:00:00.000Z',
+        },
+      },
+    });
     mocks.status.mockReturnValue({
       isLoading: false,
       data: {
@@ -32,6 +56,7 @@ describe('AutomationPage', () => {
         enabled: true,
         running: false,
         nextRunAt: '2026-07-27T02:00:00.000Z',
+        retryAt: null,
         lastRun: {
           id: 'run-1',
           status: 'COMPLETED',
@@ -49,6 +74,9 @@ describe('AutomationPage', () => {
           estimatedCostMicrousd: 8000,
           stoppedReason: null,
           lastErrorCode: null,
+          lastProviderStatus: null,
+          lastProviderCode: null,
+          lastProviderRequestId: null,
           startedAt: '2026-07-26T02:00:00.000Z',
           completedAt: '2026-07-26T02:00:20.000Z',
         },
@@ -124,5 +152,33 @@ describe('AutomationPage', () => {
     render(<AutomationPage />);
     expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
     expect(screen.getByText('Gmail needs attention')).toBeInTheDocument();
+  });
+
+  it('shows an actionable but credential-safe quota error', () => {
+    mocks.status.mockReturnValue({
+      ...mocks.status(),
+      data: {
+        ...mocks.status().data,
+        lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+        lastRun: {
+          ...mocks.status().data.lastRun,
+          status: 'PARTIAL',
+          lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+          lastProviderStatus: 429,
+          lastProviderCode: 'insufficient_quota',
+          lastProviderRequestId: 'request-safe-id',
+        },
+      },
+    });
+    render(<AutomationPage />);
+    expect(
+      screen.getByText(
+        'OpenAI quota is unavailable. Add billing or raise the project usage limit, then retry.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Provider status: 429/i)).toBeInTheDocument();
+    expect(screen.getByText(/Safe code: insufficient_quota/i)).toBeInTheDocument();
+    expect(screen.getByText(/Request reference: request-safe-id/i)).toBeInTheDocument();
+    expect(screen.queryByText(/authorization|email body/i)).not.toBeInTheDocument();
   });
 });

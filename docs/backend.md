@@ -81,7 +81,6 @@ Session lifetime and rate-limit controls:
 
 ### Gmail synchronization
 
-- `GMAIL_INITIAL_SYNC_MAX_MESSAGES`
 - `GMAIL_SYNC_PAGE_SIZE`
 - `GMAIL_SYNC_BATCH_SIZE`
 - `GMAIL_SYNC_MAX_RETRIES`

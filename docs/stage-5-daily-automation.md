@@ -5,25 +5,26 @@ MailMind runs account-scoped Gmail organization once per UTC day and on demand f
 messages, creates or reuses a controlled `MailMind/<Category>` Gmail label, and applies that label
 to confident matches. Low-confidence results never change Gmail and enter the review queue.
 
-OpenAI is the primary classifier. A learned sender-domain pattern bypasses OpenAI only after at
-least two consistent successful outcomes at 90% confidence or above. A contradictory outcome
-deactivates the pattern.
+OpenAI is the primary classifier for every new or unprocessed message. A learned sender-domain
+pattern becomes context only after at least two consistent successful outcomes at 90% confidence
+or above; it never bypasses OpenAI. A contradictory applied outcome deactivates the pattern.
 
 ## Run lifecycle
 
-1. Acquire an expiring account lease and recover a stale `RUNNING` record as `PARTIAL`.
-2. Refresh Gmail from its history checkpoint, using the bounded initial sync when required.
+1. Acquire and renew an expiring account lease, recovering a stale `RUNNING` record as `PARTIAL`.
+2. Refresh Gmail from its history checkpoint, resuming the full paginated backfill when required.
 3. Retry durable failed Gmail actions before purchasing new classifications.
 4. Select messages without an automation action, excluding drafts, sent, trashed, and deleted
    records.
-5. Reuse qualified patterns, then send remaining metadata to OpenAI in bounded batches.
+5. Send every selected message to OpenAI in bounded batches, including qualified patterns as
+   untrusted historical hints.
 6. Validate strict structured output and persist one durable action per message.
 7. Hold uncertain actions for review; apply confident actions with Gmail `messages.modify`.
 8. Persist usage, cost, counters, completion state, and audit events before releasing the lease.
 
 The unique message action is the idempotency boundary. A failed Gmail write resumes from its stored
-classification without another OpenAI request. Scheduled runs also have an account/date
-idempotency key.
+classification without another OpenAI request. Scheduled runs use an account/date/attempt
+idempotency key so a completed daily attempt is not duplicated while a failed attempt can recover.
 
 ## Limits, privacy, and recovery
 
@@ -33,12 +34,19 @@ adapters retry transient failures with bounded exponential backoff. Per-message 
 attempt cap and `next_retry_at`.
 
 OpenAI requests use the Responses API, strict JSON Schema output, low reasoning effort, and
-`store: false`. Only synchronized subject, sender, bounded snippet, and state flags are sent.
+`store: false`. Only synchronized subject, sender, bounded snippet, state flags, and a qualified
+pattern hint are sent.
 OAuth tokens, API keys, full bodies, raw MIME, and attachments are never included.
 
-Operational logs contain safe error types/codes and opaque run/action/account IDs. Pino redaction
+Operational logs contain safe error types/codes, OpenAI request IDs, and opaque run/action/account
+IDs. A provider status, sanitized provider code, and request ID are checkpointed on the run;
+provider response text is never stored. Pino redaction
 covers authorization, cookies, OAuth material, provider tokens, database URLs, and encryption
 secrets. Audit metadata contains counters, never message content or credentials.
+
+`OPENAI_INSUFFICIENT_QUOTA` means the configured project needs billing or a higher usage limit.
+MailMind does not retry that condition inside the batch and schedules a later recovery attempt.
+Transient rate limits and upstream failures use bounded retries.
 
 ## Configuration
 

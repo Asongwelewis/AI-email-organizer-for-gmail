@@ -45,8 +45,22 @@ describe('Gmail synchronization HTTP routes', () => {
       lastSuccessfulSyncAt: '2026-07-23T00:00:00.000Z',
       lastErrorCode: null,
       nextRetryAt: null,
+      totalGmailMessages: 20,
+      syncedMessages: 12,
+      classifiedMessages: 7,
+      unprocessedMessages: 5,
       messageCount: 12,
       syncRunning: false,
+      backfill: {
+        running: false,
+        completed: true,
+        messagesProcessed: 20,
+        totalMessages: 20,
+        remainingMessages: 0,
+        pagesCompleted: 1,
+        checkpointedAt: '2026-07-23T00:00:00.000Z',
+        checkpointHistoryId: 'history-id',
+      },
     });
     mocks.initialSync.mockResolvedValue({ success: true, messagesUpserted: 12 });
   });
@@ -57,6 +71,12 @@ describe('Gmail synchronization HTTP routes', () => {
       .set('Cookie', 'mailmind_session=valid');
     expect(response.status).toBe(200);
     expect(response.body.messageCount).toBe(12);
+    expect(response.body).toMatchObject({
+      totalGmailMessages: 20,
+      syncedMessages: 12,
+      classifiedMessages: 7,
+      unprocessedMessages: 5,
+    });
     expect(JSON.stringify(response.body)).not.toMatch(/token|ciphertext|googleSubject/i);
   });
 

@@ -105,36 +105,36 @@ model gmail_labels {
 
 /// Metadata-only Gmail message projection. No bodies, attachments, or raw MIME are stored.
 model gmail_message_metadata {
-  id                            String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id   String                            @db.Uuid
+  id                            String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id   String                             @db.Uuid
   gmail_message_id              String
   gmail_thread_id               String?
   history_id                    String?
-  internal_date                 DateTime?                         @db.Timestamptz(6)
+  internal_date                 DateTime?                          @db.Timestamptz(6)
   subject                       String?
   sender_name                   String?
   sender_email                  String?
   recipient_summary             String?
   snippet                       String?
-  label_ids                     String[]                          @default([])
-  has_attachments               Boolean                           @default(false)
+  label_ids                     String[]                           @default([])
+  has_attachments               Boolean                            @default(false)
   size_estimate                 Int?
-  is_unread                     Boolean                           @default(false)
-  is_starred                    Boolean                           @default(false)
-  is_important                  Boolean                           @default(false)
-  is_draft                      Boolean                           @default(false)
-  is_sent                       Boolean                           @default(false)
-  is_trashed                    Boolean                           @default(false)
-  first_seen_at                 DateTime                          @default(now()) @db.Timestamptz(6)
-  last_synced_at                DateTime                          @default(now()) @db.Timestamptz(6)
-  deleted_at                    DateTime?                         @db.Timestamptz(6)
-  created_at                    DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at                    DateTime                          @default(now()) @db.Timestamptz(6)
-  connected_google_accounts     connected_google_accounts         @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  is_unread                     Boolean                            @default(false)
+  is_starred                    Boolean                            @default(false)
+  is_important                  Boolean                            @default(false)
+  is_draft                      Boolean                            @default(false)
+  is_sent                       Boolean                            @default(false)
+  is_trashed                    Boolean                            @default(false)
+  first_seen_at                 DateTime                           @default(now()) @db.Timestamptz(6)
+  last_synced_at                DateTime                           @default(now()) @db.Timestamptz(6)
+  deleted_at                    DateTime?                          @db.Timestamptz(6)
+  created_at                    DateTime                           @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime                           @default(now()) @db.Timestamptz(6)
+  connected_google_accounts     connected_google_accounts          @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
   classificationResults         classification_results[]
   userClassificationCorrections user_classification_corrections[]
-  dynamicLabelAssociations       dynamic_label_candidate_messages[]
-  automationAction               automation_message_actions?
+  dynamicLabelAssociations      dynamic_label_candidate_messages[]
+  automationAction              automation_message_actions?
 
   @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
   @@index([connected_google_account_id])
@@ -146,23 +146,32 @@ model gmail_message_metadata {
 
 /// Durable sync checkpoint and expiring cross-instance lease.
 model gmail_sync_states {
-  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id String                    @unique(map: "gmail_sync_states_account_unique_idx") @db.Uuid
-  status                      gmail_sync_status         @default(NOT_STARTED)
-  last_history_id             String?
-  initial_sync_completed_at   DateTime?                 @db.Timestamptz(6)
-  last_sync_started_at        DateTime?                 @db.Timestamptz(6)
-  last_sync_completed_at      DateTime?                 @db.Timestamptz(6)
-  last_successful_sync_at     DateTime?                 @db.Timestamptz(6)
-  next_retry_at               DateTime?                 @db.Timestamptz(6)
-  failure_count               Int                       @default(0)
-  last_error_code             String?
-  last_error_at               DateTime?                 @db.Timestamptz(6)
-  lease_token                 String?
-  lease_expires_at            DateTime?                 @db.Timestamptz(6)
-  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  id                            String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id   String                    @unique(map: "gmail_sync_states_account_unique_idx") @db.Uuid
+  status                        gmail_sync_status         @default(NOT_STARTED)
+  last_history_id               String?
+  initial_sync_completed_at     DateTime?                 @db.Timestamptz(6)
+  last_sync_started_at          DateTime?                 @db.Timestamptz(6)
+  last_sync_completed_at        DateTime?                 @db.Timestamptz(6)
+  last_successful_sync_at       DateTime?                 @db.Timestamptz(6)
+  next_retry_at                 DateTime?                 @db.Timestamptz(6)
+  failure_count                 Int                       @default(0)
+  last_error_code               String?
+  last_error_at                 DateTime?                 @db.Timestamptz(6)
+  lease_token                   String?
+  lease_expires_at              DateTime?                 @db.Timestamptz(6)
+  total_gmail_messages          Int?
+  backfill_page_token           String?
+  backfill_history_id           String?
+  backfill_messages_processed   Int                       @default(0)
+  backfill_pages_completed      Int                       @default(0)
+  backfill_started_at           DateTime?                 @db.Timestamptz(6)
+  backfill_checkpointed_at      DateTime?                 @db.Timestamptz(6)
+  backfill_listing_completed_at DateTime?                 @db.Timestamptz(6)
+  backfill_completed_at         DateTime?                 @db.Timestamptz(6)
+  created_at                    DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts     connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([lease_expires_at], map: "gmail_sync_states_lease_expiry_idx")
@@ -350,19 +359,19 @@ model dynamic_label_candidate_messages {
 
 /// Immutable record of an explicit user label-candidate decision.
 model label_decisions {
-  id                         String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  candidate_id               String                        @db.Uuid
-  user_id                    String                        @db.Uuid
-  decision                   label_candidate_decision
-  original_suggested_name    String
-  final_leaf_name            String?
-  final_full_path            String?
-  merged_into_candidate_id   String?                       @db.Uuid
-  decision_reason            String?
-  created_at                 DateTime                      @default(now()) @db.Timestamptz(6)
-  candidate                  dynamic_label_candidates      @relation("label_decision_candidate", fields: [candidate_id], references: [id], onDelete: Cascade)
-  user                       users                         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  merged_into_candidate      dynamic_label_candidates?     @relation("label_decision_merge_target", fields: [merged_into_candidate_id], references: [id], onDelete: Restrict)
+  id                       String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  candidate_id             String                    @db.Uuid
+  user_id                  String                    @db.Uuid
+  decision                 label_candidate_decision
+  original_suggested_name  String
+  final_leaf_name          String?
+  final_full_path          String?
+  merged_into_candidate_id String?                   @db.Uuid
+  decision_reason          String?
+  created_at               DateTime                  @default(now()) @db.Timestamptz(6)
+  candidate                dynamic_label_candidates  @relation("label_decision_candidate", fields: [candidate_id], references: [id], onDelete: Cascade)
+  user                     users                     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  merged_into_candidate    dynamic_label_candidates? @relation("label_decision_merge_target", fields: [merged_into_candidate_id], references: [id], onDelete: Restrict)
 
   @@index([candidate_id, created_at(sort: Desc)], map: "label_decisions_candidate_created_idx")
   @@index([user_id, created_at(sort: Desc)], map: "label_decisions_user_created_idx")
@@ -371,20 +380,20 @@ model label_decisions {
 
 /// Bounded operational history for label-discovery work.
 model label_discovery_runs {
-  id                            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id   String                     @db.Uuid
-  status                        label_discovery_run_status @default(RUNNING)
-  messages_analyzed             Int                        @default(0)
-  groups_discovered             Int                        @default(0)
-  candidates_created            Int                        @default(0)
-  candidates_reused             Int                        @default(0)
-  candidates_rejected_by_rules  Int                        @default(0)
-  provider_calls                Int                        @default(0)
-  started_at                    DateTime                   @default(now()) @db.Timestamptz(6)
-  completed_at                  DateTime?                  @db.Timestamptz(6)
-  last_error_code               String?
-  created_at                    DateTime                   @default(now()) @db.Timestamptz(6)
-  connected_google_accounts     connected_google_accounts  @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  id                           String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id  String                     @db.Uuid
+  status                       label_discovery_run_status @default(RUNNING)
+  messages_analyzed            Int                        @default(0)
+  groups_discovered            Int                        @default(0)
+  candidates_created           Int                        @default(0)
+  candidates_reused            Int                        @default(0)
+  candidates_rejected_by_rules Int                        @default(0)
+  provider_calls               Int                        @default(0)
+  started_at                   DateTime                   @default(now()) @db.Timestamptz(6)
+  completed_at                 DateTime?                  @db.Timestamptz(6)
+  last_error_code              String?
+  created_at                   DateTime                   @default(now()) @db.Timestamptz(6)
+  connected_google_accounts    connected_google_accounts  @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "label_discovery_runs_account_started_idx")
   @@index([status])
@@ -392,17 +401,17 @@ model label_discovery_runs {
 
 /// Expiring account-scoped discovery lease; it mirrors the Stage 4 lease convention.
 model label_discovery_states {
-  id                            String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id   String                    @unique(map: "label_discovery_states_account_unique_idx") @db.Uuid
-  lease_token                   String?
-  lease_expires_at              DateTime?                 @db.Timestamptz(6)
-  active_run_id                 String?                   @db.Uuid
-  last_run_started_at           DateTime?                 @db.Timestamptz(6)
-  last_run_completed_at         DateTime?                 @db.Timestamptz(6)
-  last_error_code               String?
-  created_at                    DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at                    DateTime                  @default(now()) @db.Timestamptz(6)
-  connected_google_accounts     connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @unique(map: "label_discovery_states_account_unique_idx") @db.Uuid
+  lease_token                 String?
+  lease_expires_at            DateTime?                 @db.Timestamptz(6)
+  active_run_id               String?                   @db.Uuid
+  last_run_started_at         DateTime?                 @db.Timestamptz(6)
+  last_run_completed_at       DateTime?                 @db.Timestamptz(6)
+  last_error_code             String?
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
 
   @@index([lease_expires_at], map: "label_discovery_states_lease_expiry_idx")
 }
@@ -477,8 +486,8 @@ model users {
   oauth_states                    oauth_states[]
   sessions                        sessions[]
   user_classification_corrections user_classification_corrections[]
-  label_decisions                  label_decisions[]
-  automation_message_actions       automation_message_actions[]
+  label_decisions                 label_decisions[]
+  automation_message_actions      automation_message_actions[]
 
   @@index([created_at(sort: Desc)])
   @@index([status])
@@ -680,30 +689,33 @@ model automation_states {
 
 /// One bounded, auditable attempt to classify and apply Gmail labels.
 model automation_runs {
-  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id String                    @db.Uuid
-  idempotency_key             String                    @unique(map: "automation_runs_idempotency_unique_idx")
+  id                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                       @db.Uuid
+  idempotency_key             String                       @unique(map: "automation_runs_idempotency_unique_idx")
   trigger                     automation_trigger
-  status                      automation_run_status      @default(RUNNING)
-  messages_seen               Int                       @default(0)
-  pattern_reused_count        Int                       @default(0)
-  openai_classified_count     Int                       @default(0)
-  review_required_count       Int                       @default(0)
-  labels_created_count        Int                       @default(0)
-  labels_reused_count         Int                       @default(0)
-  messages_labeled_count      Int                       @default(0)
-  failed_count                Int                       @default(0)
-  provider_call_count         Int                       @default(0)
-  input_tokens                Int                       @default(0)
-  cached_input_tokens         Int                       @default(0)
-  output_tokens               Int                       @default(0)
-  estimated_cost_microusd     Int                       @default(0)
+  status                      automation_run_status        @default(RUNNING)
+  messages_seen               Int                          @default(0)
+  pattern_reused_count        Int                          @default(0)
+  openai_classified_count     Int                          @default(0)
+  review_required_count       Int                          @default(0)
+  labels_created_count        Int                          @default(0)
+  labels_reused_count         Int                          @default(0)
+  messages_labeled_count      Int                          @default(0)
+  failed_count                Int                          @default(0)
+  provider_call_count         Int                          @default(0)
+  input_tokens                Int                          @default(0)
+  cached_input_tokens         Int                          @default(0)
+  output_tokens               Int                          @default(0)
+  estimated_cost_microusd     Int                          @default(0)
   stopped_reason              String?
   last_error_code             String?
-  started_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  completed_at                DateTime?                 @db.Timestamptz(6)
-  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  last_provider_status        Int?
+  last_provider_code          String?
+  last_provider_request_id    String?
+  started_at                  DateTime                     @default(now()) @db.Timestamptz(6)
+  completed_at                DateTime?                    @db.Timestamptz(6)
+  created_at                  DateTime                     @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts    @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
   actions                     automation_message_actions[]
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "automation_runs_account_started_idx")
@@ -735,8 +747,8 @@ model automation_message_actions {
   updated_at                  DateTime                         @default(now()) @db.Timestamptz(6)
   run                         automation_runs                  @relation(fields: [automation_run_id], references: [id], onDelete: Cascade)
   connected_google_accounts   connected_google_accounts        @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
-  message                     gmail_message_metadata            @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
-  user                        users                             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  message                     gmail_message_metadata           @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
+  user                        users                            @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([automation_run_id, status], map: "automation_actions_run_status_idx")
   @@index([connected_google_account_id, status, created_at(sort: Desc)], map: "automation_actions_review_idx")
@@ -746,19 +758,19 @@ model automation_message_actions {
 
 /// Learned sender-domain outcome used only after enough successful examples.
 model learned_classification_patterns {
-  id                          String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id String                           @db.Uuid
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
   sender_domain               String
   category                    classification_category
   label_path                  String
   confidence                  Float
-  sample_count                Int                              @default(1)
-  successful_apply_count      Int                              @default(0)
-  active                      Boolean                          @default(true)
-  last_used_at                DateTime?                        @db.Timestamptz(6)
-  created_at                  DateTime                         @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime                         @default(now()) @db.Timestamptz(6)
-  connected_google_accounts   connected_google_accounts        @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  sample_count                Int                       @default(1)
+  successful_apply_count      Int                       @default(0)
+  active                      Boolean                   @default(true)
+  last_used_at                DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
 
   @@unique([connected_google_account_id, sender_domain], map: "learned_patterns_account_sender_unique_idx")
   @@index([connected_google_account_id, active, confidence], map: "learned_patterns_reuse_idx")

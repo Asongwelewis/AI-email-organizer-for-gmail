@@ -60,4 +60,27 @@ describe('AutomationGmailService', () => {
     ).resolves.toEqual({ id: 'existing-label', created: false });
     expect(mocks.createGmailClient).not.toHaveBeenCalled();
   });
+
+  it('discovers and reuses an existing remote Gmail label before creating one', async () => {
+    const gmail = {
+      users: {
+        labels: {
+          list: vi.fn().mockResolvedValue({
+            data: { labels: [{ id: 'remote-label', name: 'MailMind/Finance', type: 'user' }] },
+          }),
+          create: vi.fn(),
+        },
+      },
+    };
+    mocks.findLabel.mockResolvedValue(null);
+    mocks.createGmailClient.mockResolvedValue(gmail);
+    mocks.upsertLabels.mockResolvedValue(undefined);
+
+    await expect(
+      new AutomationGmailService().ensureLabel('account-1', 'MailMind/Finance'),
+    ).resolves.toEqual({ id: 'remote-label', created: false });
+
+    expect(gmail.users.labels.create).not.toHaveBeenCalled();
+    expect(mocks.upsertLabels).toHaveBeenCalledTimes(1);
+  });
 });

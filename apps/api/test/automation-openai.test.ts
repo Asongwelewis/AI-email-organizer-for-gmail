@@ -5,6 +5,7 @@ import { OpenAiAutomationProvider } from '../src/features/automation/openai-auto
 
 describe('OpenAiAutomationProvider', () => {
   const originalKey = env.OPENAI_API_KEY;
+  const originalRetries = env.OPENAI_MAX_RETRIES;
 
   beforeEach(() => {
     env.OPENAI_API_KEY = 'test-openai-key';
@@ -12,6 +13,7 @@ describe('OpenAiAutomationProvider', () => {
 
   afterEach(() => {
     env.OPENAI_API_KEY = originalKey;
+    env.OPENAI_MAX_RETRIES = originalRetries;
     vi.unstubAllGlobals();
   });
 
@@ -121,5 +123,95 @@ describe('OpenAiAutomationProvider', () => {
         },
       ]),
     ).rejects.toMatchObject({ code: 'OPENAI_INVALID_RESPONSE' });
+  });
+
+  it('reports insufficient quota safely and does not retry a non-recoverable 429', async () => {
+    env.OPENAI_MAX_RETRIES = 2;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { type: 'insufficient_quota', code: 'insufficient_quota' },
+        }),
+        { status: 429, headers: { 'x-request-id': 'request-safe-id' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new OpenAiAutomationProvider().classify([
+        {
+          key: 'm1',
+          subject: '',
+          sender: '',
+          senderDomain: 'example.com',
+          snippet: '',
+          isUnread: false,
+          isImportant: false,
+          hasAttachments: false,
+        },
+      ]),
+    ).rejects.toMatchObject({
+      code: 'OPENAI_INSUFFICIENT_QUOTA',
+      providerStatus: 429,
+      providerCode: 'insufficient_quota',
+      requestId: 'request-safe-id',
+      retryable: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries transient rate limits and recovers without duplicating classifications', async () => {
+    env.OPENAI_MAX_RETRIES = 1;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { type: 'rate_limit_error' } }), {
+          status: 429,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: [
+              {
+                content: [
+                  {
+                    type: 'output_text',
+                    text: JSON.stringify({
+                      results: [
+                        {
+                          key: 'm1',
+                          category: 'WORK',
+                          confidence: 0.91,
+                          explanation: 'Work metadata.',
+                          reasonCodes: ['WORK_SIGNAL'],
+                        },
+                      ],
+                    }),
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new OpenAiAutomationProvider().classify([
+      {
+        key: 'm1',
+        subject: 'Project',
+        sender: 'person@example.com',
+        senderDomain: 'example.com',
+        snippet: 'Update',
+        isUnread: true,
+        isImportant: false,
+        hasAttachments: false,
+      },
+    ]);
+
+    expect(result.classifications).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

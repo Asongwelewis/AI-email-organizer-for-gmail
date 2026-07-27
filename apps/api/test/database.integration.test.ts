@@ -344,6 +344,69 @@ databaseTests('PostgreSQL authentication repositories', () => {
     expect(await prisma.gmail_message_metadata.count()).toBe(0);
   });
 
+  it('upserts repeated Gmail message ids idempotently within an account', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'idempotent-sync@example.com',
+        normalized_email: 'idempotent-sync@example.com',
+        email_verified: true,
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'idempotent-sync-google-subject',
+        email: 'idempotent-sync@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    const { GmailRepository } = await import('../src/integrations/gmail/gmail.repository.js');
+    const repository = new GmailRepository();
+    const record = {
+      gmail_message_id: 'stable-gmail-id',
+      gmail_thread_id: 'thread-id',
+      history_id: '100',
+      internal_date: new Date('2026-07-26T00:00:00.000Z'),
+      subject: 'Original subject',
+      sender_name: 'Sender',
+      sender_email: 'sender@example.com',
+      recipient_summary: 'owner@example.com',
+      snippet: 'Metadata only',
+      label_ids: ['INBOX'],
+      has_attachments: false,
+      size_estimate: 100,
+      is_unread: true,
+      is_starred: false,
+      is_important: false,
+      is_draft: false,
+      is_sent: false,
+      is_trashed: false,
+    };
+
+    await repository.upsertMessages(account.id, [record]);
+    await repository.upsertMessages(account.id, [
+      { ...record, history_id: '101', subject: 'Updated subject' },
+    ]);
+
+    expect(
+      await prisma.gmail_message_metadata.count({
+        where: { connected_google_account_id: account.id, gmail_message_id: 'stable-gmail-id' },
+      }),
+    ).toBe(1);
+    await expect(
+      prisma.gmail_message_metadata.findUniqueOrThrow({
+        where: {
+          connected_google_account_id_gmail_message_id: {
+            connected_google_account_id: account.id,
+            gmail_message_id: 'stable-gmail-id',
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ history_id: '101', subject: 'Updated subject' });
+  });
+
   it('persists classification results and immutable correction history', async () => {
     const user = await prisma.users.create({
       data: {
@@ -660,6 +723,9 @@ databaseTests('PostgreSQL authentication repositories', () => {
         input_tokens: 100,
         output_tokens: 20,
         estimated_cost_microusd: 1100,
+        last_provider_status: 429,
+        last_provider_code: 'insufficient_quota',
+        last_provider_request_id: 'request-safe-id',
       },
     });
     const actionData = {
@@ -680,6 +746,9 @@ databaseTests('PostgreSQL authentication repositories', () => {
       input_tokens: 100,
       output_tokens: 20,
       estimated_cost_microusd: 1100,
+      last_provider_status: 429,
+      last_provider_code: 'insufficient_quota',
+      last_provider_request_id: 'request-safe-id',
     });
   });
 });

@@ -13,5 +13,5 @@
   },
   "include": ["src/**/*.ts", "prisma/**/*.prisma"],
   "exclude": ["dist", "node_modules"],
-  "references": [{ "path": "../../packages/shared" }]
+  "references": [{ "path": "../../packages/shared/tsconfig.json" }]
 }

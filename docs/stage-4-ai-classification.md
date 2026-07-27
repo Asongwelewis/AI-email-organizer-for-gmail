@@ -127,7 +127,7 @@ or `disabled` and never make real provider requests.
 ## Manual release gates and limitations
 
 The Stage 3 real-Gmail flow is still **not performed**. Before release, use a dedicated Google test
-account with `GMAIL_INITIAL_SYNC_MAX_MESSAGES=20` and verify login, session, Gmail connect, profile,
+account with a small `GMAIL_SYNC_PAGE_SIZE` and verify login, session, Gmail connect, profile,
 managed labels, initial sync, incremental sync, and disconnect. Do not use a primary Gmail account
 without explicit authorization.
 

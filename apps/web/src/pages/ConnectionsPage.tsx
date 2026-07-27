@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 import { ConfirmDialog } from '@web/components/ConfirmDialog';
 import { MagneticButton } from '@web/components/MagneticButton';
+import { CoveragePanel, WorkflowRail } from '@web/components/ProductWorkflow';
 import { RouteLoader } from '@web/components/RouteLoader';
 import { useAuth } from '@web/context/useAuth';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
@@ -47,6 +48,8 @@ export function ConnectionsPage() {
           changing who you are.
         </p>
       </header>
+
+      <WorkflowRail current="sync" />
 
       <section className="connection-stage" aria-live="polite" data-tutorial="connection-stage">
         {gmailConnection.status === 'CONNECTED' && gmailConnection.connected ? (
@@ -117,11 +120,10 @@ function DisconnectedState({ onConnect, busy }: { onConnect: () => void; busy: b
       </span>
       <div>
         <span className="eyebrow">Gmail is not connected</span>
-        <h2>Keep it separate until you’re ready.</h2>
+        <h2>Connect Gmail to start the workflow.</h2>
         <p>
-          Future MailMind tools will use Gmail permission to read messages required for
-          organization, create or modify labels, and apply labels. Those tools are not operating
-          yet.
+          MailMind needs Gmail permission to synchronize message metadata, classify it, and apply
+          labels you approve. Connecting Gmail does not start automation by itself.
         </p>
         <MagneticButton onClick={onConnect} disabled={busy}>
           {busy ? 'Opening Google…' : 'Connect Gmail'} <ArrowRight />
@@ -178,7 +180,10 @@ function ConnectedState({
       </p>
       <div className="permission-summary">
         <strong>Permission summary</strong>
-        <span>MailMind can modify Gmail labels when future organization tools are enabled.</span>
+        <span>
+          MailMind can synchronize message metadata and modify Gmail labels when you run or approve
+          an automation action.
+        </span>
       </div>
       <details>
         <summary>
@@ -198,15 +203,23 @@ function ConnectedState({
           ) : syncStatus.isError ? (
             <span>Sync status is temporarily unavailable.</span>
           ) : (
-            <span>
-              {syncStatus.data?.messageCount ?? 0} message records
-              {syncStatus.data?.lastSuccessfulSyncAt
-                ? ` · Last synced ${new Intl.DateTimeFormat(undefined, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  }).format(new Date(syncStatus.data.lastSuccessfulSyncAt))}`
-                : ' · Not synced yet'}
-            </span>
+            <>
+              <span>
+                {syncStatus.data?.messageCount ?? 0} message records
+                {syncStatus.data?.lastSuccessfulSyncAt
+                  ? ` · Last synced ${new Intl.DateTimeFormat(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    }).format(new Date(syncStatus.data.lastSuccessfulSyncAt))}`
+                  : ' · Not synced yet'}
+              </span>
+              {syncStatus.data?.backfill.checkpointedAt && !syncStatus.data.backfill.completed && (
+                <span>
+                  A resumable checkpoint was saved after {syncStatus.data.backfill.pagesCompleted}{' '}
+                  pages.
+                </span>
+              )}
+            </>
           )}
           {syncStatus.data?.status === 'HISTORY_EXPIRED' && (
             <span>The Gmail history window expired. Run a fresh initial sync.</span>
@@ -238,7 +251,9 @@ function ConnectedState({
             onClick={() =>
               void run(
                 syncStatus.data?.initialSyncCompleted
-                  ? actions.incremental.mutateAsync
+                  ? syncStatus.data.status === 'HISTORY_EXPIRED'
+                    ? actions.initial.mutateAsync
+                    : actions.incremental.mutateAsync
                   : actions.initial.mutateAsync,
                 'Gmail synchronization completed.',
                 'Gmail could not be synchronized.',
@@ -248,11 +263,14 @@ function ConnectedState({
             {busy
               ? 'Syncing…'
               : syncStatus.data?.initialSyncCompleted
-                ? 'Sync now'
+                ? syncStatus.data.status === 'HISTORY_EXPIRED'
+                  ? 'Restart full backfill'
+                  : 'Sync now'
                 : 'Start initial sync'}
           </button>
         </div>
       </div>
+      <CoveragePanel sync={syncStatus.data} loading={syncStatus.isLoading} />
       <MagneticButton variant="danger" onClick={onDisconnect}>
         Disconnect Gmail
       </MagneticButton>

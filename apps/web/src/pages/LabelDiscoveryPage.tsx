@@ -3,12 +3,19 @@ import { AlertTriangle, Layers3, Play, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { RouteLoader } from '@web/components/RouteLoader';
+import {
+  CoveragePanel,
+  InfoTooltip,
+  MetricCard,
+  WorkflowRail,
+} from '@web/components/ProductWorkflow';
 import { useAuth } from '@web/context/useAuth';
 import {
   useLabelCandidates,
   useLabelDiscoveryActions,
   useLabelDiscoveryStatus,
 } from '@web/queries/labelDiscoveryQueries';
+import { useGmailSyncStatusQuery } from '@web/queries/gmailQueries';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
 import type { LabelCandidate } from '@web/types/labelDiscovery';
 
@@ -24,6 +31,7 @@ export function LabelDiscoveryPage() {
   const connected = gmailConnection?.connected === true;
   const status = useLabelDiscoveryStatus(connected);
   const candidates = useLabelCandidates(connected);
+  const sync = useGmailSyncStatusQuery(connected);
   const actions = useLabelDiscoveryActions();
 
   if (!gmailConnection || (connected && status.isLoading)) {
@@ -67,10 +75,14 @@ export function LabelDiscoveryPage() {
         </div>
       </header>
 
+      <WorkflowRail current="labels" sync={sync.data} />
+
       {!connected ? (
         <Empty
           title="Connect and synchronize Gmail first."
           detail="Discovery only analyzes metadata already stored by MailMind."
+          action="Open Connections"
+          href="/settings/connections"
         />
       ) : status.isError ? (
         <Empty
@@ -79,10 +91,54 @@ export function LabelDiscoveryPage() {
         />
       ) : (
         <>
+          <CoveragePanel sync={sync.data} loading={sync.isLoading} compact />
+
+          <section className="discovery-explainer" aria-labelledby="discover-labels-explainer">
+            <div>
+              <span className="eyebrow">What the button does</span>
+              <h2 id="discover-labels-explainer">Discover Labels finds evidence, not shortcuts.</h2>
+            </div>
+            <ol>
+              <li>
+                <strong>Analyze</strong>
+                <span>
+                  Uses synchronized metadata and current classifications. Better classification
+                  coverage produces better evidence.
+                </span>
+              </li>
+              <li>
+                <strong>Group</strong>
+                <span>
+                  Finds recurring sources, organizations, topics, subscriptions, projects, and
+                  workflows using the existing safety thresholds.
+                </span>
+              </li>
+              <li>
+                <strong>Suggest</strong>
+                <span>
+                  Creates a reviewable suggestion only. Approval records intent; automation later
+                  creates or reuses the Gmail label and applies it.
+                </span>
+              </li>
+            </ol>
+          </section>
+
           <section className="label-discovery-overview">
-            <Stat title="Pending" value={status.data?.pendingCount ?? 0} />
-            <Stat title="Approved" value={status.data?.approvedCount ?? 0} />
-            <Stat title="Messages analyzed" value={status.data?.latestRun?.messagesAnalyzed ?? 0} />
+            <MetricCard
+              label="Pending"
+              value={status.data?.pendingCount ?? 0}
+              tooltip="Suggestions waiting for approval, rejection, deferral, or merge."
+            />
+            <MetricCard
+              label="Approved"
+              value={status.data?.approvedCount ?? 0}
+              tooltip="Suggestions you approved. Approval alone does not create or apply a Gmail label."
+            />
+            <MetricCard
+              label="Messages analyzed"
+              value={status.data?.latestRun?.messagesAnalyzed ?? 0}
+              tooltip="Eligible synchronized messages inspected by the latest discovery run."
+            />
             <div className="label-discovery-run">
               <span className="eyebrow">
                 {status.data?.enabled ? 'Metadata discovery ready' : 'Disabled by configuration'}
@@ -99,6 +155,22 @@ export function LabelDiscoveryPage() {
             </div>
           </section>
 
+          {(sync.data?.unprocessedMessages ?? 0) > 0 && (
+            <aside className="coverage-guidance" role="status">
+              <AlertTriangle aria-hidden="true" />
+              <div>
+                <strong>Classification coverage is the next constraint.</strong>
+                <p>
+                  {sync.data?.classifiedMessages ?? 0} of {sync.data?.syncedMessages ?? 0} synced
+                  messages are classified, leaving {sync.data?.unprocessedMessages ?? 0}{' '}
+                  unprocessed. Run classification before judging discovery quality; the discovery
+                  thresholds have not been lowered.
+                </p>
+                <a href="/dashboard/classification">Classify remaining messages</a>
+              </div>
+            </aside>
+          )}
+
           <section className="label-candidate-section">
             <div className="review-section__heading">
               <div>
@@ -112,7 +184,21 @@ export function LabelDiscoveryPage() {
             ) : list.length === 0 ? (
               <Empty
                 title="No label suggestions yet."
-                detail="Run discovery after synchronizing enough messages. Classification can improve suggestions, but it is not required."
+                detail={
+                  (sync.data?.unprocessedMessages ?? 0) > 0
+                    ? `Classify the remaining ${sync.data?.unprocessedMessages ?? 0} synchronized messages before judging discovery results.`
+                    : 'Classification coverage is ready. Run Discover Labels to analyze recurring patterns at the existing thresholds.'
+                }
+                action={
+                  (sync.data?.unprocessedMessages ?? 0) > 0
+                    ? 'Run classification'
+                    : 'Review discovery explanation'
+                }
+                href={
+                  (sync.data?.unprocessedMessages ?? 0) > 0
+                    ? '/dashboard/classification'
+                    : '#discover-labels-explainer'
+                }
               />
             ) : (
               <div className="label-candidate-grid">
@@ -225,6 +311,10 @@ function CandidateCard({
       <div className="confidence-row">
         <Layers3 aria-hidden="true" />
         <span>{titleCase(candidate.confidenceLevel)} confidence</span>
+        <InfoTooltip label={`confidence for ${candidate.id}`}>
+          Confidence combines message volume, consistency, recency, category agreement, and source
+          agreement at the existing discovery thresholds.
+        </InfoTooltip>
         <strong>{Math.round(candidate.confidence * 100)}%</strong>
       </div>
       <div
@@ -238,13 +328,23 @@ function CandidateCard({
       </div>
       <dl className="candidate-facts">
         <div>
-          <dt>Based on</dt>
+          <dt>
+            Based on
+            <InfoTooltip label={`evidence for ${candidate.id}`}>
+              Separate synchronized message and thread counts supporting this suggestion.
+            </InfoTooltip>
+          </dt>
           <dd>
             {candidate.messageCount} messages · {candidate.threadCount} threads
           </dd>
         </div>
         <div>
-          <dt>Dominant category</dt>
+          <dt>
+            Dominant category
+            <InfoTooltip label={`dominant category for ${candidate.id}`}>
+              The most common current classification among messages supporting this suggestion.
+            </InfoTooltip>
+          </dt>
           <dd>{candidate.dominantCategory ? titleCase(candidate.dominantCategory) : 'Mixed'}</dd>
         </div>
       </dl>
@@ -329,21 +429,27 @@ function CandidateCard({
   );
 }
 
-function Stat({ title, value }: { title: string; value: number }) {
-  return (
-    <article className="classification-stat">
-      <span>{title}</span>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
-function Empty({ title, detail }: { title: string; detail: string }) {
+function Empty({
+  title,
+  detail,
+  action,
+  href,
+}: {
+  title: string;
+  detail: string;
+  action?: string;
+  href?: string;
+}) {
   return (
     <section className="classification-empty">
       <AlertTriangle aria-hidden="true" />
       <h2>{title}</h2>
       <p>{detail}</p>
+      {action && href && (
+        <a className="next-action" href={href}>
+          {action}
+        </a>
+      )}
     </section>
   );
 }

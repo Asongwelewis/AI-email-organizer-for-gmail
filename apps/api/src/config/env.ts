@@ -42,7 +42,6 @@ const environmentSchema = z
     OAUTH_STATE_TTL_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
-    GMAIL_INITIAL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(1).max(5000).default(250),
     GMAIL_SYNC_PAGE_SIZE: z.coerce.number().int().min(1).max(500).default(100),
     GMAIL_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(10),
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),

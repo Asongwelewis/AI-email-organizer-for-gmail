@@ -51,7 +51,7 @@ const requiredIndexes = [
   'classification_corrections_user_created_idx',
   'classification_results_account_category_idx',
   'classification_results_account_classified_idx',
-  'classification_results_active_version_hash_unique_idx',
+  'classification_results_active_message_unique_idx',
   'classification_results_gmail_message_id_idx',
   'classification_results_review_queue_idx',
   'classification_runs_account_started_idx',
@@ -206,7 +206,7 @@ try {
         'classification_corrections_user_created_idx',
         'classification_results_account_category_idx',
         'classification_results_account_classified_idx',
-        'classification_results_active_version_hash_unique_idx',
+        'classification_results_active_message_unique_idx',
         'classification_results_gmail_message_id_idx',
         'classification_results_review_queue_idx',
         'classification_runs_account_started_idx',
@@ -370,10 +370,7 @@ try {
   assert(summary?.enum_count === 20n, 'all twenty enum types must exist');
   assert(summary.foreign_key_count === 35n, 'all thirty-five foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(
-    summary.migration_count === 7n,
-    'exactly seven intended Prisma migrations must be applied',
-  );
+  assert(summary.migration_count === 9n, 'exactly nine intended Prisma migrations must be applied');
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

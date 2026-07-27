@@ -12,6 +12,7 @@
     "dev:api": "npm run dev --workspace @mailmind/api",
     "build": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
     "test": "npm test --workspace @mailmind/api && npm test --workspace @mailmind/web",
+    "test:e2e": "node e2e/run-e2e.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
+    "@playwright/test": "^1.62.0",
     "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.8",

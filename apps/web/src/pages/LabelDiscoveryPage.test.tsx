@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   reject: vi.fn(),
   defer: vi.fn(),
   merge: vi.fn(),
+  sync: vi.fn(),
 }));
 
 vi.mock('@web/context/useAuth', () => ({ useAuth: mocks.useAuth }));
@@ -23,6 +24,9 @@ vi.mock('@web/queries/labelDiscoveryQueries', () => ({
     defer: { mutateAsync: mocks.defer, isPending: false },
     merge: { mutateAsync: mocks.merge, isPending: false },
   }),
+}));
+vi.mock('@web/queries/gmailQueries', () => ({
+  useGmailSyncStatusQuery: mocks.sync,
 }));
 
 import { LabelDiscoveryPage } from './LabelDiscoveryPage';
@@ -55,6 +59,26 @@ describe('LabelDiscoveryPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.useAuth.mockReturnValue({ gmailConnection: { connected: true } });
+    mocks.sync.mockReturnValue({
+      isLoading: false,
+      data: {
+        status: 'READY',
+        initialSyncCompleted: true,
+        totalGmailMessages: 257,
+        syncedMessages: 257,
+        classifiedMessages: 7,
+        unprocessedMessages: 250,
+        syncRunning: false,
+        backfill: {
+          running: false,
+          completed: true,
+          messagesProcessed: 257,
+          totalMessages: 257,
+          pagesCompleted: 2,
+          checkpointedAt: '2026-07-26T00:00:00.000Z',
+        },
+      },
+    });
     mocks.status.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -98,7 +122,7 @@ describe('LabelDiscoveryPage', () => {
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith({ id: 'candidate-1' }));
   });
 
-  it('explains that classification is optional when there are no suggestions yet', () => {
+  it('directs low-coverage mail to classification without changing discovery thresholds', () => {
     mocks.candidates.mockReturnValue({
       isLoading: false,
       data: { pages: [{ candidates: [], nextCursor: null }] },
@@ -110,7 +134,15 @@ describe('LabelDiscoveryPage', () => {
     render(<LabelDiscoveryPage />);
 
     expect(screen.getByRole('button', { name: 'Discover labels' })).toBeEnabled();
-    expect(screen.getByText(/Classification can improve suggestions, but it is not required/i));
+    expect(
+      screen.getByText(/7 of 257 synced messages are classified, leaving 250 unprocessed/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/thresholds have not been lowered/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Run classification' })).toHaveAttribute(
+      'href',
+      '/dashboard/classification',
+    );
+    expect(screen.getByText(/Discover Labels finds evidence, not shortcuts/i)).toBeInTheDocument();
   });
 
   it('supports rename, rejection, and defer controls', async () => {
