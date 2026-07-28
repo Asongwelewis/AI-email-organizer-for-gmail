@@ -20,9 +20,19 @@ const optionalSecret = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalUrl = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().url().optional(),
+);
+
 const environmentSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    APP_VERSION: z.string().min(1).default('mailmind@0.1.0'),
+    SENTRY_DSN: optionalUrl,
+    SENTRY_ENVIRONMENT: optionalSecret,
+    SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
+    SENTRY_DEBUG: booleanValue.default(false),
     PORT: z.coerce.number().int().positive().default(4000),
     WEB_APP_URL: z.string().url(),
     API_BASE_URL: z.string().url(),
@@ -176,6 +186,7 @@ const testDefaults = isTest
 const candidate = {
   ...testDefaults,
   ...process.env,
+  APP_VERSION: process.env['APP_VERSION'] ?? process.env['SENTRY_RELEASE'] ?? 'mailmind@0.1.0',
   WEB_APP_URL: process.env['WEB_APP_URL'] ?? process.env['WEB_URL'] ?? testDefaults.WEB_APP_URL,
 };
 

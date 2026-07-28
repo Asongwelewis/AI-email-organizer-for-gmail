@@ -15,6 +15,7 @@ import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
 import { LabelDiscoveryPage } from '@web/pages/LabelDiscoveryPage';
 import { AutomationPage } from '@web/pages/AutomationPage';
+import { isSentryEnabled } from '@web/instrument';
 
 const routes: RouteObject[] = [
   {
@@ -46,7 +47,9 @@ const routes: RouteObject[] = [
   { path: '*', element: <Navigate to="/" replace /> },
 ];
 
-const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(createBrowserRouter);
+const sentryCreateBrowserRouter = isSentryEnabled
+  ? Sentry.wrapCreateBrowserRouterV7(createBrowserRouter)
+  : createBrowserRouter;
 
 export const router = sentryCreateBrowserRouter([
   {

@@ -26,6 +26,9 @@ jobs:
       DYNAMIC_LABEL_DISCOVERY_ENABLED: 'true'
       DYNAMIC_LABEL_AI_NAMING_ENABLED: 'false'
       VITE_API_BASE_URL: https://api.mailmindai.tech
+      APP_VERSION: mailmind@${{ github.sha }}
+      VITE_APP_VERSION: mailmind@${{ github.sha }}
+      SENTRY_RELEASE: mailmind@${{ github.sha }}
 
     services:
       postgres:

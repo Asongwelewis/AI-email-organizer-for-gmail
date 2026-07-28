@@ -25,21 +25,22 @@ The frontend output is a static single-page application. Configure its host to s
 
 ### Backend: required deployment values
 
-| Name                           | Deployment value or purpose                                                      |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| `NODE_ENV`                     | Set to `production`.                                                             |
-| `PORT`                         | HTTP port supplied by the backend host; defaults to `4000`.                      |
-| `WEB_APP_URL`                  | Primary public frontend origin used for OAuth redirects.                         |
-| `API_BASE_URL`                 | Public backend origin, with no `/api` suffix, such as `https://api.example.com`. |
-| `DATABASE_URL`                 | PostgreSQL connection string used by Prisma at runtime and for migrations.       |
-| `GOOGLE_CLIENT_ID`             | Google OAuth client ID.                                                          |
-| `GOOGLE_CLIENT_SECRET`         | Google OAuth client secret.                                                      |
-| `GOOGLE_LOGIN_REDIRECT_URI`    | Absolute URL ending in `/api/auth/google/callback`.                              |
-| `GOOGLE_GMAIL_REDIRECT_URI`    | Absolute URL ending in `/api/integrations/google/callback`.                      |
-| `SESSION_SECRET`               | Private session secret of at least 16 characters.                                |
-| `TOKEN_ENCRYPTION_KEY`         | Private Base64 value that decodes to exactly 32 bytes.                           |
-| `TOKEN_ENCRYPTION_KEY_VERSION` | Positive integer identifying the active encryption key, such as `1`.             |
-| `COOKIE_SECURE`                | Set to `true` in production. Production cookies are always secure.               |
+| Name                           | Deployment value or purpose                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                     | Set to `production`.                                                                          |
+| `PORT`                         | HTTP port supplied by the backend host; defaults to `4000`.                                   |
+| `WEB_APP_URL`                  | Primary public frontend origin used for OAuth redirects.                                      |
+| `API_BASE_URL`                 | Public backend origin, with no `/api` suffix, such as `https://api.example.com`.              |
+| `DATABASE_URL`                 | PostgreSQL connection string used by Prisma at runtime and for migrations.                    |
+| `GOOGLE_CLIENT_ID`             | Google OAuth client ID.                                                                       |
+| `GOOGLE_CLIENT_SECRET`         | Google OAuth client secret.                                                                   |
+| `GOOGLE_LOGIN_REDIRECT_URI`    | Absolute URL ending in `/api/auth/google/callback`.                                           |
+| `GOOGLE_GMAIL_REDIRECT_URI`    | Absolute URL ending in `/api/integrations/google/callback`.                                   |
+| `SESSION_SECRET`               | Private session secret of at least 16 characters.                                             |
+| `TOKEN_ENCRYPTION_KEY`         | Private Base64 value that decodes to exactly 32 bytes.                                        |
+| `TOKEN_ENCRYPTION_KEY_VERSION` | Positive integer identifying the active encryption key, such as `1`.                          |
+| `COOKIE_SECURE`                | Set to `true` in production. Production cookies are always secure.                            |
+| `SENTRY_DSN`                   | Public DSN for backend errors and traces. Leave empty only outside guarded production builds. |
 
 ### Backend: optional or defaulted values
 
@@ -90,6 +91,10 @@ credentials.
 | `DYNAMIC_LABEL_AI_NAMING_ENABLED`        | `false`                                                                                    |
 | `LOG_LEVEL`                              | `info`                                                                                     |
 | `TRUST_PROXY_HOPS`                       | `0`; set to the backend host's trusted reverse-proxy hop count when applicable.            |
+| `APP_VERSION`                            | Shared immutable release. Render derives `mailmind@<RENDER_GIT_COMMIT>` when omitted.      |
+| `SENTRY_ENVIRONMENT`                     | Defaults to `NODE_ENV`. Use `production` on Render.                                        |
+| `SENTRY_TRACES_SAMPLE_RATE`              | `1` outside production and `0.1` in production when omitted by the preloader.              |
+| `SENTRY_DEBUG`                           | `false`; enable only while diagnosing SDK transport.                                       |
 
 ### Frontend
 
@@ -97,7 +102,7 @@ credentials.
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_API_BASE_URL` | Public backend origin, such as `https://api.mailmindai.tech`. The frontend appends `/api`; this value is embedded at frontend build time. |
 | `VITE_SENTRY_DSN`   | Public DSN for the Sentry React project. Leave empty to disable the SDK.                                                                  |
-| `VITE_APP_VERSION`  | Immutable release identifier shared by the browser SDK and source-map upload, such as `mailmind-web@<commit-sha>`.                        |
+| `VITE_APP_VERSION`  | Immutable release identifier shared by both SDKs and source-map uploads, such as `mailmind@<commit-sha>`.                                 |
 | `SENTRY_ORG`        | Sentry organization slug used only by the Vite source-map upload plugin.                                                                  |
 | `SENTRY_PROJECT`    | Sentry project slug used only by the Vite source-map upload plugin.                                                                       |
 | `SENTRY_AUTH_TOKEN` | Secret build token used to upload source maps. Never expose it with a `VITE_` prefix.                                                     |
@@ -105,6 +110,12 @@ credentials.
 Set all three `SENTRY_*` build values together. When they are present, the production build creates
 hidden source maps, uploads them to the matching Sentry release, and removes the map files from
 `apps/web/dist` before deployment.
+
+The Vercel and Render production commands set `SENTRY_REQUIRE_CONFIG=true`, so a missing DSN or
+partial upload configuration fails before deployment. Both builds derive `mailmind@<commit-sha>`
+from their host-provided Git commit value. The API build also uploads TypeScript source maps and
+removes them from its deploy artifact. See [Sentry operations](sentry.md) for exact dashboard values,
+commands, privacy controls, and verification.
 
 ## Callback paths
 

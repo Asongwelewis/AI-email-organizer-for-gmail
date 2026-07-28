@@ -1,8 +1,7 @@
-import './instrument';
+import { createReactErrorHandler } from './instrument';
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import * as Sentry from '@sentry/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from './App';
@@ -17,18 +16,16 @@ const queryClient = new QueryClient({
   },
 });
 
-const sentryReactErrorHandler = Sentry.reactErrorHandler();
-const reportReactError = (error: unknown, errorInfo: { componentStack?: string | undefined }) => {
-  sentryReactErrorHandler(error, {
-    componentStack: errorInfo.componentStack ?? null,
-  });
-};
+const reportReactError = createReactErrorHandler();
+const rootOptions = reportReactError
+  ? {
+      onUncaughtError: reportReactError,
+      onCaughtError: reportReactError,
+      onRecoverableError: reportReactError,
+    }
+  : undefined;
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement, {
-  onUncaughtError: reportReactError,
-  onCaughtError: reportReactError,
-  onRecoverableError: reportReactError,
-}).render(
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement, rootOptions).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />

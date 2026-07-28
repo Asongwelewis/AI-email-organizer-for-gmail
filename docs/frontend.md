@@ -50,7 +50,9 @@ default PII. React 19 root hooks and the React Router error boundary capture ren
 
 Production source-map upload is enabled only when `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
 `SENTRY_PROJECT` are present in the build environment. The auth token is a build secret and must
-never use a `VITE_` prefix. Uploaded maps are removed from `dist` before deployment.
+never use a `VITE_` prefix. Partial upload configuration fails the build. Hosted production builds
+also require the public DSN and release. Uploaded maps are removed from `dist` before deployment.
+See [Sentry operations](sentry.md) for the Vercel/Render release and verification procedure.
 
 Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
 normal client attempts one shared session refresh, retries the original request once, and clears

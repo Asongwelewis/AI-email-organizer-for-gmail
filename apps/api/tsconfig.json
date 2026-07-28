@@ -5,6 +5,8 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "rootDir": "src",
+    "sourceMap": true,
+    "inlineSources": true,
     "baseUrl": ".",
     "paths": {
       "@api/*": ["src/*"]

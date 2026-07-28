@@ -13,6 +13,12 @@ npm run dev:api
 
 Required configuration names are `NODE_ENV`, `PORT`, `WEB_APP_URL`, `API_BASE_URL`, `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_LOGIN_REDIRECT_URI`, `GOOGLE_GMAIL_REDIRECT_URI`, `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_VERSION`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `COOKIE_SAME_SITE`, `ACCESS_SESSION_TTL_MINUTES`, `REFRESH_SESSION_TTL_DAYS`, `OAUTH_STATE_TTL_MINUTES`, `AUTH_RATE_LIMIT_WINDOW_MINUTES`, `AUTH_RATE_LIMIT_MAX_REQUESTS`, and `LOG_LEVEL`. `DATABASE_URL` must use Supabase's shared session pooler on port 5432 for this long-running API. Prisma uses it for runtime queries and migrations, and the API establishes the connection before accepting requests. Never commit secret values. `TOKEN_ENCRYPTION_KEY` must be a Base64-encoded 32-byte key.
 
+`SENTRY_DSN` enables backend errors and tracing. `APP_VERSION`/`SENTRY_RELEASE` identify the shared
+frontend/backend release, and `SENTRY_ENVIRONMENT` plus `SENTRY_TRACES_SAMPLE_RATE` control runtime
+reporting. Build-only `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` upload API source maps.
+See [Sentry operations](../../docs/sentry.md); Gmail/OAuth bodies, headers, cookies, query strings,
+user data, AI content, and stack variables must never be added to Sentry context.
+
 - Liveness: `http://localhost:4000/health` (legacy `/api/health` is preserved)
 - Readiness: `http://localhost:4000/ready`
 - Google login: `http://localhost:4000/api/auth/google`

@@ -1,23 +1,18 @@
 import { useEffect } from 'react';
-import * as Sentry from '@sentry/react';
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom';
+
+import { captureRouteException, captureRouteFailure } from '@web/instrument';
 
 export function RouteErrorBoundary() {
   const routeError = useRouteError();
 
   useEffect(() => {
     if (routeError instanceof Error) {
-      Sentry.captureException(routeError, {
-        tags: { source: 'react-router-error-element' },
-      });
+      captureRouteException(routeError);
       return;
     }
 
-    Sentry.captureMessage('React Router handled a non-Error route failure', {
-      level: 'error',
-      tags: { source: 'react-router-error-element' },
-      extra: { routeError },
-    });
+    if (isRouteErrorResponse(routeError)) captureRouteFailure(routeError.status);
   }, [routeError]);
 
   const message =

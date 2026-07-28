@@ -2,6 +2,7 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './database/prisma.js';
+import { captureApiException, closeSentry } from './observability/sentry.js';
 import {
   startAutomationScheduler,
   stopAutomationScheduler,
@@ -11,10 +12,12 @@ try {
   await prisma.$connect();
   logger.info('Database connection established');
 } catch (error) {
+  captureApiException(error, { phase: 'database_connect' });
   logger.fatal(
     { errorType: error instanceof Error ? error.name : 'UnknownError' },
     'Unable to connect to the database',
   );
+  await closeSentry();
   process.exit(1);
 }
 
@@ -36,16 +39,21 @@ function shutdown(signal: string): void {
     void prisma
       .$disconnect()
       .catch(() => undefined)
-      .finally(() => process.exit(1));
+      .finally(async () => {
+        await closeSentry();
+        process.exit(1);
+      });
   }, 10_000);
   forcedExit.unref();
   server.close(async () => {
     clearTimeout(forcedExit);
     try {
       await prisma.$disconnect();
+      await closeSentry();
       process.exit(0);
     } catch {
       logger.error('Unable to close the database connection cleanly');
+      await closeSentry();
       process.exit(1);
     }
   });

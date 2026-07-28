@@ -52,6 +52,22 @@ describe('environment validation', () => {
     expect(env.DYNAMIC_LABEL_DISCOVERY_ENABLED).toBe(true);
   });
 
+  it('accepts optional Sentry runtime configuration and a shared release', async () => {
+    const { env } = await loadWith({
+      APP_VERSION: 'mailmind@test-release',
+      SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
+      SENTRY_ENVIRONMENT: 'staging',
+      SENTRY_TRACES_SAMPLE_RATE: '0.25',
+      SENTRY_DEBUG: 'true',
+    });
+
+    expect(env.APP_VERSION).toBe('mailmind@test-release');
+    expect(env.SENTRY_DSN).toBe('https://public@example.ingest.sentry.io/1');
+    expect(env.SENTRY_ENVIRONMENT).toBe('staging');
+    expect(env.SENTRY_TRACES_SAMPLE_RATE).toBe(0.25);
+    expect(env.SENTRY_DEBUG).toBe(true);
+  });
+
   it.each([
     [
       'invalid key length',
@@ -69,6 +85,12 @@ describe('environment validation', () => {
       'invalid redirect URI',
       { GOOGLE_LOGIN_REDIRECT_URI: 'not-a-url' },
       'GOOGLE_LOGIN_REDIRECT_URI',
+    ],
+    ['invalid Sentry DSN', { SENTRY_DSN: 'not-a-url' }, 'SENTRY_DSN'],
+    [
+      'invalid Sentry trace rate',
+      { SENTRY_TRACES_SAMPLE_RATE: '1.1' },
+      'SENTRY_TRACES_SAMPLE_RATE',
     ],
   ])('rejects %s without exposing values', async (_description, overrides, expectedField) => {
     await expect(loadWith(overrides)).rejects.toThrow(expectedField);

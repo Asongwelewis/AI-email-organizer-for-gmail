@@ -9,6 +9,7 @@ import { isAllowedWebOrigin } from '@api/config/webOrigins.js';
 import { AppError } from '@api/errors/AppError.js';
 import { errorHandler } from '@api/middleware/errorHandler.js';
 import { requestLogger } from '@api/middleware/requestLogger.js';
+import { setupApiSentryErrorHandler } from '@api/observability/sentry.js';
 import { apiRouter } from '@api/routes/index.js';
 import { API_PREFIX } from '@mailmind/shared';
 import { healthController } from '@api/controllers/healthController.js';
@@ -54,4 +55,5 @@ app.use((_request, _response, next) => {
   next(new AppError('NOT_FOUND', 'Not found.', 404));
 });
 
+setupApiSentryErrorHandler(app);
 app.use(errorHandler);
