@@ -96,6 +96,15 @@ credentials.
 | Name                | Deployment value or purpose                                                                                                               |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_API_BASE_URL` | Public backend origin, such as `https://api.mailmindai.tech`. The frontend appends `/api`; this value is embedded at frontend build time. |
+| `VITE_SENTRY_DSN`   | Public DSN for the Sentry React project. Leave empty to disable the SDK.                                                                  |
+| `VITE_APP_VERSION`  | Immutable release identifier shared by the browser SDK and source-map upload, such as `mailmind-web@<commit-sha>`.                        |
+| `SENTRY_ORG`        | Sentry organization slug used only by the Vite source-map upload plugin.                                                                  |
+| `SENTRY_PROJECT`    | Sentry project slug used only by the Vite source-map upload plugin.                                                                       |
+| `SENTRY_AUTH_TOKEN` | Secret build token used to upload source maps. Never expose it with a `VITE_` prefix.                                                     |
+
+Set all three `SENTRY_*` build values together. When they are present, the production build creates
+hidden source maps, uploads them to the matching Sentry release, and removes the map files from
+`apps/web/dist` before deployment.
 
 ## Callback paths
 

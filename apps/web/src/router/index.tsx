@@ -1,7 +1,9 @@
+import * as Sentry from '@sentry/react';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
 
 import { ProtectedRoute } from '@web/components/ProtectedRoute';
 import { VisualRoot } from '@web/components/MailAtmosphere';
+import { RouteErrorBoundary } from '@web/components/RouteErrorBoundary';
 import { AppShell } from '@web/layouts/AppShell';
 import { PublicLayout } from '@web/layouts/PublicLayout';
 import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
@@ -44,4 +46,12 @@ const routes: RouteObject[] = [
   { path: '*', element: <Navigate to="/" replace /> },
 ];
 
-export const router = createBrowserRouter([{ element: <VisualRoot />, children: routes }]);
+const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(createBrowserRouter);
+
+export const router = sentryCreateBrowserRouter([
+  {
+    element: <VisualRoot />,
+    errorElement: <RouteErrorBoundary />,
+    children: routes,
+  },
+]);

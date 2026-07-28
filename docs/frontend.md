@@ -8,7 +8,8 @@ credentialed API client, Motion provides transitions, Sonner provides notificati
 Tailwind CSS 4 is integrated through Vite.
 
 The browser contains no Google client secret, Gmail token, session secret, database credential, or
-classifier key. Its only environment setting is the public API URL.
+classifier key. Its browser-visible environment settings are limited to the public API URL, public
+Sentry DSN, and release identifier.
 
 ## Workspace and commands
 
@@ -34,12 +35,22 @@ The production output directory is `apps/web/dist`.
 ## Environment and API client
 
 `VITE_API_BASE_URL` is the public backend origin, for example `https://api.mailmindai.tech`. The
-frontend appends `/api`. It is the only frontend environment variable. Because all `VITE_` values
-are embedded into the browser bundle, it must never contain a secret.
+frontend appends `/api`. `VITE_SENTRY_DSN` enables browser error and performance reporting, while
+`VITE_APP_VERSION` identifies the release attached to those events. Because all `VITE_` values are
+embedded into the browser bundle, none of them may contain a secret. The Sentry SDK remains disabled
+when `VITE_SENTRY_DSN` is empty.
 
 `src/config/env.ts` requires the value at build time, removes trailing slashes, and appends `/api`.
 `src/services/http.ts` uses the result as the Axios `baseURL`. A missing value stops the frontend
 with `VITE_API_BASE_URL is not configured` instead of silently using the wrong backend.
+
+`src/instrument.ts` initializes Sentry before the application, samples all development traces and
+10% of production traces, propagates trace headers to the configured API origin, and does not send
+default PII. React 19 root hooks and the React Router error boundary capture render and route errors.
+
+Production source-map upload is enabled only when `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT` are present in the build environment. The auth token is a build secret and must
+never use a `VITE_` prefix. Uploaded maps are removed from `dist` before deployment.
 
 Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
 normal client attempts one shared session refresh, retries the original request once, and clears
