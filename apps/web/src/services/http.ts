@@ -9,13 +9,10 @@ import type {
   SessionRefreshResponse,
 } from '@web/types/auth';
 import type {
+  AutomationReviewQueue,
+  AutomationStatus,
   ClassificationCategory,
-  ClassificationResultsPage,
-  ClassificationStatus,
-  RecommendedAction,
-} from '@web/types/classification';
-import type { LabelCandidatesPage, LabelDiscoveryStatus } from '@web/types/labelDiscovery';
-import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
+} from '@web/types/automation';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -142,68 +139,6 @@ export const api = {
   async incrementalGmailSync(): Promise<GmailSyncResult> {
     const response = await http.post<GmailSyncResult>('/gmail/sync/incremental');
     return response.data;
-  },
-
-  async getClassificationStatus(): Promise<ClassificationStatus> {
-    const response = await http.get<ClassificationStatus>('/classification/status');
-    return response.data;
-  },
-
-  async getClassificationResults(cursor?: string): Promise<ClassificationResultsPage> {
-    const response = await http.get<ClassificationResultsPage>('/classification/results', {
-      params: { requiresReview: true, limit: 20, ...(cursor ? { cursor } : {}) },
-    });
-    return response.data;
-  },
-
-  async runClassification(): Promise<{ success: boolean; runId: string }> {
-    const response = await http.post<{ success: boolean; runId: string }>('/classification/run');
-    return response.data;
-  },
-
-  async correctClassification(
-    id: string,
-    input: { category: ClassificationCategory; recommendedAction: RecommendedAction },
-  ): Promise<void> {
-    await http.post(`/classification/results/${id}/correct`, input);
-  },
-
-  async getLabelDiscoveryStatus(): Promise<LabelDiscoveryStatus> {
-    const response = await http.get<LabelDiscoveryStatus>('/label-discovery/status');
-    return response.data;
-  },
-
-  async getLabelCandidates(cursor?: string): Promise<LabelCandidatesPage> {
-    const response = await http.get<LabelCandidatesPage>('/label-discovery/candidates', {
-      params: { limit: 20, ...(cursor ? { cursor } : {}) },
-    });
-    return response.data;
-  },
-
-  async runLabelDiscovery(): Promise<{ success: boolean; runId: string }> {
-    const response = await http.post<{ success: boolean; runId: string }>(
-      '/label-discovery/run',
-      {},
-    );
-    return response.data;
-  },
-
-  async approveLabelCandidate(id: string, leafName?: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/approve`, {
-      ...(leafName ? { leafName } : {}),
-    });
-  },
-
-  async rejectLabelCandidate(id: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/reject`, {});
-  },
-
-  async deferLabelCandidate(id: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/defer`, {});
-  },
-
-  async mergeLabelCandidate(id: string, targetCandidateId: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/merge`, { targetCandidateId });
   },
 
   async getAutomationStatus(): Promise<AutomationStatus> {

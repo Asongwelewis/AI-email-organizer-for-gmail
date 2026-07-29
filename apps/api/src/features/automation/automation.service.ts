@@ -38,10 +38,6 @@ const CATEGORY_LABELS: Record<classification_category, string> = {
   SPAM_SUSPECTED: 'Spam suspected',
   OTHER: 'Other',
 };
-const AUTOMATION_CLASSIFIER_VERSION = 'mailmind-automation-classifier-v2';
-const AUTOMATION_PROMPT_VERSION = 'mailmind-automation-prompt-v2';
-const AUTOMATION_TAXONOMY_VERSION = 'mailmind-taxonomy-v1';
-
 type RunCounters = {
   messagesSeen: number;
   patternReused: number;
@@ -645,51 +641,21 @@ export class AutomationService {
     const labelPath = await this.labelPathForMessage(message.id, classification.category);
     const needsReview = classification.confidence < env.AUTOMATION_CONFIDENCE_THRESHOLD;
     const inputHash = hashMessage(message);
-    const action = await prisma.$transaction(async (transaction) => {
-      await transaction.classification_results.updateMany({
-        where: {
-          gmail_message_id: message.id,
-          status: { in: ['PENDING', 'COMPLETED', 'NEEDS_REVIEW'] },
-        },
-        data: { status: 'SUPERSEDED' },
-      });
-      await transaction.classification_results.create({
-        data: {
-          connected_google_account_id: accountId,
-          gmail_message_id: message.id,
-          category: classification.category,
-          recommended_action: needsReview ? 'REVIEW_REQUIRED' : 'KEEP_IN_INBOX',
-          confidence: classification.confidence,
-          requires_review: needsReview,
-          explanation: classification.explanation.slice(0, 500),
-          reason_codes: classification.reasonCodes.slice(0, 16),
-          source: 'AI',
-          classifier_version: AUTOMATION_CLASSIFIER_VERSION,
-          prompt_version: AUTOMATION_PROMPT_VERSION,
-          taxonomy_version: AUTOMATION_TAXONOMY_VERSION,
-          provider: 'openai',
-          model: env.OPENAI_MODEL,
-          input_hash: inputHash,
-          message_metadata_hash: inputHash,
-          status: needsReview ? 'NEEDS_REVIEW' : 'COMPLETED',
-        },
-      });
-      return transaction.automation_message_actions.create({
-        data: {
-          automation_run_id: runId,
-          connected_google_account_id: accountId,
-          gmail_message_id: message.id,
-          user_id: userId,
-          status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
-          category: classification.category,
-          label_path: labelPath,
-          confidence: classification.confidence,
-          source: 'OPENAI',
-          explanation: classification.explanation.slice(0, 500),
-          reason_codes: classification.reasonCodes.slice(0, 16),
-          input_hash: inputHash,
-        },
-      });
+    const action = await prisma.automation_message_actions.create({
+      data: {
+        automation_run_id: runId,
+        connected_google_account_id: accountId,
+        gmail_message_id: message.id,
+        user_id: userId,
+        status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
+        category: classification.category,
+        label_path: labelPath,
+        confidence: classification.confidence,
+        source: 'OPENAI',
+        explanation: classification.explanation.slice(0, 500),
+        reason_codes: classification.reasonCodes.slice(0, 16),
+        input_hash: inputHash,
+      },
     });
     if (needsReview) {
       counters.reviewRequired += 1;
@@ -801,24 +767,11 @@ export class AutomationService {
         gmail_message_id: messageId,
         candidate: { status: { in: ['APPROVED', 'CREATED'] } },
       },
-      include: {
-        candidate: {
-          include: {
-            decisions: {
-              where: { decision: { in: ['APPROVE', 'RENAME_AND_APPROVE'] } },
-              orderBy: { created_at: 'desc' },
-              take: 1,
-            },
-          },
-        },
-      },
+      // stage-2 reuse: candidates survive, the approval decision history does not.
+      include: { candidate: true },
       orderBy: { association_score: 'desc' },
     });
-    return (
-      association?.candidate.decisions[0]?.final_full_path ??
-      association?.candidate.suggested_full_path ??
-      `MailMind/${CATEGORY_LABELS[category]}`
-    );
+    return association?.candidate.suggested_full_path ?? `MailMind/${CATEGORY_LABELS[category]}`;
   }
 
   private async learn(

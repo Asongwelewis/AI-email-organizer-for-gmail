@@ -1,4 +1,23 @@
-import type { ClassificationCategory } from './classification';
+export const classificationCategories = [
+  'PRIMARY',
+  'WORK',
+  'FINANCE',
+  'RECEIPTS',
+  'ORDERS',
+  'TRAVEL',
+  'EDUCATION',
+  'NEWSLETTERS',
+  'PROMOTIONS',
+  'SOCIAL',
+  'NOTIFICATIONS',
+  'SECURITY',
+  'SUPPORT',
+  'PERSONAL',
+  'SPAM_SUSPECTED',
+  'OTHER',
+] as const;
+
+export type ClassificationCategory = (typeof classificationCategories)[number];
 
 export interface AutomationRun {
   id: string;

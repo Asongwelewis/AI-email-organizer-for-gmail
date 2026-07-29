@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@web/services/http';
-import type { ClassificationCategory } from '@web/types/classification';
+import type { ClassificationCategory } from '@web/types/automation';
 import { queryKeys } from './queryKeys';
 
 export function useAutomationStatus() {

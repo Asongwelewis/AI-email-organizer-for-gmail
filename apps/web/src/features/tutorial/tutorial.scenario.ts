@@ -60,29 +60,10 @@ export const tutorialSteps: TutorialStep[] = [
     note: 'MailMind synchronizes metadata and snippets—not full bodies, raw MIME, or attachments.',
   },
   {
-    id: 'classification',
-    route: '/dashboard/classification',
-    target: '[data-tutorial="classification-hero"]',
-    eyebrow: 'Step 5 / Review',
-    title: 'Inspect AI recommendations',
-    description:
-      'Classification explains a suggested category, confidence, and action. This recommendation screen is read-only with respect to Gmail; saving a correction teaches intent without moving mail.',
-  },
-  {
-    id: 'labels',
-    route: '/dashboard/labels/discover',
-    target: '[data-tutorial="label-discovery-hero"]',
-    eyebrow: 'Step 6 / Labels',
-    title: 'Discover your natural groups',
-    description:
-      'Label discovery finds recurring sources, organizations, topics, and workflows. Approve, rename, defer, merge, or reject suggestions before automation can use them.',
-    note: 'Discovery decisions alone do not apply labels to Gmail messages.',
-  },
-  {
     id: 'automation-status',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-state"]',
-    eyebrow: 'Step 7 / Automation',
+    eyebrow: 'Step 5 / Automation',
     title: 'Know exactly what is running',
     description:
       'This live state shows Gmail readiness, the next daily run, and whether work is active. MailMind classifies unprocessed mail, reuses learned patterns, and records every run.',
@@ -91,17 +72,17 @@ export const tutorialSteps: TutorialStep[] = [
     id: 'automation-run',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-run"]',
-    eyebrow: 'Step 8 / Manual control',
+    eyebrow: 'Step 6 / Manual control',
     title: 'Run safely on demand',
     description:
       'Run now starts the same resumable workflow as the daily schedule. Token, cost, and message limits stop excessive work; completed labels remain safe if a later item fails.',
-    note: 'Unlike Review and Discovery, a real automation run can create and apply Gmail labels.',
+    note: 'A real automation run is the only action that can create and apply Gmail labels.',
   },
   {
     id: 'uncertain-review',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-review"]',
-    eyebrow: 'Step 9 / Human judgment',
+    eyebrow: 'Step 7 / Human judgment',
     title: 'Uncertainty waits for you',
     description:
       'Low-confidence classifications land here without changing Gmail. Approve and apply a corrected category, or skip the message entirely.',
@@ -113,7 +94,7 @@ export const tutorialSteps: TutorialStep[] = [
     eyebrow: 'Tour complete',
     title: 'You are in control',
     description:
-      'Connect and sync first, use Review and Labels to understand your inbox, then let Automation handle confident messages while you resolve the uncertain ones.',
+      'Connect and sync first, then let Automation handle confident messages while you resolve the uncertain ones.',
     note: 'Restart this tutorial anytime with the Tour button in the header.',
   },
 ];

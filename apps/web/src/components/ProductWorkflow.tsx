@@ -10,18 +10,6 @@ const workflowSteps = [
     href: '/settings/connections',
   },
   {
-    id: 'review',
-    label: 'Classify & review',
-    detail: 'Rules and AI categorize; you resolve uncertainty.',
-    href: '/dashboard/classification',
-  },
-  {
-    id: 'labels',
-    label: 'Labels',
-    detail: 'Discover recurring, evidence-backed groups.',
-    href: '/dashboard/labels/discover',
-  },
-  {
     id: 'automate',
     label: 'Automate',
     detail: 'Create or reuse labels and apply them safely.',
@@ -57,16 +45,12 @@ export function WorkflowRail({
     <nav className="workflow-rail" aria-label="MailMind workflow">
       <div className="workflow-rail__intro">
         <span className="eyebrow">Mailbox workflow</span>
-        <strong>Four stages, one source of truth.</strong>
+        <strong>Two stages, one source of truth.</strong>
       </div>
       <ol>
         {workflowSteps.map((step, index) => {
           const complete =
-            step.id === 'sync'
-              ? Boolean(sync?.initialSyncCompleted)
-              : step.id === 'review'
-                ? Boolean(sync && sync.classifiedMessages > 0)
-                : index < currentIndex;
+            step.id === 'sync' ? Boolean(sync?.initialSyncCompleted) : index < currentIndex;
           return (
             <li
               key={step.id}
@@ -131,8 +115,7 @@ export function CoveragePanel({
   const classified = sync?.classifiedMessages ?? 0;
   const unprocessed = sync?.unprocessedMessages ?? Math.max(0, synced - classified);
   const syncPercent = total > 0 ? Math.min(100, Math.round((synced / total) * 100)) : 0;
-  const classificationPercent =
-    synced > 0 ? Math.min(100, Math.round((classified / synced) * 100)) : 0;
+  const automationPercent = synced > 0 ? Math.min(100, Math.round((classified / synced) * 100)) : 0;
   const backfillTotal = sync?.backfill.totalMessages ?? total;
   const backfillProcessed = sync?.backfill.messagesProcessed ?? synced;
   const backfillPercent =
@@ -173,15 +156,15 @@ export function CoveragePanel({
           tooltip="Unique Gmail message IDs whose metadata is stored in MailMind."
         />
         <MetricCard
-          label="Classified"
+          label="Processed"
           value={classified}
-          tooltip="Synced messages with a current completed or review-required classification."
+          tooltip="Synced messages automation has labeled or held for review."
         />
         <MetricCard
           label="Unprocessed"
           value={unprocessed}
           accent={unprocessed > 0}
-          tooltip="Synced messages that still need a current classification. These should be classified before judging label discovery."
+          tooltip="Synced messages automation has not acted on yet."
         />
       </div>
       <div className="coverage-bars">
@@ -191,9 +174,9 @@ export function CoveragePanel({
           detail={`${synced} of ${total || 0} Gmail messages synced`}
         />
         <ProgressLine
-          label="Classification coverage"
-          value={classificationPercent}
-          detail={`${classified} of ${synced || 0} synced messages classified`}
+          label="Automation coverage"
+          value={automationPercent}
+          detail={`${classified} of ${synced || 0} synced messages processed`}
         />
         {(sync?.backfill.running ||
           (sync?.backfill.checkpointedAt && !sync.backfill.completed)) && (

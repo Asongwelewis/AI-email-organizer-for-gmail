@@ -366,13 +366,14 @@ export class GmailRepository {
   }
 
   async coverage(accountId: string) {
+    // Automation is the only classifier, so its message actions define processed coverage.
     const [syncedMessages, classifiedMessages] = await Promise.all([
       this.countMessages(accountId),
-      prisma.classification_results.count({
+      prisma.automation_message_actions.count({
         where: {
           connected_google_account_id: accountId,
-          status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
-          gmail_message_metadata: { deleted_at: null },
+          status: { in: ['APPLIED', 'REVIEW_REQUIRED', 'SKIPPED'] },
+          message: { deleted_at: null },
         },
       }),
     ]);

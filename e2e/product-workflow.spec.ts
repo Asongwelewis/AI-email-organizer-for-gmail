@@ -48,24 +48,6 @@ async function apiMock(route: Route) {
       connectedAt: '2026-07-20T00:00:00.000Z',
     },
     '/api/gmail/sync/status': syncStatus,
-    '/api/label-discovery/status': {
-      enabled: true,
-      running: false,
-      activeRunId: null,
-      pendingCount: 0,
-      approvedCount: 0,
-      maxPendingCandidates: 50,
-      maxApprovedLabels: 100,
-      gmailLabelCreationSupported: false,
-      lastErrorCode: null,
-      latestRun: null,
-      versions: {
-        discovery: 'v1',
-        naming: 'v1',
-        confidence: 'v1',
-      },
-    },
-    '/api/label-discovery/candidates': { candidates: [], nextCursor: null },
     '/api/automation/status': {
       gmailConnected: true,
       requiresReauthentication: false,
@@ -123,29 +105,85 @@ async function apiMock(route: Route) {
   await route.fulfill({ status: 200, json: response });
 }
 
-test('low classification coverage leads to the correct next action and safe automation detail', async ({
+test('a signed-out visitor moves from landing to login without granting Gmail access', async ({
+  page,
+}) => {
+  await page.route('http://127.0.0.1:4174/api/**', async (route) => {
+    if (new URL(route.request().url()).pathname === '/api/auth/me') {
+      await route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } });
+      return;
+    }
+    await apiMock(route);
+  });
+  await page.goto('/');
+
+  await expect(page.getByText('No Gmail access at sign-in')).toBeVisible();
+  await page.getByRole('link', { name: /Begin with Google/i }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('button', { name: /Continue with Google/i })).toBeVisible();
+});
+
+test('a signed-in visitor lands on the dashboard', async ({ page }) => {
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.goto('/dashboard');
+
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Good to see you');
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+});
+
+test('the dashboard navigates to automation and shows safe provider failure detail', async ({
   page,
 }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
-  await page.goto('/dashboard/labels/discover');
+  await page.goto('/dashboard');
+
+  await page.getByRole('link', { name: 'Automation', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard\/automation$/);
 
   await expect(page.getByRole('navigation', { name: 'MailMind workflow' })).toBeVisible();
-  await expect(page.getByText('7 of 257 synced messages are classified')).toBeVisible();
-  await expect(page.getByText('thresholds have not been lowered')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Classify remaining messages' })).toHaveAttribute(
-    'href',
-    '/dashboard/classification',
-  );
+  await expect(page.getByText('7 of 257 synced messages processed')).toBeVisible();
 
   const tooltipButton = page.getByRole('button', { name: 'Explain Unprocessed' });
-  await tooltipButton.focus();
-  await expect(page.getByRole('tooltip')).toContainText(/classification/i);
+  await tooltipButton.hover();
+  await expect(page.getByRole('tooltip')).toContainText(/automation has not acted on/i);
 
-  await page.getByRole('link', { name: /Automate/i }).click();
-  await expect(page).toHaveURL(/\/dashboard\/automation$/);
   await expect(page.getByText(/OpenAI quota is unavailable/i)).toBeVisible();
   await expect(page.getByText(/Provider status: 429/i)).toBeVisible();
   await expect(page.getByText(/Safe code: insufficient_quota/i)).toBeVisible();
   await expect(page.getByText(/Request reference: request-safe-id/i)).toBeVisible();
   await expect(page.getByText(/authorization|api key|email body/i)).toHaveCount(0);
+});
+
+test('retired classification and label-discovery routes redirect to the dashboard', async ({
+  page,
+}) => {
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+
+  await page.goto('/dashboard/classification');
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  await page.goto('/dashboard/labels/discover');
+  await expect(page).toHaveURL(/\/dashboard$/);
+});
+
+test('every surviving page renders without console or page errors', async ({ page }) => {
+  const failures: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') failures.push(`console: ${message.text()}`);
+  });
+  page.on('pageerror', (error) => failures.push(`pageerror: ${error.message}`));
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+
+  for (const route of [
+    '/',
+    '/login',
+    '/dashboard',
+    '/settings/connections',
+    '/dashboard/automation',
+  ]) {
+    await page.goto(route);
+    await expect(page.locator('h1').first()).toBeVisible();
+  }
+
+  expect(failures).toEqual([]);
 });

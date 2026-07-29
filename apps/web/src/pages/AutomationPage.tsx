@@ -21,7 +21,7 @@ import {
 } from '@web/queries/automationQueries';
 import { useGmailSyncStatusQuery } from '@web/queries/gmailQueries';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
-import { classificationCategories, type ClassificationCategory } from '@web/types/classification';
+import { classificationCategories, type ClassificationCategory } from '@web/types/automation';
 
 const words = (value: string) =>
   value
