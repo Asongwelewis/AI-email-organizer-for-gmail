@@ -8,12 +8,10 @@ import { AppShell } from '@web/layouts/AppShell';
 import { PublicLayout } from '@web/layouts/PublicLayout';
 import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
 import { ConnectionsPage } from '@web/pages/ConnectionsPage';
-import { ClassificationPage } from '@web/pages/ClassificationPage';
 import { DashboardPage } from '@web/pages/DashboardPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
-import { LabelDiscoveryPage } from '@web/pages/LabelDiscoveryPage';
 import { AutomationPage } from '@web/pages/AutomationPage';
 import { isSentryEnabled } from '@web/instrument';
 
@@ -37,9 +35,10 @@ const routes: RouteObject[] = [
     children: [
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/settings/connections', element: <ConnectionsPage /> },
-      { path: '/dashboard/classification', element: <ClassificationPage /> },
-      { path: '/dashboard/labels/discover', element: <LabelDiscoveryPage /> },
       { path: '/dashboard/automation', element: <AutomationPage /> },
+      // Retired stage-1 surfaces; keep old links working.
+      { path: '/dashboard/classification', element: <Navigate to="/dashboard" replace /> },
+      { path: '/dashboard/labels/discover', element: <Navigate to="/dashboard" replace /> },
     ],
   },
   { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },
