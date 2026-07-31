@@ -8,11 +8,8 @@ import type {
   GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
-import type {
-  AutomationReviewQueue,
-  AutomationStatus,
-  ClassificationCategory,
-} from '@web/types/automation';
+import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
+import type { ConfirmLabelInput, LabelsOverview, UserLabel } from '@web/types/labels';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -141,6 +138,30 @@ export const api = {
     return response.data;
   },
 
+  async getLabels(): Promise<LabelsOverview> {
+    const response = await http.get<LabelsOverview>('/labels');
+    return response.data;
+  },
+
+  async proposeLabels(): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/propose', {});
+    return response.data;
+  },
+
+  async confirmLabels(labels: ConfirmLabelInput[]): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/confirm', { labels });
+    return response.data;
+  },
+
+  async renameLabel(id: string, leafName: string): Promise<UserLabel> {
+    const response = await http.patch<UserLabel>(`/labels/${id}`, { leafName });
+    return response.data;
+  },
+
+  async deleteLabel(id: string): Promise<void> {
+    await http.delete(`/labels/${id}`);
+  },
+
   async getAutomationStatus(): Promise<AutomationStatus> {
     const response = await http.get<AutomationStatus>('/automation/status');
     return response.data;
@@ -159,8 +180,8 @@ export const api = {
     return response.data;
   },
 
-  async approveAutomationReview(id: string, category: ClassificationCategory): Promise<void> {
-    await http.post(`/automation/review/${id}/approve`, { category });
+  async approveAutomationReview(id: string, labelName: string): Promise<void> {
+    await http.post(`/automation/review/${id}/approve`, { labelName });
   },
 
   async skipAutomationReview(id: string): Promise<void> {

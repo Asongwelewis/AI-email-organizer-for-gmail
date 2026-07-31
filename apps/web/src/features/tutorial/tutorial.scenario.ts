@@ -60,10 +60,20 @@ export const tutorialSteps: TutorialStep[] = [
     note: 'MailMind synchronizes metadata and snippets—not full bodies, raw MIME, or attachments.',
   },
   {
+    id: 'labels',
+    route: '/labels',
+    target: '[data-tutorial="labels-hero"]',
+    eyebrow: 'Step 5 / Labels',
+    title: 'You choose the labels',
+    description:
+      'MailMind reads your synchronized metadata and proposes a label set. Rename, delete, or add your own, then confirm once. Only then are the labels created in Gmail.',
+    note: 'Automation may only use labels you confirmed here.',
+  },
+  {
     id: 'automation-status',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-state"]',
-    eyebrow: 'Step 5 / Automation',
+    eyebrow: 'Step 6 / Automation',
     title: 'Know exactly what is running',
     description:
       'This live state shows Gmail readiness, the next daily run, and whether work is active. MailMind classifies unprocessed mail, reuses learned patterns, and records every run.',
@@ -72,20 +82,20 @@ export const tutorialSteps: TutorialStep[] = [
     id: 'automation-run',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-run"]',
-    eyebrow: 'Step 6 / Manual control',
+    eyebrow: 'Step 7 / Manual control',
     title: 'Run safely on demand',
     description:
-      'Run now starts the same resumable workflow as the daily schedule. Token, cost, and message limits stop excessive work; completed labels remain safe if a later item fails.',
+      'Run now starts the same resumable workflow as the daily schedule. An existing backlog is filed oldest-first across as many runs as it takes. Token, cost, and message limits stop excessive work; completed labels remain safe if a later item fails.',
     note: 'A real automation run is the only action that can create and apply Gmail labels.',
   },
   {
     id: 'uncertain-review',
     route: '/dashboard/automation',
     target: '[data-tutorial="automation-review"]',
-    eyebrow: 'Step 7 / Human judgment',
+    eyebrow: 'Step 8 / Human judgment',
     title: 'Uncertainty waits for you',
     description:
-      'Low-confidence classifications land here without changing Gmail. Approve and apply a corrected category, or skip the message entirely.',
+      'Low-confidence results land here without changing Gmail. Approve one of your labels, or skip the message entirely.',
   },
   {
     id: 'complete',
@@ -94,7 +104,7 @@ export const tutorialSteps: TutorialStep[] = [
     eyebrow: 'Tour complete',
     title: 'You are in control',
     description:
-      'Connect and sync first, then let Automation handle confident messages while you resolve the uncertain ones.',
+      'Connect and sync, approve your labels, then let Automation file confident messages while you resolve the uncertain ones.',
     note: 'Restart this tutorial anytime with the Tour button in the header.',
   },
 ];

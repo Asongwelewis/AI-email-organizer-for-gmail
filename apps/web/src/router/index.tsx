@@ -13,6 +13,7 @@ import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
 import { AutomationPage } from '@web/pages/AutomationPage';
+import { LabelsPage } from '@web/pages/LabelsPage';
 import { isSentryEnabled } from '@web/instrument';
 
 const routes: RouteObject[] = [
@@ -35,6 +36,7 @@ const routes: RouteObject[] = [
     children: [
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/settings/connections', element: <ConnectionsPage /> },
+      { path: '/labels', element: <LabelsPage /> },
       { path: '/dashboard/automation', element: <AutomationPage /> },
       // Retired stage-1 surfaces; keep old links working.
       { path: '/dashboard/classification', element: <Navigate to="/dashboard" replace /> },

@@ -42,9 +42,11 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('img', { name: 'Ada Lovelace initials' })).toHaveTextContent('AL');
     expect(screen.getByRole('heading', { name: 'Gmail stays separate' })).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'Inbox organization, labels, and analysis are intentionally not active yet.',
-      ),
+      screen.getByRole('heading', { name: 'Sync, approve labels, then automate.' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Review your labels/i })).toHaveAttribute(
+      'href',
+      '/labels',
+    );
   });
 });

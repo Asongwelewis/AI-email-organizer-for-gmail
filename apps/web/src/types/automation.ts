@@ -1,24 +1,3 @@
-export const classificationCategories = [
-  'PRIMARY',
-  'WORK',
-  'FINANCE',
-  'RECEIPTS',
-  'ORDERS',
-  'TRAVEL',
-  'EDUCATION',
-  'NEWSLETTERS',
-  'PROMOTIONS',
-  'SOCIAL',
-  'NOTIFICATIONS',
-  'SECURITY',
-  'SUPPORT',
-  'PERSONAL',
-  'SPAM_SUSPECTED',
-  'OTHER',
-] as const;
-
-export type ClassificationCategory = (typeof classificationCategories)[number];
-
 export interface AutomationRun {
   id: string;
   status: 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
@@ -27,6 +6,8 @@ export interface AutomationRun {
   patternReused: number;
   openaiClassified: number;
   reviewRequired: number;
+  noLabelSkipped: number;
+  backlogRemaining: number;
   messagesLabeled: number;
   failed: number;
   providerCalls: number;
@@ -67,11 +48,14 @@ export interface AutomationStatus {
     messages: number;
   };
   pendingReviewCount: number;
+  approvedLabelCount: number;
+  labelsReady: boolean;
+  backlogRemaining: number;
 }
 
 export interface AutomationReviewItem {
   id: string;
-  category: ClassificationCategory;
+  labelName: string;
   labelPath: string;
   confidence: number;
   explanation: string;

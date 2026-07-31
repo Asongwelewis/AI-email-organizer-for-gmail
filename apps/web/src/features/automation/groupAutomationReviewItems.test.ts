@@ -5,7 +5,7 @@ import { groupAutomationReviewItems } from './groupAutomationReviewItems';
 
 const item = (id: string): AutomationReviewItem => ({
   id,
-  category: 'WORK',
+  labelName: 'Work',
   labelPath: 'MailMind/Work',
   confidence: 0.62,
   explanation: 'Ambiguous work message.',

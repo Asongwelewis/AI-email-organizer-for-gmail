@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   skip: vi.fn(),
   sync: vi.fn(),
+  labels: vi.fn(),
 }));
 
 vi.mock('@web/queries/automationQueries', () => ({
@@ -22,12 +23,40 @@ vi.mock('@web/queries/automationQueries', () => ({
 vi.mock('@web/queries/gmailQueries', () => ({
   useGmailSyncStatusQuery: mocks.sync,
 }));
+vi.mock('@web/queries/labelsQueries', () => ({
+  useLabels: mocks.labels,
+}));
 
 import { AutomationPage } from './AutomationPage';
 
 describe('AutomationPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.labels.mockReturnValue({
+      isLoading: false,
+      data: {
+        maxLabels: 25,
+        labels: [
+          {
+            id: 'label-1',
+            leafName: 'Work',
+            fullPath: 'MailMind/Work',
+            source: 'AI_PROPOSED',
+            gmailLabelId: 'Label_1',
+            createdAt: '2026-07-26T00:00:00.000Z',
+          },
+          {
+            id: 'label-2',
+            leafName: 'Personal',
+            fullPath: 'MailMind/Personal',
+            source: 'USER_CREATED',
+            gmailLabelId: 'Label_2',
+            createdAt: '2026-07-26T00:00:00.000Z',
+          },
+        ],
+        proposals: [],
+      },
+    });
     mocks.sync.mockReturnValue({
       isLoading: false,
       data: {
@@ -65,6 +94,8 @@ describe('AutomationPage', () => {
           patternReused: 7,
           openaiClassified: 5,
           reviewRequired: 1,
+          noLabelSkipped: 2,
+          backlogRemaining: 0,
           messagesLabeled: 11,
           failed: 0,
           providerCalls: 1,
@@ -95,6 +126,9 @@ describe('AutomationPage', () => {
           messages: 250,
         },
         pendingReviewCount: 1,
+        approvedLabelCount: 2,
+        labelsReady: true,
+        backlogRemaining: 0,
       },
     });
     mocks.review.mockReturnValue({
@@ -103,7 +137,7 @@ describe('AutomationPage', () => {
         items: [
           {
             id: 'action-1',
-            category: 'WORK',
+            labelName: 'Work',
             labelPath: 'MailMind/Work',
             confidence: 0.62,
             explanation: 'The sender context is ambiguous.',
@@ -137,10 +171,10 @@ describe('AutomationPage', () => {
     render(<AutomationPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
     await waitFor(() => expect(mocks.run).toHaveBeenCalled());
-    fireEvent.change(screen.getByLabelText('Apply as'), { target: { value: 'PERSONAL' } });
+    fireEvent.change(screen.getByLabelText('Apply as'), { target: { value: 'Personal' } });
     fireEvent.click(screen.getByRole('button', { name: 'Approve & apply' }));
     await waitFor(() =>
-      expect(mocks.approve).toHaveBeenCalledWith({ id: 'action-1', category: 'PERSONAL' }),
+      expect(mocks.approve).toHaveBeenCalledWith({ id: 'action-1', labelName: 'Personal' }),
     );
   });
 

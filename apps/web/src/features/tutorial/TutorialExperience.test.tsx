@@ -22,6 +22,7 @@ function Harness({
       <div data-tutorial="identity-card">Identity</div>
       <div data-tutorial="gmail-summary">Gmail summary</div>
       <div data-tutorial="connection-stage">Connection</div>
+      <div data-tutorial="labels-hero">Labels</div>
       <div data-tutorial="automation-state">Automation status</div>
       <div data-tutorial="automation-run">Automation run</div>
       <div data-tutorial="automation-review">Automation review</div>

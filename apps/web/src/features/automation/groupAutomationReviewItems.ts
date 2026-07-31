@@ -16,7 +16,7 @@ export function groupAutomationReviewItems(items: AutomationReviewItem[]): Autom
       normalize(item.message.senderEmail),
       normalize(item.message.subject),
       normalize(item.message.snippet),
-      item.category,
+      item.labelName,
       item.labelPath,
       Math.round(item.confidence * 100),
       normalize(item.explanation),
