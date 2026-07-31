@@ -1,23 +1,5 @@
-import type { classification_category } from '@prisma/client';
-
-export const AUTOMATION_CATEGORIES = [
-  'PRIMARY',
-  'WORK',
-  'FINANCE',
-  'RECEIPTS',
-  'ORDERS',
-  'TRAVEL',
-  'EDUCATION',
-  'NEWSLETTERS',
-  'PROMOTIONS',
-  'SOCIAL',
-  'NOTIFICATIONS',
-  'SECURITY',
-  'SUPPORT',
-  'PERSONAL',
-  'SPAM_SUSPECTED',
-  'OTHER',
-] as const satisfies readonly classification_category[];
+/** Returned when a message fits none of the account's approved labels. */
+export const NO_LABEL = 'NONE';
 
 export interface AutomationMessageInput {
   key: string;
@@ -29,15 +11,15 @@ export interface AutomationMessageInput {
   isImportant: boolean;
   hasAttachments: boolean;
   learnedPattern?: {
-    category: classification_category;
+    labelName: string;
     confidence: number;
-    labelPath: string;
   };
 }
 
 export interface AutomationClassification {
   key: string;
-  category: classification_category;
+  /** An approved leaf name, or NO_LABEL when the message fits none of them. */
+  labelName: string;
   confidence: number;
   explanation: string;
   reasonCodes: string[];
@@ -54,9 +36,15 @@ export interface AutomationProviderResult {
   usage: AutomationUsage;
 }
 
+export interface AutomationClassifyOptions {
+  /** The account's approved leaf names; the model may return only these or NO_LABEL. */
+  labelNames: string[];
+  maxOutputTokens?: number;
+}
+
 export interface AutomationClassifier {
   classify(
     messages: AutomationMessageInput[],
-    options?: { maxOutputTokens?: number },
+    options: AutomationClassifyOptions,
   ): Promise<AutomationProviderResult>;
 }

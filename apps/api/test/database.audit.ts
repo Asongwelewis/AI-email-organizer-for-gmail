@@ -20,6 +20,7 @@ const applicationTables = [
   'learned_classification_patterns',
   'oauth_states',
   'sessions',
+  'user_labels',
   'users',
 ];
 
@@ -77,6 +78,9 @@ const requiredIndexes = [
   'sessions_revoked_at_idx',
   'sessions_token_hash_unique_idx',
   'sessions_user_id_idx',
+  'user_labels_account_created_idx',
+  'user_labels_account_normalized_unique_idx',
+  'user_labels_account_path_unique_idx',
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
   'users_status_idx',
@@ -99,13 +103,13 @@ try {
         'automation_settings', 'automation_states', 'automation_runs',
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-        'dynamic_label_candidates', 'dynamic_label_candidate_messages'
+        'dynamic_label_candidates', 'dynamic_label_candidate_messages', 'user_labels'
       )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all sixteen application tables must exist',
+    'all seventeen application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -137,7 +141,7 @@ try {
       'automation_settings', 'automation_states', 'automation_runs',
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-      'dynamic_label_candidates', 'dynamic_label_candidate_messages'
+      'dynamic_label_candidates', 'dynamic_label_candidate_messages', 'user_labels'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -206,6 +210,9 @@ try {
         'sessions_revoked_at_idx',
         'sessions_token_hash_unique_idx',
         'sessions_user_id_idx',
+        'user_labels_account_created_idx',
+        'user_labels_account_normalized_unique_idx',
+        'user_labels_account_path_unique_idx',
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
         'users_status_idx'
@@ -233,6 +240,7 @@ try {
         ,'public.learned_classification_patterns'::regclass
         ,'public.dynamic_label_candidates'::regclass
         ,'public.dynamic_label_candidate_messages'::regclass
+        ,'public.user_labels'::regclass
       )
     order by tgname
   `;
@@ -251,6 +259,7 @@ try {
         'gmail_message_metadata_set_updated_at',
         'gmail_sync_states_set_updated_at',
         'learned_patterns_set_updated_at',
+        'user_labels_set_updated_at',
         'users_set_updated_at',
       ]),
     'all updated_at triggers must exist',
@@ -274,8 +283,7 @@ try {
          and t.typname in (
            'audit_result', 'google_connection_status', 'oauth_purpose', 'user_status',
            'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
-           ,'classification_category'
-           ,'dynamic_label_candidate_type', 'dynamic_label_candidate_status'
+           ,'dynamic_label_candidate_type', 'dynamic_label_candidate_status', 'user_label_source'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
          )) as enum_count,
@@ -305,9 +313,12 @@ try {
   `;
   const summary = catalog[0];
   assert(summary?.enum_count === 14n, 'all fourteen enum types must exist');
-  assert(summary.foreign_key_count === 22n, 'all twenty-two foreign keys must exist');
+  assert(summary.foreign_key_count === 23n, 'all twenty-three foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(summary.migration_count === 10n, 'exactly ten intended Prisma migrations must be applied');
+  assert(
+    summary.migration_count === 11n,
+    'exactly eleven intended Prisma migrations must be applied',
+  );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

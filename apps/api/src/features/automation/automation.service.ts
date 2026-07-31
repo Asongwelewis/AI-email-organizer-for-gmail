@@ -1,9 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type {
-  automation_trigger,
-  classification_category,
-  gmail_message_metadata,
-} from '@prisma/client';
+import type { automation_trigger, gmail_message_metadata, user_labels } from '@prisma/client';
 
 import { auditService } from '@api/audit/audit.service.js';
 import { env } from '@api/config/env.js';
@@ -13,36 +9,21 @@ import { AppError } from '@api/errors/AppError.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import { OpenAiProviderError, openAiAutomationProvider } from './openai-automation.provider.js';
-import type {
-  AutomationClassification,
-  AutomationClassifier,
-  AutomationMessageInput,
-  AutomationUsage,
+import {
+  NO_LABEL,
+  type AutomationClassification,
+  type AutomationClassifier,
+  type AutomationMessageInput,
+  type AutomationUsage,
 } from './automation.types.js';
 
-const CATEGORY_LABELS: Record<classification_category, string> = {
-  PRIMARY: 'Primary',
-  WORK: 'Work',
-  FINANCE: 'Finance',
-  RECEIPTS: 'Receipts',
-  ORDERS: 'Orders',
-  TRAVEL: 'Travel',
-  EDUCATION: 'Education',
-  NEWSLETTERS: 'Newsletters',
-  PROMOTIONS: 'Promotions',
-  SOCIAL: 'Social',
-  NOTIFICATIONS: 'Notifications',
-  SECURITY: 'Security',
-  SUPPORT: 'Support',
-  PERSONAL: 'Personal',
-  SPAM_SUSPECTED: 'Spam suspected',
-  OTHER: 'Other',
-};
 type RunCounters = {
   messagesSeen: number;
   patternReused: number;
   openaiClassified: number;
   reviewRequired: number;
+  noLabelSkipped: number;
+  backfillRemaining: number;
   labelsCreated: number;
   labelsReused: number;
   messagesLabeled: number;
@@ -62,6 +43,8 @@ const emptyCounters = (): RunCounters => ({
   patternReused: 0,
   openaiClassified: 0,
   reviewRequired: 0,
+  noLabelSkipped: 0,
+  backfillRemaining: 0,
   labelsCreated: 0,
   labelsReused: 0,
   messagesLabeled: 0,
@@ -159,37 +142,43 @@ export class AutomationService {
         lastRun: null,
         usageToday: this.emptyUsage(),
         pendingReviewCount: 0,
+        approvedLabelCount: 0,
+        labelsReady: false,
+        backlogRemaining: 0,
       };
     }
-    const [settings, state, lastRun, usage, pendingReviewCount] = await Promise.all([
-      prisma.automation_settings.findUnique({
-        where: { connected_google_account_id: account.id },
-      }),
-      prisma.automation_states.findUnique({
-        where: { connected_google_account_id: account.id },
-      }),
-      prisma.automation_runs.findFirst({
-        where: { connected_google_account_id: account.id },
-        orderBy: { started_at: 'desc' },
-      }),
-      prisma.automation_runs.aggregate({
-        where: {
-          connected_google_account_id: account.id,
-          started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
-        },
-        _sum: {
-          provider_call_count: true,
-          input_tokens: true,
-          cached_input_tokens: true,
-          output_tokens: true,
-          estimated_cost_microusd: true,
-          messages_labeled_count: true,
-        },
-      }),
-      prisma.automation_message_actions.count({
-        where: { connected_google_account_id: account.id, status: 'REVIEW_REQUIRED' },
-      }),
-    ]);
+    const [settings, state, lastRun, usage, pendingReviewCount, approvedLabelCount, backlog] =
+      await Promise.all([
+        prisma.automation_settings.findUnique({
+          where: { connected_google_account_id: account.id },
+        }),
+        prisma.automation_states.findUnique({
+          where: { connected_google_account_id: account.id },
+        }),
+        prisma.automation_runs.findFirst({
+          where: { connected_google_account_id: account.id },
+          orderBy: { started_at: 'desc' },
+        }),
+        prisma.automation_runs.aggregate({
+          where: {
+            connected_google_account_id: account.id,
+            started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
+          },
+          _sum: {
+            provider_call_count: true,
+            input_tokens: true,
+            cached_input_tokens: true,
+            output_tokens: true,
+            estimated_cost_microusd: true,
+            messages_labeled_count: true,
+          },
+        }),
+        prisma.automation_message_actions.count({
+          where: { connected_google_account_id: account.id, status: 'REVIEW_REQUIRED' },
+        }),
+        prisma.user_labels.count({ where: { connected_google_account_id: account.id } }),
+        this.backlogCount(account.id),
+      ]);
     return {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
@@ -214,6 +203,9 @@ export class AutomationService {
         messages: env.AUTOMATION_MAX_MESSAGES_PER_RUN,
       },
       pendingReviewCount,
+      approvedLabelCount,
+      labelsReady: approvedLabelCount > 0,
+      backlogRemaining: backlog,
     };
   }
 
@@ -237,7 +229,7 @@ export class AutomationService {
     return {
       items: actions.map((action) => ({
         id: action.id,
-        category: action.category,
+        labelName: action.label_name,
         labelPath: action.label_path,
         confidence: action.confidence,
         explanation: action.explanation,
@@ -254,9 +246,10 @@ export class AutomationService {
     };
   }
 
-  async approve(userId: string, actionId: string, category: classification_category) {
+  async approve(userId: string, actionId: string, labelName: string) {
     const action = await this.reviewableAction(userId, actionId);
-    const labelPath = `MailMind/${CATEGORY_LABELS[category]}`;
+    const approved = await this.approvedLabel(action.connected_google_account_id, labelName);
+    const labelPath = approved.full_path;
     const label = await this.gmail.ensureLabel(action.connected_google_account_id, labelPath);
     await this.gmail.applyLabel(
       action.connected_google_account_id,
@@ -267,7 +260,7 @@ export class AutomationService {
       where: { id: action.id },
       data: {
         status: 'APPLIED',
-        category,
+        label_name: approved.leaf_name,
         label_path: labelPath,
         gmail_label_id: label.id,
         confidence: 1,
@@ -282,10 +275,16 @@ export class AutomationService {
       where: { id: action.gmail_message_id },
       data: { label_ids: [...new Set([...action.message.label_ids, label.id])] },
     });
+    if (!approved.gmail_label_id) {
+      await prisma.user_labels.update({
+        where: { id: approved.id },
+        data: { gmail_label_id: label.id },
+      });
+    }
     await this.learn(
       action.connected_google_account_id,
       senderDomain(action.message),
-      category,
+      approved.leaf_name,
       labelPath,
       1,
     );
@@ -293,7 +292,7 @@ export class AutomationService {
       action: 'automation.review.approved',
       result: 'SUCCESS',
       userId,
-      metadata: { actionId, category },
+      metadata: { actionId, labelName: approved.leaf_name },
     });
     return { success: true };
   }
@@ -343,6 +342,17 @@ export class AutomationService {
     }
     if (!env.OPENAI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'OpenAI is not configured.', 503);
+    }
+    const approvedLabels = await prisma.user_labels.findMany({
+      where: { connected_google_account_id: accountId },
+      orderBy: { created_at: 'asc' },
+    });
+    if (approvedLabels.length === 0) {
+      throw new AppError(
+        'AUTOMATION_NO_APPROVED_LABELS',
+        'Propose and confirm labels before automation can file mail.',
+        409,
+      );
     }
     const now = new Date();
     const token = randomUUID();
@@ -451,6 +461,10 @@ export class AutomationService {
       const costUsed = dailyUsage._sum.estimated_cost_microusd ?? 0;
       const messages = await this.unprocessedMessages(accountId);
       counters.messagesSeen = messages.length;
+      counters.backfillRemaining = Math.max(
+        0,
+        (await this.backlogCount(accountId)) - messages.length,
+      );
       const patterns = await prisma.learned_classification_patterns.findMany({
         where: {
           connected_google_account_id: accountId,
@@ -501,6 +515,7 @@ export class AutomationService {
             (message) => message.learnedPattern,
           ).length;
           const result = await this.classifier.classify(providerInputs, {
+            labelNames: approvedLabels.map((label) => label.leaf_name),
             maxOutputTokens: outputTokenReserve,
           });
           counters.openaiClassified += result.classifications.length;
@@ -516,6 +531,7 @@ export class AutomationService {
               accountId,
               message,
               byKey.get(`m${batchIndex + 1}`)!,
+              approvedLabels,
               counters,
             );
           }
@@ -589,9 +605,8 @@ export class AutomationService {
   private providerInput(
     message: gmail_message_metadata,
     pattern?: {
-      category: classification_category;
+      label_name: string;
       confidence: number;
-      label_path: string;
     },
   ): AutomationMessageInput {
     return {
@@ -606,28 +621,54 @@ export class AutomationService {
       ...(pattern
         ? {
             learnedPattern: {
-              category: pattern.category,
+              labelName: pattern.label_name,
               confidence: pattern.confidence,
-              labelPath: pattern.label_path,
             },
           }
         : {}),
     };
   }
 
+  /**
+   * Oldest-first so an existing backlog drains before new mail. A backfill larger than one
+   * run's budget simply continues on the next run; every message is checkpointed by its
+   * automation action row.
+   */
   private async unprocessedMessages(accountId: string) {
     return prisma.gmail_message_metadata.findMany({
-      where: {
-        connected_google_account_id: accountId,
-        deleted_at: null,
-        is_draft: false,
-        is_sent: false,
-        is_trashed: false,
-        automationAction: null,
-      },
+      where: this.unprocessedWhere(accountId),
       orderBy: { internal_date: 'asc' },
       take: env.AUTOMATION_MAX_MESSAGES_PER_RUN,
     });
+  }
+
+  private unprocessedWhere(accountId: string) {
+    return {
+      connected_google_account_id: accountId,
+      deleted_at: null,
+      is_draft: false,
+      is_sent: false,
+      is_trashed: false,
+      automationAction: null,
+    } as const;
+  }
+
+  private backlogCount(accountId: string): Promise<number> {
+    return prisma.gmail_message_metadata.count({ where: this.unprocessedWhere(accountId) });
+  }
+
+  private async approvedLabel(accountId: string, labelName: string): Promise<user_labels> {
+    const label = await prisma.user_labels.findFirst({
+      where: { connected_google_account_id: accountId, leaf_name: labelName },
+    });
+    if (!label) {
+      throw new AppError(
+        'AUTOMATION_LABEL_NOT_APPROVED',
+        'That label is not part of the approved set for this account.',
+        400,
+      );
+    }
+    return label;
   }
 
   private async persistAndApply(
@@ -636,11 +677,35 @@ export class AutomationService {
     accountId: string,
     message: gmail_message_metadata,
     classification: AutomationClassification,
+    approvedLabels: user_labels[],
     counters: RunCounters,
   ): Promise<void> {
-    const labelPath = await this.labelPathForMessage(message.id, classification.category);
-    const needsReview = classification.confidence < env.AUTOMATION_CONFIDENCE_THRESHOLD;
     const inputHash = hashMessage(message);
+    const matched = approvedLabels.find((label) => label.leaf_name === classification.labelName);
+
+    // No approved label fits: record the decision and leave the message in the inbox.
+    if (classification.labelName === NO_LABEL || !matched) {
+      await prisma.automation_message_actions.create({
+        data: {
+          automation_run_id: runId,
+          connected_google_account_id: accountId,
+          gmail_message_id: message.id,
+          user_id: userId,
+          status: 'SKIPPED',
+          label_name: NO_LABEL,
+          label_path: '',
+          confidence: classification.confidence,
+          source: 'OPENAI',
+          explanation: classification.explanation.slice(0, 500),
+          reason_codes: classification.reasonCodes.slice(0, 16),
+          input_hash: inputHash,
+        },
+      });
+      counters.noLabelSkipped += 1;
+      return;
+    }
+
+    const needsReview = classification.confidence < env.AUTOMATION_CONFIDENCE_THRESHOLD;
     const action = await prisma.automation_message_actions.create({
       data: {
         automation_run_id: runId,
@@ -648,8 +713,8 @@ export class AutomationService {
         gmail_message_id: message.id,
         user_id: userId,
         status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
-        category: classification.category,
-        label_path: labelPath,
+        label_name: matched.leaf_name,
+        label_path: matched.full_path,
         confidence: classification.confidence,
         source: 'OPENAI',
         explanation: classification.explanation.slice(0, 500),
@@ -665,15 +730,15 @@ export class AutomationService {
       action.id,
       accountId,
       message.gmail_message_id,
-      labelPath,
+      matched.full_path,
       counters,
     );
     if (applied) {
       await this.learn(
         accountId,
         senderDomain(message),
-        classification.category,
-        labelPath,
+        matched.leaf_name,
+        matched.full_path,
         classification.confidence,
       );
     }
@@ -740,6 +805,7 @@ export class AutomationService {
       where: {
         connected_google_account_id: accountId,
         status: { in: ['FAILED', 'PENDING'] },
+        label_path: { not: '' },
         attempt_count: { lt: env.AUTOMATION_MAX_ACTION_RETRIES },
         OR: [{ next_retry_at: null }, { next_retry_at: { lte: new Date() } }],
       },
@@ -758,26 +824,10 @@ export class AutomationService {
     }
   }
 
-  private async labelPathForMessage(
-    messageId: string,
-    category: classification_category,
-  ): Promise<string> {
-    const association = await prisma.dynamic_label_candidate_messages.findFirst({
-      where: {
-        gmail_message_id: messageId,
-        candidate: { status: { in: ['APPROVED', 'CREATED'] } },
-      },
-      // stage-2 reuse: candidates survive, the approval decision history does not.
-      include: { candidate: true },
-      orderBy: { association_score: 'desc' },
-    });
-    return association?.candidate.suggested_full_path ?? `MailMind/${CATEGORY_LABELS[category]}`;
-  }
-
   private async learn(
     accountId: string,
     domain: string,
-    category: classification_category,
+    labelName: string,
     labelPath: string,
     confidence: number,
   ): Promise<void> {
@@ -789,7 +839,7 @@ export class AutomationService {
         },
       },
     });
-    if (existing && existing.category !== category) {
+    if (existing && existing.label_name !== labelName) {
       await prisma.learned_classification_patterns.update({
         where: { id: existing.id },
         data: { active: false },
@@ -806,7 +856,7 @@ export class AutomationService {
       create: {
         connected_google_account_id: accountId,
         sender_domain: domain,
-        category,
+        label_name: labelName,
         label_path: labelPath,
         confidence,
         successful_apply_count: 1,
@@ -883,6 +933,8 @@ export class AutomationService {
           pattern_reused_count: counters.patternReused,
           openai_classified_count: counters.openaiClassified,
           review_required_count: counters.reviewRequired,
+          no_label_skipped_count: counters.noLabelSkipped,
+          backlog_remaining: counters.backfillRemaining,
           labels_created_count: counters.labelsCreated,
           labels_reused_count: counters.labelsReused,
           messages_labeled_count: counters.messagesLabeled,
@@ -977,6 +1029,8 @@ export class AutomationService {
     pattern_reused_count: number;
     openai_classified_count: number;
     review_required_count: number;
+    no_label_skipped_count: number;
+    backlog_remaining: number;
     messages_labeled_count: number;
     failed_count: number;
     provider_call_count: number;
@@ -1000,6 +1054,8 @@ export class AutomationService {
       patternReused: run.pattern_reused_count,
       openaiClassified: run.openai_classified_count,
       reviewRequired: run.review_required_count,
+      noLabelSkipped: run.no_label_skipped_count,
+      backlogRemaining: run.backlog_remaining,
       messagesLabeled: run.messages_labeled_count,
       failed: run.failed_count,
       providerCalls: run.provider_call_count,
