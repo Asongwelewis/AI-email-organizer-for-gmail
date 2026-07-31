@@ -90,6 +90,7 @@ const environmentSchema = z
     AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
     AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
+    AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(25),
     AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(1000000).default(100000),
     AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(100000).default(10000),
     AUTOMATION_MAX_COST_MICRO_USD: z.coerce
