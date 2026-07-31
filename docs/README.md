@@ -16,9 +16,12 @@ This directory documents the current MailMind AI MVP implementation.
 
 - [Stage 2 setup and security](stage-2-setup.md)
 - [Stage 3 Gmail synchronization](stage-3-gmail-sync.md)
-- [Stage 4 AI classification](stage-4-ai-classification.md)
-- [Stage 4.5 dynamic label discovery](stage-4.5-dynamic-label-discovery.md)
-- [Stage 5 daily automation](stage-5-daily-automation.md)
+- [Stage 5 daily automation](stage-5-daily-automation.md) — current automation behavior, including
+  the approved-label vocabulary and the backfill.
+
+The stage 4 classification and stage 4.5 label-discovery notes were removed: those workflows no
+longer exist. The discovery engine survives as the source of label proposals, described in
+[Architecture](architecture.md) and [API reference](api.md).
 
 These documents describe the current implementation. Daily automatic Gmail labeling is
 implemented with bounded OpenAI usage and human review; billing and attachment or full-body

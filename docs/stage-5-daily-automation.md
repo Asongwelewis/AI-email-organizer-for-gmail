@@ -1,9 +1,19 @@
 # Stage 5 daily automation
 
 MailMind runs account-scoped Gmail organization once per UTC day and on demand from
-`/dashboard/automation`. It refreshes synchronized metadata, classifies new or unprocessed
-messages, creates or reuses a controlled `MailMind/<Category>` Gmail label, and applies that label
-to confident matches. Low-confidence results never change Gmail and enter the review queue.
+`/dashboard/automation`. It refreshes synchronized metadata, files new or unprocessed messages into
+the account's **approved label set**, and applies the matching `MailMind/<leaf>` Gmail label to
+confident matches. Low-confidence results never change Gmail and enter the review queue.
+
+Automation cannot start until the user has confirmed at least one label on `/labels`; a run
+attempted before that fails with `AUTOMATION_NO_APPROVED_LABELS`. The model is constrained to the
+approved leaf names plus the literal `NONE`. A `NONE` result — or any name outside the approved set
+— is recorded as a skipped action and the message is left in the inbox. Automation never creates a
+label outside the proposal-and-approval flow.
+
+When synchronized mail predates automation, the run drains that backlog oldest-first in the same
+bounded batches, spanning as many runs as the daily budget requires; `backlogRemaining` on the run
+and status responses reports what is left.
 
 OpenAI is the primary classifier for every new or unprocessed message. A learned sender-domain
 pattern becomes context only after at least two consistent successful outcomes at 90% confidence
@@ -16,8 +26,8 @@ or above; it never bypasses OpenAI. A contradictory applied outcome deactivates 
 3. Retry durable failed Gmail actions before purchasing new classifications.
 4. Select messages without an automation action, excluding drafts, sent, trashed, and deleted
    records.
-5. Send every selected message to OpenAI in bounded batches, including qualified patterns as
-   untrusted historical hints.
+5. Send every selected message to OpenAI in bounded batches with the approved label names,
+   including qualified patterns as untrusted historical hints.
 6. Validate strict structured output and persist one durable action per message.
 7. Hold uncertain actions for review; apply confident actions with Gmail `messages.modify`.
 8. Persist usage, cost, counters, completion state, and audit events before releasing the lease.

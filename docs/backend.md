@@ -3,9 +3,8 @@
 ## Overview
 
 The MailMind API is an Express 5 and TypeScript service in `apps/api`. It owns authentication,
-encrypted Google credentials, metadata-only Gmail synchronization, classification recommendations,
-dynamic-label suggestions, daily OpenAI/Gmail automation, audit records, and all PostgreSQL access
-through Prisma.
+encrypted Google credentials, metadata-only Gmail synchronization, the user-approved label set,
+daily OpenAI/Gmail automation, audit records, and all PostgreSQL access through Prisma.
 
 The backend is the only application component allowed to access the database, Google client secret,
 Gmail OAuth tokens, session secrets, token-encryption key, or an external classifier credential.
@@ -92,50 +91,24 @@ the `Subject`, `From`, `To`, `Cc`, and `Date` headers. It stores those fields, G
 snippet, label IDs, state flags, estimated size, and whether an attachment exists. It does not
 request or store full message bodies, raw MIME, or attachment content.
 
-### Classification
+### Labels
 
-The classifier is rules-first and supports `disabled`, deterministic `mock`, and `external`
-providers:
+The label set is proposed by the deterministic discovery engine, edited by the user, and confirmed
+once. Only confirmed labels exist in `user_labels`, and only those may be applied by automation.
 
-- `AI_CLASSIFIER_ENABLED`
-- `AI_CLASSIFIER_PROVIDER`
-- `AI_CLASSIFIER_MODEL`
-- `AI_CLASSIFIER_API_KEY`
-- `AI_CLASSIFIER_BASE_URL`
-- `AI_CLASSIFIER_TIMEOUT_MS`
-- `AI_CLASSIFIER_MAX_RETRIES`
-- `AI_CLASSIFIER_BATCH_SIZE`
-- `AI_CLASSIFIER_OUTPUT_MAX_TOKENS`
-- `AI_CLASSIFICATION_MAX_MESSAGES_PER_RUN`
-- `AI_CLASSIFICATION_MIN_CONFIDENCE`
-- `AI_CLASSIFICATION_REVIEW_THRESHOLD`
-- `AI_CLASSIFICATION_INPUT_MAX_CHARS`
-- `AI_CLASSIFICATION_RULE_THRESHOLD`
-- `AI_CLASSIFICATION_LEASE_SECONDS`
+- `AUTOMATION_MAX_LABELS` caps proposals plus approved labels per account (default `25`).
+- `DYNAMIC_LABEL_MIN_MESSAGES`, `DYNAMIC_LABEL_LOOKBACK_DAYS`, `DYNAMIC_LABEL_MIN_CONFIDENCE`,
+  `DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT`, `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`, and
+  `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN` tune the engine that produces proposals.
 
-When the provider is `external` and classification is enabled, both the API key and base URL are
-required. Inputs are normalized from synchronized metadata and bounded before provider use.
-Classification writes versioned recommendations and immutable user corrections; it does not mutate
-Gmail.
+Names are validated with `validateLeafName`, rejected when `isGenericLabelName` matches, and
+compared with `labelsAreSimilar` so an account cannot hold two near-duplicate labels. Confirmation
+creates `MailMind/<leafName>` in Gmail through the automation Gmail adapter and stores the returned
+Gmail label id. Deleting a label removes only MailMind's record; the Gmail label and the mail
+already filed under it are never touched.
 
-### Dynamic-label discovery
-
-- `DYNAMIC_LABEL_DISCOVERY_ENABLED`
-- `DYNAMIC_LABEL_MIN_MESSAGES`
-- `DYNAMIC_LABEL_LOOKBACK_DAYS`
-- `DYNAMIC_LABEL_MIN_CONFIDENCE`
-- `DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT`
-- `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`
-- `DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN`
-- `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN`
-- `DYNAMIC_LABEL_MAX_PENDING_CANDIDATES`
-- `DYNAMIC_LABEL_MAX_APPROVED_LABELS`
-- `DYNAMIC_LABEL_REDISCOVERY_DAYS`
-- `DYNAMIC_LABEL_AI_NAMING_ENABLED`
-
-Discovery analyzes synchronized metadata and classification/correction signals. Approval, rename,
-rejection, deferral, and merge operations only store user decisions. The current status contract
-explicitly reports `gmailLabelCreationSupported: false`.
+Proposals take the account's automation lease, so a proposal and an automation run can never
+overlap for the same account.
 
 ### Daily automation
 
@@ -179,8 +152,8 @@ tokens, session tokens, passwords, database URLs, and the token-encryption key.
 | Authentication        | `src/auth`, `src/sessions`               | Google login, opaque sessions, cookie lifecycle        |
 | Google connection     | `src/integrations/google`                | Separate Gmail consent, encrypted tokens, revocation   |
 | Gmail sync            | `src/integrations/gmail`                 | Labels, initial sync, history-based incremental sync   |
-| Classification        | `src/features/classification`            | Rules/provider pipeline, review queue, corrections     |
-| Label discovery       | `src/features/label-discovery`           | Candidate discovery and human decisions                |
+| Labels                | `src/features/labels`                    | Proposal, approval, rename, delete of the label set    |
+| Discovery engine      | `src/features/label-discovery`           | Engine-only: normalization, confidence, candidates     |
 | Daily automation      | `src/features/automation`                | Scheduler, OpenAI, Gmail apply, budgets, review        |
 | Persistence           | `src/repositories`, feature repositories | Account-scoped Prisma queries and leases               |
 | Security              | `src/security`, `src/middleware`         | Encryption, hashing, safe redirects, CORS/CSRF, limits |
@@ -201,10 +174,15 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Ordered migrations are sto
 5. `20260723203016_dynamic_label_discovery`
 6. `20260726102117_daily_automation`
 7. `20260726121553_account_scoped_tutorial`
+8. `20260726181430_gmail_full_backfill_coverage`
+9. `20260726210000_ai_automation_recovery`
+10. `20260729090000_remove_classification_and_discovery_workflow`
+11. `20260731090000_stage2_user_labels`
 
 The schema groups data into identity/session/audit records, connected Google credentials, Gmail
-metadata and sync state, classification results/runs/corrections, and label candidates/runs/
-decisions. Foreign-key cascades keep account-owned data bounded. Migrations add database
+metadata and sync state, the approved `user_labels` set, discovery candidates, and automation
+settings/state/runs/actions plus learned patterns. Foreign-key cascades keep account-owned data
+bounded. Migrations add database
 constraints, indexes, privileges, and forced RLS that Prisma schema syntax cannot fully express.
 
 Use `prisma migrate deploy` for non-development migration application. Do not use
