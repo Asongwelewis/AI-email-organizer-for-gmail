@@ -39,6 +39,30 @@ export class AutomationGmailService {
     return { id: label.id, created: !remote.data.labels?.some((item) => item.id === label?.id) };
   }
 
+  async renameLabel(accountId: string, labelId: string, labelPath: string): Promise<void> {
+    const gmail = await createGmailClient(accountId);
+    const updated = await withGmailRetry(() =>
+      gmail.users.labels.update({
+        userId: 'me',
+        id: labelId,
+        requestBody: { name: labelPath },
+      }),
+    );
+    if (!updated.data.id || !updated.data.name) {
+      throw new Error('GMAIL_LABEL_RENAME_INVALID_RESPONSE');
+    }
+    await gmailRepository.upsertLabels(accountId, [
+      {
+        id: updated.data.id,
+        name: updated.data.name,
+        type: updated.data.type ?? 'user',
+        messageListVisibility: updated.data.messageListVisibility ?? null,
+        labelListVisibility: updated.data.labelListVisibility ?? null,
+        managedPurpose: 'AUTOMATION',
+      },
+    ]);
+  }
+
   async applyLabel(accountId: string, remoteMessageId: string, labelId: string): Promise<void> {
     const gmail = await createGmailClient(accountId);
     await withGmailRetry(() =>

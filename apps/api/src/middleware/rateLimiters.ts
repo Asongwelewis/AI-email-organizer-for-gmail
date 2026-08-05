@@ -28,3 +28,5 @@ export const classificationReadLimiter = limiter(Math.max(env.AUTH_RATE_LIMIT_MA
 export const classificationMutationLimiter = limiter(
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
 );
+export const labelsReadLimiter = limiter(Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30));
+export const labelsMutationLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));

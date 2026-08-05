@@ -20,8 +20,8 @@ import {
   useAutomationStatus,
 } from '@web/queries/automationQueries';
 import { useGmailSyncStatusQuery } from '@web/queries/gmailQueries';
+import { useLabels } from '@web/queries/labelsQueries';
 import { getSafeErrorMessage } from '@web/services/errorMessages';
-import { classificationCategories, type ClassificationCategory } from '@web/types/automation';
 
 const words = (value: string) =>
   value
@@ -45,6 +45,8 @@ const automationErrorMessage = (code: string) => {
       'OpenAI credentials or project access need attention before automation can continue.',
     OPENAI_MODEL_UNAVAILABLE: 'The configured OpenAI model is unavailable to this project.',
     OPENAI_RATE_LIMITED: 'OpenAI is rate limited. MailMind will retry safely.',
+    AUTOMATION_NO_APPROVED_LABELS:
+      'Confirm a label set on the Labels screen before automation can file mail.',
   };
   return messages[code] ?? words(code);
 };
@@ -53,6 +55,7 @@ export function AutomationPage() {
   const status = useAutomationStatus();
   const review = useAutomationReview();
   const sync = useGmailSyncStatusQuery(status.data?.gmailConnected === true);
+  const labels = useLabels();
   const actions = useAutomationActions();
 
   if (status.isLoading) return <RouteLoader label="Loading automation control room" />;
@@ -73,6 +76,9 @@ export function AutomationPage() {
   const items = review.data?.items ?? [];
   const groups = groupAutomationReviewItems(items);
   const cost = ((data?.usageToday.estimatedCostMicrousd ?? 0) / 1_000_000).toFixed(4);
+  const approvedLabels = labels.data?.labels.map((label) => label.leafName) ?? [];
+  const labelsReady = data?.labelsReady ?? approvedLabels.length > 0;
+  const backlog = data?.backlogRemaining ?? 0;
 
   return (
     <div className="automation-page">
@@ -108,7 +114,31 @@ export function AutomationPage() {
       </header>
 
       <WorkflowRail current="automate" sync={sync.data} />
+      {!labelsReady && (
+        <aside className="automation-empty" role="status" data-tutorial="automation-labels-gate">
+          <Bot />
+          <strong>Automation is waiting for a label set.</strong>
+          <span>
+            Approve labels on the Labels screen. Automation files mail only into labels you
+            confirmed, and leaves anything that fits none of them in the inbox.
+          </span>
+        </aside>
+      )}
       <CoveragePanel sync={sync.data} loading={sync.isLoading} compact />
+      {backlog > 0 && (
+        <ProgressLine
+          label="Backfill remaining"
+          value={
+            (sync.data?.syncedMessages ?? 0) > 0
+              ? Math.max(
+                  0,
+                  100 - Math.round((backlog / (sync.data?.syncedMessages ?? backlog)) * 100),
+                )
+              : 0
+          }
+          detail={`${backlog} synchronized messages still to file. Runs resume oldest-first until the backlog is clear.`}
+        />
+      )}
 
       <section className="automation-metrics" aria-label="Automation summary">
         <MetricCard
@@ -255,18 +285,19 @@ export function AutomationPage() {
               <ReviewCard
                 key={group.key}
                 group={group}
+                approvedLabels={approvedLabels}
                 busy={actions.approve.isPending || actions.skip.isPending}
-                onApprove={async (category) => {
+                onApprove={async (labelName) => {
                   try {
                     await Promise.all(
                       group.members.map((item) =>
-                        actions.approve.mutateAsync({ id: item.id, category }),
+                        actions.approve.mutateAsync({ id: item.id, labelName }),
                       ),
                     );
                     toast.success(
                       group.members.length > 1
                         ? `${group.members.length} separate messages approved and labeled.`
-                        : 'Classification approved and Gmail label applied.',
+                        : 'Label approved and applied in Gmail.',
                     );
                   } catch (error) {
                     toast.error(getSafeErrorMessage(error, 'Review could not be applied.'));
@@ -291,17 +322,22 @@ export function AutomationPage() {
 
 function ReviewCard({
   group,
+  approvedLabels,
   busy,
   onApprove,
   onSkip,
 }: {
   group: AutomationReviewGroup;
+  approvedLabels: string[];
   busy: boolean;
-  onApprove: (category: ClassificationCategory) => Promise<void>;
+  onApprove: (labelName: string) => Promise<void>;
   onSkip: () => Promise<void>;
 }) {
   const item = group.primary;
-  const [category, setCategory] = useState(item.category);
+  const options = approvedLabels.includes(item.labelName)
+    ? approvedLabels
+    : [item.labelName, ...approvedLabels];
+  const [labelName, setLabelName] = useState(item.labelName);
   return (
     <article className="automation-review-card">
       <div>
@@ -330,19 +366,16 @@ function ReviewCard({
         <p>{item.explanation}</p>
         <label>
           Apply as
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value as ClassificationCategory)}
-          >
-            {classificationCategories.map((option) => (
+          <select value={labelName} onChange={(event) => setLabelName(event.target.value)}>
+            {options.map((option) => (
               <option key={option} value={option}>
-                {words(option)}
+                {option}
               </option>
             ))}
           </select>
         </label>
         <div>
-          <button type="button" disabled={busy} onClick={() => void onApprove(category)}>
+          <button type="button" disabled={busy} onClick={() => void onApprove(labelName)}>
             Approve & apply
           </button>
           <button className="quiet" type="button" disabled={busy} onClick={() => void onSkip()}>

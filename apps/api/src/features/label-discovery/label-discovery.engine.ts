@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import type { classification_category } from '@prisma/client';
 
 import { calculateLabelConfidence } from './label-confidence.js';
 import {
@@ -34,7 +33,7 @@ interface TopicDefinition {
   key: string;
   name: string;
   pattern: RegExp;
-  categories: classification_category[];
+  categories: string[];
 }
 
 const TOPICS: TopicDefinition[] = [
@@ -215,7 +214,7 @@ function finishGroup(input: {
   sourceKey: string;
   suggestedLeafName: string;
   messages: DiscoveryMessage[];
-  category: { category: classification_category | null; agreement: number };
+  category: { category: string | null; agreement: number };
   sourceAgreement: number;
   displayNameAgreement: number;
   subjectPatternAgreement: number;
@@ -307,12 +306,12 @@ function finishGroup(input: {
 }
 
 function dominantCategory(messages: DiscoveryMessage[]): {
-  category: classification_category | null;
+  category: string | null;
   agreement: number;
 } {
   const values = messages
     .map((message) => message.correctedCategory ?? message.category)
-    .filter((value): value is classification_category => value !== null);
+    .filter((value): value is string => value !== null);
   if (values.length === 0) return { category: null, agreement: 0 };
   const counts = count(values);
   const [category, amount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]!;

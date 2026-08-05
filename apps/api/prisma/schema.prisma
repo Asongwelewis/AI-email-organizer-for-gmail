@@ -67,6 +67,7 @@ model connected_google_accounts {
   automation_runs                 automation_runs[]
   automation_message_actions      automation_message_actions[]
   learned_classification_patterns learned_classification_patterns[]
+  user_labels                     user_labels[]
 
   @@unique([user_id, google_subject], map: "connected_google_accounts_user_subject_unique_idx")
   @@index([email])
@@ -206,7 +207,7 @@ model dynamic_label_candidates {
   thread_count                Int
   first_message_at            DateTime?                          @db.Timestamptz(6)
   last_message_at             DateTime?                          @db.Timestamptz(6)
-  dominant_category           classification_category?
+  dominant_category           String?
   category_agreement          Float
   source_agreement            Float
   reason_codes                String[]                           @default([])
@@ -369,25 +370,6 @@ enum gmail_sync_run_status {
   FAILED
 }
 
-enum classification_category {
-  PRIMARY
-  WORK
-  FINANCE
-  RECEIPTS
-  ORDERS
-  TRAVEL
-  EDUCATION
-  NEWSLETTERS
-  PROMOTIONS
-  SOCIAL
-  NOTIFICATIONS
-  SECURITY
-  SUPPORT
-  PERSONAL
-  SPAM_SUSPECTED
-  OTHER
-}
-
 enum dynamic_label_candidate_type {
   SOURCE
   ORGANIZATION
@@ -432,6 +414,29 @@ enum automation_classification_source {
   OPENAI
   LEARNED_PATTERN
   USER
+}
+
+/// User-approved label set. Automation may only apply labels present here.
+model user_labels {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  leaf_name                   String
+  full_path                   String
+  normalized_name             String
+  source                      user_label_source
+  gmail_label_id              String?
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, full_path], map: "user_labels_account_path_unique_idx")
+  @@unique([connected_google_account_id, normalized_name], map: "user_labels_account_normalized_unique_idx")
+  @@index([connected_google_account_id, created_at(sort: Desc)], map: "user_labels_account_created_idx")
+}
+
+enum user_label_source {
+  AI_PROPOSED
+  USER_CREATED
 }
 
 /// Per-account daily automation policy. Secrets and provider credentials are never stored here.
@@ -480,6 +485,8 @@ model automation_runs {
   pattern_reused_count        Int                          @default(0)
   openai_classified_count     Int                          @default(0)
   review_required_count       Int                          @default(0)
+  no_label_skipped_count      Int                          @default(0)
+  backlog_remaining           Int                          @default(0)
   labels_created_count        Int                          @default(0)
   labels_reused_count         Int                          @default(0)
   messages_labeled_count      Int                          @default(0)
@@ -512,7 +519,7 @@ model automation_message_actions {
   gmail_message_id            String                           @unique(map: "automation_actions_message_unique_idx") @db.Uuid
   user_id                     String                           @db.Uuid
   status                      automation_action_status         @default(PENDING)
-  category                    classification_category
+  label_name                  String
   label_path                  String
   gmail_label_id              String?
   confidence                  Float
@@ -543,7 +550,7 @@ model learned_classification_patterns {
   id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connected_google_account_id String                    @db.Uuid
   sender_domain               String
-  category                    classification_category
+  label_name                  String
   label_path                  String
   confidence                  Float
   sample_count                Int                       @default(1)

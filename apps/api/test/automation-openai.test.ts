@@ -30,7 +30,7 @@ describe('OpenAiAutomationProvider', () => {
                     results: [
                       {
                         key: 'm1',
-                        category: 'RECEIPTS',
+                        labelName: 'Receipts',
                         confidence: 0.94,
                         explanation: 'Receipt metadata.',
                         reasonCodes: ['RECEIPT_SIGNAL'],
@@ -52,22 +52,25 @@ describe('OpenAiAutomationProvider', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await new OpenAiAutomationProvider().classify([
-      {
-        key: 'm1',
-        subject: 'Your receipt',
-        sender: 'billing@example.com',
-        senderDomain: 'example.com',
-        snippet: 'Paid',
-        isUnread: true,
-        isImportant: false,
-        hasAttachments: true,
-      },
-    ]);
+    const result = await new OpenAiAutomationProvider().classify(
+      [
+        {
+          key: 'm1',
+          subject: 'Your receipt',
+          sender: 'billing@example.com',
+          senderDomain: 'example.com',
+          snippet: 'Paid',
+          isUnread: true,
+          isImportant: false,
+          hasAttachments: true,
+        },
+      ],
+      { labelNames: ['Receipts', 'Work'] },
+    );
 
     expect(result.classifications[0]).toMatchObject({
       key: 'm1',
-      category: 'RECEIPTS',
+      labelName: 'Receipts',
       confidence: 0.94,
     });
     expect(result.usage).toEqual({ inputTokens: 120, cachedInputTokens: 20, outputTokens: 30 });
@@ -93,7 +96,7 @@ describe('OpenAiAutomationProvider', () => {
                       results: [
                         {
                           key: 'wrong',
-                          category: 'WORK',
+                          labelName: 'Work',
                           confidence: 0.9,
                           explanation: 'Work.',
                           reasonCodes: [],
@@ -110,18 +113,21 @@ describe('OpenAiAutomationProvider', () => {
       ),
     );
     await expect(
-      new OpenAiAutomationProvider().classify([
-        {
-          key: 'm1',
-          subject: '',
-          sender: '',
-          senderDomain: 'example.com',
-          snippet: '',
-          isUnread: false,
-          isImportant: false,
-          hasAttachments: false,
-        },
-      ]),
+      new OpenAiAutomationProvider().classify(
+        [
+          {
+            key: 'm1',
+            subject: '',
+            sender: '',
+            senderDomain: 'example.com',
+            snippet: '',
+            isUnread: false,
+            isImportant: false,
+            hasAttachments: false,
+          },
+        ],
+        { labelNames: ['Receipts', 'Work'] },
+      ),
     ).rejects.toMatchObject({ code: 'OPENAI_INVALID_RESPONSE' });
   });
 
@@ -138,18 +144,21 @@ describe('OpenAiAutomationProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      new OpenAiAutomationProvider().classify([
-        {
-          key: 'm1',
-          subject: '',
-          sender: '',
-          senderDomain: 'example.com',
-          snippet: '',
-          isUnread: false,
-          isImportant: false,
-          hasAttachments: false,
-        },
-      ]),
+      new OpenAiAutomationProvider().classify(
+        [
+          {
+            key: 'm1',
+            subject: '',
+            sender: '',
+            senderDomain: 'example.com',
+            snippet: '',
+            isUnread: false,
+            isImportant: false,
+            hasAttachments: false,
+          },
+        ],
+        { labelNames: ['Receipts', 'Work'] },
+      ),
     ).rejects.toMatchObject({
       code: 'OPENAI_INSUFFICIENT_QUOTA',
       providerStatus: 429,
@@ -181,7 +190,7 @@ describe('OpenAiAutomationProvider', () => {
                       results: [
                         {
                           key: 'm1',
-                          category: 'WORK',
+                          labelName: 'Work',
                           confidence: 0.91,
                           explanation: 'Work metadata.',
                           reasonCodes: ['WORK_SIGNAL'],
@@ -198,18 +207,21 @@ describe('OpenAiAutomationProvider', () => {
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await new OpenAiAutomationProvider().classify([
-      {
-        key: 'm1',
-        subject: 'Project',
-        sender: 'person@example.com',
-        senderDomain: 'example.com',
-        snippet: 'Update',
-        isUnread: true,
-        isImportant: false,
-        hasAttachments: false,
-      },
-    ]);
+    const result = await new OpenAiAutomationProvider().classify(
+      [
+        {
+          key: 'm1',
+          subject: 'Project',
+          sender: 'person@example.com',
+          senderDomain: 'example.com',
+          snippet: 'Update',
+          isUnread: true,
+          isImportant: false,
+          hasAttachments: false,
+        },
+      ],
+      { labelNames: ['Receipts', 'Work'] },
+    );
 
     expect(result.classifications).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);

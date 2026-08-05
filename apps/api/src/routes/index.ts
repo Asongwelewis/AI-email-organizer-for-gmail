@@ -6,6 +6,7 @@ import { authRouter } from '@api/auth/auth.routes.js';
 import { googleIntegrationRouter } from '@api/integrations/google/google-integration.routes.js';
 import { gmailRouter } from '@api/integrations/gmail/gmail.routes.js';
 import { automationRouter } from '@api/features/automation/automation.routes.js';
+import { labelsRouter } from '@api/features/labels/labels.routes.js';
 
 export const apiRouter = Router();
 
@@ -17,4 +18,5 @@ apiRouter.get(
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/integrations/google', googleIntegrationRouter);
 apiRouter.use('/gmail', gmailRouter);
+apiRouter.use('/labels', labelsRouter);
 apiRouter.use('/automation', automationRouter);

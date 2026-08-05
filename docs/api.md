@@ -281,331 +281,93 @@ Applies changes after the saved Gmail history checkpoint. Uses the same response
 Returns `409 GMAIL_INITIAL_SYNC_REQUIRED` without an initial checkpoint or
 `409 GMAIL_HISTORY_EXPIRED` when a new initial sync is needed.
 
-## Classification
+## Labels
 
-All endpoints require a session. Mutations require trusted Origin. Classification operates on
-stored metadata and creates recommendations only.
+All endpoints require a session; mutations require a trusted Origin. The approved label set is the
+only vocabulary automation may use, and nothing is created in Gmail until the user confirms.
 
-Categories:
+### `GET /api/labels`
 
-`PRIMARY`, `WORK`, `FINANCE`, `RECEIPTS`, `ORDERS`, `TRAVEL`, `EDUCATION`, `NEWSLETTERS`,
-`PROMOTIONS`, `SOCIAL`, `NOTIFICATIONS`, `SECURITY`, `SUPPORT`, `PERSONAL`, `SPAM_SUSPECTED`,
-`OTHER`.
-
-Recommended actions:
-
-`KEEP_IN_INBOX`, `ARCHIVE_RECOMMENDED`, `REVIEW_REQUIRED`, `IMPORTANT_RECOMMENDED`,
-`MUTE_RECOMMENDED`, `UNSUBSCRIBE_CANDIDATE`.
-
-### `GET /api/classification/status`
-
-Returns provider state, counts, latest run, distributions, and version identifiers.
+Returns the approved set plus any pending proposals. Sends `Cache-Control: no-store`.
 
 ```json
 {
-  "enabled": true,
-  "provider": "external",
-  "model": "configured-model",
-  "running": false,
-  "activeRunId": null,
-  "classifiedCount": 120,
-  "reviewRequiredCount": 8,
-  "lastClassifiedAt": "2026-07-23T20:00:00.000Z",
-  "lastErrorCode": null,
-  "latestRun": {
-    "id": "00000000-0000-4000-8000-000000000010",
-    "status": "COMPLETED",
-    "requestedMessageCount": 20,
-    "processedMessageCount": 20,
-    "reusedResultCount": 5,
-    "ruleClassifiedCount": 10,
-    "aiClassifiedCount": 5,
-    "reviewRequiredCount": 2,
-    "failedCount": 0
-  },
-  "categoryDistribution": { "WORK": 30, "RECEIPTS": 15 },
-  "recommendationDistribution": { "KEEP_IN_INBOX": 30 },
-  "versions": {
-    "classifier": "version-string",
-    "prompt": "version-string",
-    "taxonomy": "version-string"
-  }
-}
-```
-
-### `GET /api/classification/results`
-
-Cursor-paginated results. Query parameters:
-
-| Parameter           | Rules                                                             |
-| ------------------- | ----------------------------------------------------------------- |
-| `category`          | One category listed above                                         |
-| `recommendedAction` | One recommended action listed above                               |
-| `requiresReview`    | `true` or `false`                                                 |
-| `status`            | `PENDING`, `COMPLETED`, `FAILED`, `NEEDS_REVIEW`, or `SUPERSEDED` |
-| `cursor`            | Result UUID returned as `nextCursor`                              |
-| `limit`             | Integer 1–50; default 20                                          |
-
-```json
-{
-  "results": [
+  "maxLabels": 25,
+  "labels": [
     {
-      "id": "00000000-0000-4000-8000-000000000020",
-      "messageId": "00000000-0000-4000-8000-000000000021",
-      "message": {
-        "subject": "Your receipt",
-        "sender": "Example Store",
-        "senderDomain": "store.example",
-        "snippet": "Thanks for your order...",
-        "gmailLabels": ["INBOX"],
-        "date": "2026-07-23T19:00:00.000Z"
-      },
-      "recommendedCategory": "RECEIPTS",
-      "suggestedAction": "ARCHIVE_RECOMMENDED",
-      "confidence": 0.95,
-      "requiresReview": false,
-      "explanation": "Receipt metadata signals matched.",
-      "reasonCodes": ["RECEIPT_TERMS"],
-      "source": "RULE",
-      "status": "COMPLETED",
-      "versions": {
-        "classifier": "version-string",
-        "prompt": "version-string",
-        "taxonomy": "version-string"
-      },
-      "classifiedAt": "2026-07-23T20:00:00.000Z",
-      "correction": null
+      "id": "00000000-0000-4000-8000-000000000010",
+      "leafName": "Invoices",
+      "fullPath": "MailMind/Invoices",
+      "source": "AI_PROPOSED",
+      "gmailLabelId": "Label_12",
+      "createdAt": "2026-07-31T09:00:00.000Z"
     }
   ],
-  "nextCursor": null
-}
-```
-
-### `GET /api/classification/results/:id`
-
-Returns one result DTO from the list contract. The UUID must belong to the connected account.
-
-### `POST /api/classification/run`
-
-Runs classification for a configured maximum number of eligible messages. The response includes:
-
-```json
-{
-  "success": true,
-  "runId": "00000000-0000-4000-8000-000000000010",
-  "provider": "external",
-  "model": "configured-model",
-  "requested": 20,
-  "processed": 20,
-  "reused": 5,
-  "rule": 10,
-  "ai": 5,
-  "providerCalls": 5,
-  "review": 2,
-  "failed": 0
-}
-```
-
-### `POST /api/classification/messages/:messageId/reclassify`
-
-Forces one eligible stored message through the pipeline. `messageId` is the internal metadata UUID,
-not Gmail’s string message ID. It uses the run response contract.
-
-### `POST /api/classification/results/:id/correct`
-
-Stores an immutable correction. Request:
-
-```json
-{
-  "category": "ORDERS",
-  "recommendedAction": "KEEP_IN_INBOX",
-  "feedbackReason": "This is an active order."
-}
-```
-
-`feedbackReason` is optional and limited to 500 trimmed characters. Returns 201:
-
-```json
-{
-  "id": "00000000-0000-4000-8000-000000000030",
-  "classificationResultId": "00000000-0000-4000-8000-000000000020",
-  "correctedCategory": "ORDERS",
-  "correctedRecommendedAction": "KEEP_IN_INBOX",
-  "feedbackReason": "This is an active order.",
-  "createdAt": "2026-07-23T20:00:00.000Z"
-}
-```
-
-## Dynamic-label discovery
-
-All endpoints require a session. Mutations require trusted Origin. These endpoints store
-suggestions and decisions; they do not create a Gmail label or apply one to a message.
-
-Candidate types are `SOURCE`, `ORGANIZATION`, `TOPIC`, `SUBSCRIPTION`, `PROJECT`, and `WORKFLOW`.
-
-### `GET /api/label-discovery/status`
-
-```json
-{
-  "enabled": true,
-  "running": false,
-  "activeRunId": null,
-  "pendingCount": 4,
-  "approvedCount": 2,
-  "maxPendingCandidates": 50,
-  "maxApprovedLabels": 100,
-  "gmailLabelCreationSupported": false,
-  "lastErrorCode": null,
-  "latestRun": {
-    "id": "00000000-0000-4000-8000-000000000040",
-    "status": "COMPLETED",
-    "messagesAnalyzed": 120,
-    "groupsDiscovered": 8,
-    "candidatesCreated": 4,
-    "candidatesReused": 2,
-    "candidatesRejectedByRules": 2,
-    "providerCalls": 0,
-    "completedAt": "2026-07-23T20:00:00.000Z"
-  },
-  "versions": {
-    "discovery": "version-string",
-    "naming": "version-string",
-    "confidence": "version-string"
-  }
-}
-```
-
-### `POST /api/label-discovery/run`
-
-All body fields are optional:
-
-```json
-{
-  "minMessages": 3,
-  "lookbackDays": 90,
-  "maxCandidates": 20,
-  "allowedCandidateTypes": ["SOURCE", "ORGANIZATION"],
-  "preferOrganizations": true,
-  "preferTopics": true
-}
-```
-
-Limits: `minMessages` 3–100, `lookbackDays` 7–365, `maxCandidates` 1–50, and one through six
-allowed types. Returns run counts:
-
-```json
-{
-  "success": true,
-  "runId": "00000000-0000-4000-8000-000000000040",
-  "messagesAnalyzed": 120,
-  "groupsDiscovered": 8,
-  "candidatesCreated": 4,
-  "candidatesReused": 2,
-  "candidatesRejectedByRules": 2,
-  "providerCalls": 0,
-  "discoveryVersion": "version-string"
-}
-```
-
-### `GET /api/label-discovery/candidates`
-
-Query parameters:
-
-| Parameter       | Rules                                                                                         |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `status`        | `PENDING`, `APPROVED`, `REJECTED`, `DEFERRED`, `MERGED`, `CREATED`, `SUPERSEDED`, or `FAILED` |
-| `candidateType` | One candidate type listed above                                                               |
-| `cursor`        | Candidate UUID returned as `nextCursor`                                                       |
-| `limit`         | Integer 1–50; default 20                                                                      |
-
-```json
-{
-  "candidates": [
+  "proposals": [
     {
-      "id": "00000000-0000-4000-8000-000000000050",
-      "candidateType": "ORGANIZATION",
-      "suggestedLeafName": "Example Store",
-      "suggestedFullPath": "MailMind/Organizations/Example Store",
-      "status": "PENDING",
-      "confidence": 0.88,
-      "confidenceLevel": "HIGH",
-      "messageCount": 12,
-      "threadCount": 8,
-      "firstMessageAt": "2026-06-01T00:00:00.000Z",
-      "lastMessageAt": "2026-07-23T00:00:00.000Z",
-      "dominantCategory": "ORDERS",
-      "categoryAgreement": 0.8,
-      "sourceAgreement": 0.95,
-      "reasonCodes": ["SOURCE_VOLUME"],
-      "reasons": ["Frequent source"],
-      "discoveryVersion": "version-string",
-      "existingLabelConflict": false,
-      "mergeSuggestion": null,
-      "decision": null,
-      "lastDiscoveredAt": "2026-07-23T20:00:00.000Z"
+      "id": "00000000-0000-4000-8000-000000000011",
+      "leafName": "Flights",
+      "fullPath": "MailMind/Flights",
+      "confidence": 0.82,
+      "messageCount": 14,
+      "reasonCodes": ["SOURCE_VOLUME"]
     }
-  ],
-  "nextCursor": null
+  ]
 }
 ```
 
-### `GET /api/label-discovery/candidates/:id`
+### `POST /api/labels/propose`
 
-Returns one candidate DTO from the list contract.
+Runs the deterministic discovery engine over synchronized metadata and stores the result as pending
+proposals, then returns the same shape as `GET /api/labels`. Re-runnable: a new proposal round
+supersedes the previous pending set and never touches approved labels or Gmail.
 
-### `POST /api/label-discovery/candidates/:id/approve`
+Proposals plus existing approved labels are capped at `AUTOMATION_MAX_LABELS`. Errors:
 
-Optional rename request:
+| Code                             | Status | Meaning                                                   |
+| -------------------------------- | ------ | --------------------------------------------------------- |
+| `GMAIL_ACCOUNT_NOT_CONNECTED`    | 409    | Gmail is not connected for this user.                     |
+| `LABEL_PROPOSAL_ALREADY_RUNNING` | 409    | A proposal or automation run holds the account lease.     |
+| `LABEL_PROPOSAL_NOT_ENOUGH_MAIL` | 422    | Too little synchronized mail to propose from.             |
+| `LABEL_LIMIT_REACHED`            | 409    | The account already holds `AUTOMATION_MAX_LABELS` labels. |
 
-```json
-{ "leafName": "Example Orders" }
-```
+### `POST /api/labels/confirm`
 
-`leafName` is 2–60 trimmed characters and is checked against controlled naming and duplicate
-rules. Returns 201:
-
-```json
-{
-  "id": "00000000-0000-4000-8000-000000000051",
-  "candidateId": "00000000-0000-4000-8000-000000000050",
-  "status": "APPROVED",
-  "finalLeafName": "Example Orders",
-  "finalFullPath": "MailMind/Organizations/Example Orders",
-  "gmailLabelCreated": false,
-  "message": "Suggestion approved. Gmail was not changed."
-}
-```
-
-### `POST /api/label-discovery/candidates/:id/reject`
-
-Optional body `{ "reason": "..." }`, limited to 500 trimmed characters. Returns 201 with decision
-ID, candidate ID, `status: "REJECTED"`, and a Gmail-unchanged message.
-
-### `POST /api/label-discovery/candidates/:id/defer`
-
-Optional body `{ "reason": "..." }`, limited to 500 trimmed characters. Returns 201 with decision
-ID, candidate ID, `status: "DEFERRED"`, and a Gmail-unchanged message.
-
-### `POST /api/label-discovery/candidates/:id/merge`
-
-Request:
+Body:
 
 ```json
 {
-  "targetCandidateId": "00000000-0000-4000-8000-000000000060"
+  "labels": [
+    { "leafName": "Invoices", "source": "AI_PROPOSED" },
+    { "leafName": "Flights", "source": "USER_CREATED" }
+  ]
 }
 ```
 
-Returns 201:
+Each name is validated with the preserved normalization rules: 2–60 characters, no slashes or
+control characters, no reserved Gmail name, and nothing generic. Names too similar to each other or
+to an already approved label are rejected. Accepted labels are persisted, then created in Gmail as
+`MailMind/<leafName>` and their Gmail label id is stored. Returns the same shape as `GET /api/labels`.
+
+| Code                      | Status | Meaning                                    |
+| ------------------------- | ------ | ------------------------------------------ |
+| `LABEL_VALIDATION_FAILED` | 400    | The request body shape is invalid.         |
+| `LABEL_NAME_INVALID`      | 400    | A name is generic, malformed, or reserved. |
+| `LABEL_SET_EMPTY`         | 400    | No labels were supplied.                   |
+| `LABEL_DUPLICATE`         | 409    | Two names are too similar to keep both.    |
+
+### `PATCH /api/labels/:id`
+
+Body `{ "leafName": "Bills" }`. Renames the label in MailMind and, when it already exists in Gmail,
+renames the Gmail label too. Rejects a name that collides with another approved label (409).
+
+### `DELETE /api/labels/:id`
+
+Removes MailMind's record so automation stops using the label. The Gmail label and every message
+already filed under it are left untouched.
 
 ```json
-{
-  "candidateId": "00000000-0000-4000-8000-000000000050",
-  "status": "MERGED",
-  "mergedIntoCandidateId": "00000000-0000-4000-8000-000000000060",
-  "mergedIntoPath": "MailMind/Organizations/Example",
-  "message": "Candidates merged. Gmail was not changed."
-}
+{ "success": true, "gmailLabelRetained": true }
 ```
 
 ## Daily automation
@@ -614,15 +376,22 @@ All endpoints require a session; mutations require a trusted Origin. Status and 
 send `Cache-Control: no-store`.
 
 - `GET /api/automation/status` returns Gmail connection/reauthorization state, scheduler state,
-  last-run counters/errors, today’s token and cost usage, configured limits, and pending review
-  count.
+  last-run counters/errors, today’s token and cost usage, configured limits, pending review count,
+  `approvedLabelCount`/`labelsReady`, and `backlogRemaining` for an in-progress backfill.
 - `POST /api/automation/run` performs a manual resumable run and returns `runId` plus
-  `COMPLETED`, `PARTIAL`, or `FAILED` status.
-- `GET /api/automation/review` returns uncertain metadata classifications. It never includes OAuth
-  or provider credentials.
-- `POST /api/automation/review/:id/approve` accepts `{ "category": "WORK" }`, applies the
-  corresponding Gmail label, and teaches the sender pattern.
+  `COMPLETED`, `PARTIAL`, or `FAILED` status. Returns `409 AUTOMATION_NO_APPROVED_LABELS` when the
+  account has not confirmed any label yet.
+- `GET /api/automation/review` returns uncertain results, each carrying the proposed `labelName`.
+  It never includes OAuth or provider credentials.
+- `POST /api/automation/review/:id/approve` accepts `{ "labelName": "Invoices" }`, validated against
+  the account's approved labels (`400 AUTOMATION_LABEL_NOT_APPROVED` otherwise), applies that Gmail
+  label, and teaches the sender pattern.
 - `POST /api/automation/review/:id/skip` resolves the item without modifying Gmail.
+
+A run files each message into exactly one approved label. A message that fits none of them is
+recorded as a skipped action and left in the inbox — automation never invents a label. When
+unprocessed synchronized mail predates automation, runs drain that backlog oldest-first across as
+many runs as the daily budget requires.
 
 ## Privacy boundary
 

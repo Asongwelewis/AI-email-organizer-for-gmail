@@ -4,15 +4,14 @@
 
 MailMind AI is a human-in-the-loop Gmail organization MVP. It securely separates identity login
 from optional Gmail access, synchronizes a bounded metadata projection, produces explainable
-classification recommendations, and proposes controlled label hierarchies for explicit user
-review. Daily automation applies confident classifications while preserving human review for
-uncertainty.
+a proposed label set for explicit user approval, and files mail into exactly those labels. Daily
+automation applies confident results while preserving human review for uncertainty.
 
 The current architecture prioritizes:
 
 - No Gmail access as a side effect of signing in.
 - No storage of full message bodies, raw MIME, or attachment content.
-- No Gmail mutation from recommendation or discovery; only dedicated automation may apply labels.
+- No Gmail label is created or applied until the user confirms the label set.
 - Backend-only secrets and Google tokens.
 - Account-scoped persistence, auditability, bounded work, and recoverable sync checkpoints.
 - A deployable static frontend and a single stateless HTTP API backed by PostgreSQL.
@@ -40,14 +39,14 @@ application DTOs and never receives OAuth tokens or service credentials.
 
 ## Monorepo boundaries
 
-| Workspace             | Role                                                                                |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| `apps/web`            | React SPA, protected navigation, user actions, and server-state presentation        |
-| `apps/api`            | HTTP API, business rules, OAuth, Gmail sync, classification, discovery, persistence |
-| `packages/shared`     | Application name, API prefix, shared types, and utilities                           |
-| `packages/ui`         | Reusable React UI primitives                                                        |
-| `packages/config`     | Shared TypeScript, ESLint, and Prettier configuration                               |
-| `supabase/migrations` | Supabase-facing copies of the ordered SQL migrations                                |
+| Workspace             | Role                                                                         |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `apps/web`            | React SPA, protected navigation, user actions, and server-state presentation |
+| `apps/api`            | HTTP API, business rules, OAuth, Gmail sync, labels, automation, persistence |
+| `packages/shared`     | Application name, API prefix, shared types, and utilities                    |
+| `packages/ui`         | Reusable React UI primitives                                                 |
+| `packages/config`     | Shared TypeScript, ESLint, and Prettier configuration                        |
+| `supabase/migrations` | Supabase-facing copies of the ordered SQL migrations                         |
 
 The API follows a route/controller/service/repository layering convention:
 
@@ -127,34 +126,25 @@ An initial sync is bounded by configuration. Incremental sync uses Gmail history
 expired checkpoint as a recoverable requirement for another initial sync. Each sync type uses a
 database lease to prevent overlapping work across API instances.
 
-## Classification
+## Label proposal and approval
 
-Classification is a versioned recommendation pipeline over synchronized metadata:
+The label set is the contract between the user and automation.
 
-1. Select eligible account-scoped messages.
-2. Normalize and bound metadata input.
-3. Evaluate deterministic rules.
-4. Reuse an existing result when its input hash is unchanged.
-5. Optionally call the configured external provider for unresolved cases.
-6. Validate provider output against the fixed taxonomy.
-7. Store confidence, explanation, reason codes, source, versions, and review status.
-8. Store user corrections as immutable history.
+```mermaid
+flowchart TD
+    Sync[Synchronized metadata] --> Propose[POST /api/labels/propose]
+    Propose --> Engine[Deterministic discovery engine]
+    Engine --> Validate[Normalize, reject generic, drop near-duplicates]
+    Validate --> Pending[(Pending proposals)]
+    Pending --> Edit[User renames, deletes, adds custom labels]
+    Edit --> Confirm[POST /api/labels/confirm]
+    Confirm --> Store[(user_labels)]
+    Store --> Gmail[ensureLabel MailMind/leaf]
+```
 
-Classifier output can recommend an action such as archive or unsubscribe, but it does not perform
-that action. Provider calls occur outside database transactions and use bounded timeout/retry and
-batch controls. The `mock` provider exists for deterministic tests; `disabled` supports rules-only
-operation.
-
-## Dynamic-label discovery
-
-Discovery groups synchronized metadata using source, organization, topic, subscription, project,
-and workflow signals. It applies public-suffix-aware normalization, agreement thresholds,
-confidence scoring, caps, rediscovery suppression, and existing-label similarity checks.
-
-Candidates live under a controlled `MailMind/...` hierarchy and have immutable decision history.
-A user may approve, rename and approve, reject, defer, or merge a candidate. Approval currently
-persists intent only: it returns `gmailLabelCreated: false`, and no Gmail message or label is
-changed.
+Proposals are bounded by `AUTOMATION_MAX_LABELS` and take the account's automation lease, so a
+proposal never overlaps an automation run. Nothing reaches Gmail until confirmation. Deleting a
+label removes only MailMind's record — the Gmail label and the mail already under it stay.
 
 ## Daily automation
 
@@ -165,21 +155,23 @@ use OpenAI in bounded batches. Confident outcomes create or reuse `MailMind/<Cat
 Gmail `messages.modify`; uncertain outcomes enter a review queue.
 
 Run records store counters, tokens, cached input, estimated micro-USD cost, stop reason, and safe
-error codes. Message actions store classification evidence and retry state. External calls occur
+error codes. Message actions store the chosen label name, evidence, and retry state. A message that
+fits no approved label is recorded as a skipped action and left in the inbox; automation never
+invents a label outside the proposal flow. An existing backlog of synchronized mail is filed
+oldest-first across as many runs as the daily budget requires. External calls occur
 outside database transactions, so partial work remains durable and recoverable.
 
 ## Data architecture
 
 The main relational groups are:
 
-| Group                 | Tables                                                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Identity and security | `users`, `sessions`, `oauth_states`, `audit_logs`                                                                                   |
-| Google connection     | `connected_google_accounts`                                                                                                         |
-| Gmail projection      | `gmail_labels`, `gmail_message_metadata`, `gmail_sync_states`, `gmail_sync_runs`                                                    |
-| Classification        | `classification_results`, `classification_states`, `classification_runs`, `user_classification_corrections`                         |
-| Label discovery       | `dynamic_label_candidates`, `dynamic_label_candidate_messages`, `label_discovery_states`, `label_discovery_runs`, `label_decisions` |
-| Daily automation      | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns`      |
+| Group                 | Tables                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Identity and security | `users`, `sessions`, `oauth_states`, `audit_logs`                                                                              |
+| Google connection     | `connected_google_accounts`                                                                                                    |
+| Gmail projection      | `gmail_labels`, `gmail_message_metadata`, `gmail_sync_states`, `gmail_sync_runs`                                               |
+| Labels                | `user_labels`, `dynamic_label_candidates`, `dynamic_label_candidate_messages`                                                  |
+| Daily automation      | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns` |
 
 State tables contain one account-scoped lease/checkpoint row. Run tables retain bounded operational
 history. Results and decisions retain explainability and user intent. Foreign keys cascade
@@ -220,7 +212,7 @@ also be triggered manually.
   another frontend requires updating that shared configuration.
 - Automation uses an in-process scheduler. A larger deployment may move the same lease-protected
   service behind a durable queue without changing message idempotency.
-- Gmail modify scope supports automation label writes; recommendation and discovery remain
+- Gmail modify scope supports automation label writes; label proposal and approval remain
   non-mutating.
 - The legal pages are placeholders in the current router, and `/support` and `/data-deletion` are
   not implemented.

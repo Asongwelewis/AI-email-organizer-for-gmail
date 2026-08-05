@@ -77,7 +77,7 @@ HttpOnly session cookie, and redirects back to the frontend.
 4. The custom cursor and toast region.
 
 The query client disables automatic retries and refetch-on-window-focus by default. Individual
-feature hooks add polling only while Gmail sync, classification, or label discovery is running.
+feature hooks add polling only while a Gmail sync or automation run is active.
 
 ### Directory guide
 
@@ -112,13 +112,15 @@ Unknown routes redirect to `/`.
 
 All protected routes render inside `ProtectedRoute` and `AppShell`:
 
-| Route                        | Purpose                                                              |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `/dashboard`                 | Session and Gmail connection summary                                 |
-| `/settings/connections`      | Connect, inspect, disconnect, and synchronize Gmail                  |
-| `/dashboard/classification`  | Run classification and review/correct recommendations                |
-| `/dashboard/labels/discover` | Discover, approve, rename, reject, defer, or merge label suggestions |
-| `/dashboard/automation`      | Inspect daily runs/usage/errors, run now, and review uncertain mail  |
+| Route                   | Purpose                                                             |
+| ----------------------- | ------------------------------------------------------------------- |
+| `/dashboard`            | Session and Gmail connection summary                                |
+| `/settings/connections` | Connect, inspect, disconnect, and synchronize Gmail                 |
+| `/labels`               | Propose, edit, and confirm the label set automation may use         |
+| `/dashboard/automation` | Inspect daily runs/usage/errors, run now, and review uncertain mail |
+
+`/dashboard/classification` and `/dashboard/labels/discover` are retired and redirect to
+`/dashboard`.
 
 The app shell provides primary tabs, user identity, logout, logout-all, route transitions, and the
 nested route outlet.
@@ -150,32 +152,31 @@ The connections screen can initialize MailMind labels, run a bounded initial met
 an incremental history sync. The status query polls every two seconds only while `syncRunning` is
 true. Successful mutations invalidate the status query.
 
-### Classification review
+### Labels
 
-The classification screen loads status plus a cursor-paginated review queue. It can start a run and
-record a corrected category/action. Status polls every two seconds while `running` is true; run and
-correction mutations invalidate both status and results.
-
-### Label discovery
-
-The label screen loads status plus cursor-paginated candidates. It supports discovery, approval
-with an optional renamed leaf, rejection, deferral, and merge. Mutations refresh both candidate and
-status data. These decisions do not apply labels in Gmail.
+The labels screen loads the approved set plus pending proposals. "Propose labels" runs the discovery
+engine; the proposal list is editable in place — rename, delete, or add a custom label — and stays
+local until "Confirm and create in Gmail", which is guarded by a `ConfirmDialog`. Only confirmation
+creates labels in Gmail. Renaming an approved label renames it in Gmail too; deleting one removes
+MailMind's record and leaves the Gmail label alone. Mutations invalidate both the labels and
+automation-status queries.
 
 ### Daily automation
 
 The automation control room reflects backend Gmail state directly, polls while a run is active,
 shows last-run and daily token/cost counters, and disables manual execution when Gmail is
-disconnected or requires reauthorization. Review approval is the only UI action that applies a
-label to an uncertain message.
+disconnected or requires reauthorization. When no label is approved yet, the screen explains that
+automation is waiting for a label set instead of offering a run. Review approval offers only the
+account's approved labels and is the only UI action that applies a label to an uncertain message.
+Remaining backfill is shown as a progress line while a backlog exists.
 
 ### Guided product tutorial
 
-The protected app shell includes an eleven-step product tour for new accounts. Existing accounts
+The protected app shell includes a ten-step product tour for new accounts. Existing accounts
 were backfilled as already onboarded when the feature shipped. It moves through Dashboard,
-Connections, Review, Labels, and Automation while highlighting stable `data-tutorial` anchors.
+Connections, Labels, and Automation while highlighting stable `data-tutorial` anchors.
 The overlay blocks all underlying controls, so advancing the tutorial cannot open OAuth, run a
-sync, purchase an AI classification, or modify Gmail.
+sync, create a Gmail label, or modify Gmail.
 
 Temporary progress is account-namespaced in `sessionStorage`, while Skip and Finish persist
 `tutorial_completed_at` through the authenticated backend. This prevents the tour from returning
@@ -187,7 +188,7 @@ explicit progress semantics.
 ## Testing and build
 
 Vitest runs in jsdom with Testing Library. Tests cover route protection, landing/login and OAuth
-callback behavior, dashboard/connections/classification/label screens, visual atmosphere, and the
+callback behavior, dashboard/connections/labels/automation screens, visual atmosphere, and the
 Axios refresh/retry contract.
 
 Vite creates explicit vendor chunks for React/router, TanStack Query/Axios, Motion, and interface

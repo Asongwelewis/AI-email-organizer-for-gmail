@@ -10,6 +10,12 @@ const workflowSteps = [
     href: '/settings/connections',
   },
   {
+    id: 'labels',
+    label: 'Labels',
+    detail: 'Approve the label set MailMind may use.',
+    href: '/labels',
+  },
+  {
     id: 'automate',
     label: 'Automate',
     detail: 'Create or reuse labels and apply them safely.',
@@ -45,7 +51,7 @@ export function WorkflowRail({
     <nav className="workflow-rail" aria-label="MailMind workflow">
       <div className="workflow-rail__intro">
         <span className="eyebrow">Mailbox workflow</span>
-        <strong>Two stages, one source of truth.</strong>
+        <strong>Three stages, one source of truth.</strong>
       </div>
       <ol>
         {workflowSteps.map((step, index) => {

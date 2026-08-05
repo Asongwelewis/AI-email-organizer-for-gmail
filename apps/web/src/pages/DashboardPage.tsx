@@ -74,12 +74,19 @@ export function DashboardPage() {
           </Link>
         </article>
 
-        <article className="stage-card">
+        <article className="stage-card" data-tutorial="next-steps">
           <ShieldCheck aria-hidden="true" />
           <div>
-            <span className="card-index">Stage 2</span>
-            <h2>The secure foundation is ready.</h2>
-            <p>Inbox organization, labels, and analysis are intentionally not active yet.</p>
+            <span className="card-index">What happens next</span>
+            <h2>Sync, approve labels, then automate.</h2>
+            <p>
+              Synchronize Gmail metadata, approve the label set MailMind proposes, and daily
+              automation files your mail into exactly those labels. Anything that fits none of them
+              stays in the inbox.
+            </p>
+            <Link className="inline-link" to="/labels">
+              Review your labels <ArrowRight aria-hidden="true" />
+            </Link>
           </div>
         </article>
       </section>

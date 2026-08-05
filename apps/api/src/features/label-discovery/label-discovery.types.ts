@@ -1,5 +1,3 @@
-import type { classification_category } from '@prisma/client';
-
 import type { LabelCandidateType, LabelReasonCode } from './label-discovery.taxonomy.js';
 
 export interface DiscoveryMessage {
@@ -10,8 +8,9 @@ export interface DiscoveryMessage {
   senderName: string | null;
   senderEmail: string | null;
   gmailLabels: string[];
-  category: classification_category | null;
-  correctedCategory: classification_category | null;
+  // Free-form since stage 2; the fixed classification taxonomy no longer exists.
+  category: string | null;
+  correctedCategory: string | null;
 }
 
 export interface CandidateGroup {
@@ -23,7 +22,7 @@ export interface CandidateGroup {
   threadCount: number;
   firstMessageAt: Date | null;
   lastMessageAt: Date | null;
-  dominantCategory: classification_category | null;
+  dominantCategory: string | null;
   categoryAgreement: number;
   sourceAgreement: number;
   displayNameAgreement: number;

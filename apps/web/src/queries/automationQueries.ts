@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@web/services/http';
-import type { ClassificationCategory } from '@web/types/automation';
 import { queryKeys } from './queryKeys';
 
 export function useAutomationStatus() {
@@ -33,8 +32,8 @@ export function useAutomationActions() {
   return {
     run: useMutation({ mutationFn: api.runAutomation, onSuccess: refresh }),
     approve: useMutation({
-      mutationFn: (input: { id: string; category: ClassificationCategory }) =>
-        api.approveAutomationReview(input.id, input.category),
+      mutationFn: (input: { id: string; labelName: string }) =>
+        api.approveAutomationReview(input.id, input.labelName),
       onSuccess: refresh,
     }),
     skip: useMutation({ mutationFn: api.skipAutomationReview, onSuccess: refresh }),

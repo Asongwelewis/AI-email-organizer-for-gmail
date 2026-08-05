@@ -15,8 +15,17 @@ const mocks = vi.hoisted(() => {
     runCreate: vi.fn(),
     runAggregate: vi.fn(),
     actionFindMany: vi.fn(),
+    actionCreate: vi.fn(),
+    actionUpdate: vi.fn(),
+    actionFindUniqueOrThrow: vi.fn(),
     messageFindMany: vi.fn(),
+    messageCount: vi.fn(),
+    messageUpdate: vi.fn(),
+    userLabelFindMany: vi.fn(),
+    userLabelFindFirst: vi.fn(),
     patternFindMany: vi.fn(),
+    patternFindUnique: vi.fn(),
+    patternUpsert: vi.fn(),
     patternUpdateMany: vi.fn(),
     classifier: vi.fn(),
     transactionStateUpdate,
@@ -56,10 +65,25 @@ vi.mock('../src/database/prisma.js', () => ({
       create: mocks.runCreate,
       aggregate: mocks.runAggregate,
     },
-    automation_message_actions: { findMany: mocks.actionFindMany },
-    gmail_message_metadata: { findMany: mocks.messageFindMany },
+    automation_message_actions: {
+      findMany: mocks.actionFindMany,
+      create: mocks.actionCreate,
+      update: mocks.actionUpdate,
+      findUniqueOrThrow: mocks.actionFindUniqueOrThrow,
+    },
+    gmail_message_metadata: {
+      findMany: mocks.messageFindMany,
+      count: mocks.messageCount,
+      update: mocks.messageUpdate,
+    },
+    user_labels: {
+      findMany: mocks.userLabelFindMany,
+      findFirst: mocks.userLabelFindFirst,
+    },
     learned_classification_patterns: {
       findMany: mocks.patternFindMany,
+      findUnique: mocks.patternFindUnique,
+      upsert: mocks.patternUpsert,
       updateMany: mocks.patternUpdateMany,
     },
     $transaction: mocks.transaction,
@@ -70,7 +94,39 @@ import { env } from '../src/config/env.js';
 import { OpenAiProviderError } from '../src/features/automation/openai-automation.provider.js';
 import { AutomationService } from '../src/features/automation/automation.service.js';
 
-describe('AutomationService recovery', () => {
+const approvedLabel = {
+  id: 'label-1',
+  connected_google_account_id: 'account-1',
+  leaf_name: 'Invoices',
+  full_path: 'MailMind/Invoices',
+  normalized_name: 'invoices',
+  source: 'AI_PROPOSED',
+  gmail_label_id: 'Label_1',
+};
+
+const gmailStub = () => ({
+  ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_1', created: false }),
+  applyLabel: vi.fn().mockResolvedValue(undefined),
+  renameLabel: vi.fn().mockResolvedValue(undefined),
+});
+
+function classification(overrides: Record<string, unknown> = {}) {
+  return {
+    classifications: [
+      {
+        key: 'm1',
+        labelName: 'Invoices',
+        confidence: 0.97,
+        explanation: 'Billing terms are present.',
+        reasonCodes: ['INVOICE_TERMS'],
+        ...overrides,
+      },
+    ],
+    usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 5 },
+  };
+}
+
+describe('AutomationService', () => {
   const originalKey = env.OPENAI_API_KEY;
   const originalEnabled = env.AUTOMATION_ENABLED;
 
@@ -78,10 +134,7 @@ describe('AutomationService recovery', () => {
     vi.resetAllMocks();
     env.OPENAI_API_KEY = 'test-openai-key';
     env.AUTOMATION_ENABLED = true;
-    mocks.connectedAccount.mockResolvedValue({
-      id: 'account-1',
-      user_id: 'user-1',
-    });
+    mocks.connectedAccount.mockResolvedValue({ id: 'account-1', user_id: 'user-1' });
     mocks.settingsUpsert.mockResolvedValue({});
     mocks.stateUpsert.mockResolvedValue({ failure_count: 0 });
     mocks.stateUpdateMany.mockResolvedValue({ count: 1 });
@@ -91,6 +144,135 @@ describe('AutomationService recovery', () => {
       _sum: { input_tokens: 0, output_tokens: 0, estimated_cost_microusd: 0 },
     });
     mocks.actionFindMany.mockResolvedValue([]);
+    mocks.actionCreate.mockResolvedValue({ id: 'action-1' });
+    mocks.actionUpdate.mockResolvedValue({});
+    mocks.actionFindUniqueOrThrow.mockResolvedValue({
+      gmail_message_id: 'message-row-1',
+      message: { label_ids: [] },
+    });
+    mocks.messageUpdate.mockResolvedValue({});
+    mocks.messageCount.mockResolvedValue(1);
+    mocks.userLabelFindMany.mockResolvedValue([approvedLabel]);
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        id: 'message-row-1',
+        gmail_message_id: 'gmail-message-1',
+        subject: 'Invoice 22',
+        sender_email: 'billing@example.com',
+        snippet: 'Amount due',
+        internal_date: new Date(),
+        is_unread: true,
+        is_important: false,
+        has_attachments: false,
+      },
+    ]);
+    mocks.patternFindMany.mockResolvedValue([]);
+    mocks.patternFindUnique.mockResolvedValue(null);
+    mocks.patternUpsert.mockResolvedValue({});
+    mocks.incrementalSync.mockResolvedValue(undefined);
+    mocks.transactionStateUpdate.mockResolvedValue({ count: 1 });
+    mocks.transactionRunUpdate.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    env.OPENAI_API_KEY = originalKey;
+    env.AUTOMATION_ENABLED = originalEnabled;
+  });
+
+  it('refuses to run until the account has at least one approved label', async () => {
+    mocks.userLabelFindMany.mockResolvedValue([]);
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).rejects.toMatchObject({
+      code: 'AUTOMATION_NO_APPROVED_LABELS',
+      statusCode: 409,
+    });
+    expect(mocks.classifier).not.toHaveBeenCalled();
+    expect(mocks.runCreate).not.toHaveBeenCalled();
+  });
+
+  it('constrains the provider to the approved labels and applies a confident match', async () => {
+    mocks.classifier.mockResolvedValue(classification());
+    const gmail = gmailStub();
+    const service = new AutomationService({ classify: mocks.classifier }, gmail);
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    expect(mocks.classifier.mock.calls[0]?.[1]).toMatchObject({ labelNames: ['Invoices'] });
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          label_name: 'Invoices',
+          label_path: 'MailMind/Invoices',
+          status: 'PENDING',
+        }),
+      }),
+    );
+    expect(gmail.ensureLabel).toHaveBeenCalledWith('account-1', 'MailMind/Invoices');
+    expect(gmail.applyLabel).toHaveBeenCalledWith('account-1', 'gmail-message-1', 'Label_1');
+  });
+
+  it('leaves a no-fit message in the inbox instead of inventing a label', async () => {
+    mocks.classifier.mockResolvedValue(
+      classification({ labelName: 'NONE', explanation: 'No approved label fits.' }),
+    );
+    const gmail = gmailStub();
+    const service = new AutomationService({ classify: mocks.classifier }, gmail);
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'SKIPPED', label_name: 'NONE', label_path: '' }),
+      }),
+    );
+    expect(gmail.ensureLabel).not.toHaveBeenCalled();
+    expect(gmail.applyLabel).not.toHaveBeenCalled();
+    expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ no_label_skipped_count: 1, messages_labeled_count: 0 }),
+      }),
+    );
+  });
+
+  it('treats an unknown label from the provider as no fit', async () => {
+    mocks.classifier.mockResolvedValue(classification({ labelName: 'Something Invented' }));
+    const gmail = gmailStub();
+    const service = new AutomationService({ classify: mocks.classifier }, gmail);
+
+    await service.run('user-1');
+
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'SKIPPED' }) }),
+    );
+    expect(gmail.applyLabel).not.toHaveBeenCalled();
+  });
+
+  it('reports the remaining backlog so a backfill can resume on later runs', async () => {
+    mocks.messageCount.mockResolvedValue(410);
+    mocks.classifier.mockResolvedValue(classification());
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await service.run('user-1');
+
+    expect(mocks.messageFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { internal_date: 'asc' } }),
+    );
+    expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ backlog_remaining: 409 }) }),
+    );
+  });
+
+  it('still sends learned-pattern mail through OpenAI and checkpoints quota recovery', async () => {
+    mocks.patternFindMany.mockResolvedValue([
+      {
+        id: 'pattern-1',
+        sender_domain: 'example.com',
+        label_name: 'Invoices',
+        confidence: 0.95,
+        label_path: 'MailMind/Invoices',
+      },
+    ]);
     mocks.messageFindMany.mockResolvedValue([
       {
         id: 'message-row-1',
@@ -104,21 +286,6 @@ describe('AutomationService recovery', () => {
         has_attachments: false,
       },
     ]);
-    mocks.patternFindMany.mockResolvedValue([
-      {
-        id: 'pattern-1',
-        sender_domain: 'example.com',
-        category: 'WORK',
-        confidence: 0.95,
-        label_path: 'MailMind/Work',
-      },
-    ]);
-    mocks.incrementalSync.mockResolvedValue(undefined);
-    mocks.transactionStateUpdate.mockResolvedValue({ count: 1 });
-    mocks.transactionRunUpdate.mockResolvedValue({});
-  });
-
-  it('still sends learned-pattern mail through OpenAI and checkpoints quota recovery', async () => {
     mocks.classifier.mockRejectedValue(
       new OpenAiProviderError(
         'OPENAI_INSUFFICIENT_QUOTA',
@@ -130,10 +297,7 @@ describe('AutomationService recovery', () => {
         false,
       ),
     );
-    const service = new AutomationService(
-      { classify: mocks.classifier },
-      { ensureLabel: vi.fn(), applyLabel: vi.fn() },
-    );
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
 
     await expect(service.run('user-1')).resolves.toMatchObject({
       success: false,
@@ -143,7 +307,7 @@ describe('AutomationService recovery', () => {
 
     expect(mocks.classifier).toHaveBeenCalledTimes(1);
     expect(mocks.classifier.mock.calls[0]?.[0]?.[0]).toMatchObject({
-      learnedPattern: { category: 'WORK', labelPath: 'MailMind/Work' },
+      learnedPattern: { labelName: 'Invoices', confidence: 0.95 },
     });
     expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -164,10 +328,5 @@ describe('AutomationService recovery', () => {
         }),
       }),
     );
-  });
-
-  afterEach(() => {
-    env.OPENAI_API_KEY = originalKey;
-    env.AUTOMATION_ENABLED = originalEnabled;
   });
 });

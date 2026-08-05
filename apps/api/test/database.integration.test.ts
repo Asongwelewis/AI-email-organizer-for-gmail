@@ -14,6 +14,7 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.user_labels.deleteMany();
   await prisma.automation_message_actions.deleteMany();
   await prisma.learned_classification_patterns.deleteMany();
   await prisma.automation_runs.deleteMany();
@@ -539,6 +540,49 @@ databaseTests('PostgreSQL authentication repositories', () => {
     ).rejects.toThrow();
   });
 
+  it('keeps one label per account name and cascades labels with the account', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'labels-owner@example.com',
+        normalized_email: 'labels-owner@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: {
+        user_id: user.id,
+        google_subject: 'labels-owner-subject',
+        email: 'labels-owner@gmail.com',
+        gmail_connected: true,
+        connection_status: 'CONNECTED',
+      },
+    });
+    await prisma.user_labels.create({
+      data: {
+        connected_google_account_id: account.id,
+        leaf_name: 'Invoices',
+        full_path: 'MailMind/Invoices',
+        normalized_name: 'invoices',
+        source: 'AI_PROPOSED',
+        gmail_label_id: 'Label_1',
+      },
+    });
+    await expect(
+      prisma.user_labels.create({
+        data: {
+          connected_google_account_id: account.id,
+          leaf_name: 'Invoices',
+          full_path: 'MailMind/Invoices',
+          normalized_name: 'invoices',
+          source: 'USER_CREATED',
+        },
+      }),
+    ).rejects.toThrow();
+
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.user_labels.count()).toBe(0);
+  });
+
   it('enforces one durable automation action per message and persists bounded usage', async () => {
     const user = await prisma.users.create({
       data: {
@@ -580,7 +624,7 @@ databaseTests('PostgreSQL authentication repositories', () => {
       connected_google_account_id: account.id,
       gmail_message_id: message.id,
       user_id: user.id,
-      category: 'WORK' as const,
+      label_name: 'Work',
       label_path: 'MailMind/Work',
       confidence: 0.9,
       source: 'OPENAI' as const,

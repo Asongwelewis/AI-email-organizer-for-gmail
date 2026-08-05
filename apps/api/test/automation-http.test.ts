@@ -55,7 +55,7 @@ describe('automation HTTP routes', () => {
     expect(response.body).toMatchObject({ gmailConnected: true });
   });
 
-  it('protects mutations by origin and validates review categories', async () => {
+  it('protects mutations by origin and validates the approval body', async () => {
     const denied = await request(app)
       .post('/api/automation/run')
       .set('Origin', 'https://evil.example');
@@ -64,14 +64,27 @@ describe('automation HTTP routes', () => {
     const invalid = await request(app)
       .post(`/api/automation/review/${actionId}/approve`)
       .set('Origin', 'http://localhost:5173')
-      .send({ category: 'NOT_A_CATEGORY' });
+      .send({ category: 'WORK' });
     expect(invalid.status).toBe(400);
+    expect(mocks.approve).not.toHaveBeenCalled();
 
     const valid = await request(app)
       .post(`/api/automation/review/${actionId}/approve`)
       .set('Origin', 'http://localhost:5173')
-      .send({ category: 'WORK' });
+      .send({ labelName: 'Invoices' });
     expect(valid.status).toBe(200);
-    expect(mocks.approve).toHaveBeenCalledWith('user-id', actionId, 'WORK');
+    expect(mocks.approve).toHaveBeenCalledWith('user-id', actionId, 'Invoices');
+  });
+
+  it('refuses to run before any label is approved', async () => {
+    const { AppError } = await import('../src/errors/AppError.js');
+    mocks.run.mockRejectedValueOnce(
+      new AppError('AUTOMATION_NO_APPROVED_LABELS', 'Confirm labels first.', 409),
+    );
+    const response = await request(app)
+      .post('/api/automation/run')
+      .set('Origin', 'http://localhost:5173');
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('AUTOMATION_NO_APPROVED_LABELS');
   });
 });
