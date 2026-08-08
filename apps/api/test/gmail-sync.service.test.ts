@@ -142,7 +142,7 @@ describe('GmailSyncService', () => {
     );
     expect(mocks.complete).toHaveBeenCalledWith(
       lease,
-      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 3 }),
+      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 1 }),
       'history-2',
       true,
     );

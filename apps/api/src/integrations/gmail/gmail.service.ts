@@ -9,11 +9,9 @@ import { mapGmailMessage } from './gmail.mapper.js';
 import { gmailRepository, type SyncLease } from './gmail.repository.js';
 import { emptySyncCounts, type GmailClient, type SyncCounts } from './gmail.types.js';
 
-const MANAGED_LABELS = [
-  { name: 'MailMind', purpose: 'ROOT' },
-  { name: 'MailMind/Processed', purpose: 'PROCESSED' },
-  { name: 'MailMind/Needs Review', purpose: 'NEEDS_REVIEW' },
-] as const;
+// Only the parent label is managed here. Leaf labels are created by the labels
+// feature on confirm, as `MailMind/<leaf>`, and need this parent to exist.
+const MANAGED_LABELS = [{ name: 'MailMind', purpose: 'ROOT' }] as const;
 const METADATA_HEADERS = ['Subject', 'From', 'To', 'Cc', 'Date'];
 
 function chunks<T>(values: T[], size: number): T[][] {
