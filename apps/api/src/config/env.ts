@@ -57,21 +57,6 @@ const environmentSchema = z
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
-    AI_CLASSIFIER_ENABLED: booleanValue.default(false),
-    AI_CLASSIFIER_PROVIDER: z.enum(['disabled', 'mock', 'external']).default('disabled'),
-    AI_CLASSIFIER_MODEL: z.string().min(1).max(200).default('not-configured'),
-    AI_CLASSIFIER_API_KEY: optionalSecret,
-    AI_CLASSIFIER_BASE_URL: z.string().url().optional(),
-    AI_CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
-    AI_CLASSIFIER_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
-    AI_CLASSIFIER_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(5),
-    AI_CLASSIFIER_OUTPUT_MAX_TOKENS: z.coerce.number().int().min(64).max(2048).default(400),
-    AI_CLASSIFICATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(250).default(20),
-    AI_CLASSIFICATION_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
-    AI_CLASSIFICATION_REVIEW_THRESHOLD: z.coerce.number().min(0).max(1).default(0.65),
-    AI_CLASSIFICATION_INPUT_MAX_CHARS: z.coerce.number().int().min(500).max(20_000).default(4000),
-    AI_CLASSIFICATION_RULE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.9),
-    AI_CLASSIFICATION_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     DYNAMIC_LABEL_DISCOVERY_ENABLED: booleanValue.default(true),
     DYNAMIC_LABEL_MIN_MESSAGES: z.coerce.number().int().min(3).max(100).default(3),
     DYNAMIC_LABEL_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(365).default(90),
@@ -148,18 +133,6 @@ const environmentSchema = z
         code: 'custom',
         path: ['COOKIE_SECURE'],
         message: 'must be true in production',
-      });
-      return z.NEVER;
-    }
-    if (
-      value.AI_CLASSIFIER_ENABLED &&
-      value.AI_CLASSIFIER_PROVIDER === 'external' &&
-      (!value.AI_CLASSIFIER_API_KEY || !value.AI_CLASSIFIER_BASE_URL)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['AI_CLASSIFIER_API_KEY'],
-        message: 'and AI_CLASSIFIER_BASE_URL are required for the external provider',
       });
       return z.NEVER;
     }

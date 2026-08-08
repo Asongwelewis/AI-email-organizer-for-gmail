@@ -20,9 +20,6 @@ jobs:
       RUN_DATABASE_INTEGRATION: 'true'
       DATABASE_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
       DIRECT_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
-      AI_CLASSIFIER_ENABLED: 'true'
-      AI_CLASSIFIER_PROVIDER: mock
-      AI_CLASSIFIER_MODEL: deterministic-mock-v1
       DYNAMIC_LABEL_DISCOVERY_ENABLED: 'true'
       DYNAMIC_LABEL_AI_NAMING_ENABLED: 'false'
       VITE_API_BASE_URL: https://api.mailmindai.tech
