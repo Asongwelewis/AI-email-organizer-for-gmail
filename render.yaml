@@ -25,6 +25,9 @@ services:
         value: https://ai-email-organizer-for-gmail.onrender.com/api/integrations/google/callback
       - key: COOKIE_SECURE
         value: 'true'
+      # Required: the SPA is on Vercel and the API is on Render, so the session
+      # cookie is cross-site. Anything but 'none' is never sent by the browser
+      # and login fails silently. Startup validation enforces this.
       - key: COOKIE_SAME_SITE
         value: none
       - key: TRUST_PROXY_HOPS

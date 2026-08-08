@@ -52,6 +52,54 @@ describe('environment validation', () => {
     expect(env.DYNAMIC_LABEL_DISCOVERY_ENABLED).toBe(true);
   });
 
+  it('accepts the cross-site cookie production deployments require', async () => {
+    const { env } = await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'none',
+    });
+    expect(env.COOKIE_SAME_SITE).toBe('none');
+  });
+
+  it('accepts a same-site production cookie when a shared parent domain is configured', async () => {
+    const { env } = await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'lax',
+      COOKIE_DOMAIN: '.mailmindai.tech',
+    });
+    expect(env.COOKIE_SAME_SITE).toBe('lax');
+  });
+
+  it('builds session cookie options from COOKIE_SAME_SITE rather than hardcoding it', async () => {
+    await loadWith({ COOKIE_SAME_SITE: 'strict' });
+    const { sessionCookieOptions } = await import('../src/sessions/session.cookies.js');
+    expect(sessionCookieOptions().sameSite).toBe('strict');
+  });
+
+  it('does not force a production cookie to none when a shared domain allows lax', async () => {
+    await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'lax',
+      COOKIE_DOMAIN: '.mailmindai.tech',
+    });
+    const { sessionCookieOptions } = await import('../src/sessions/session.cookies.js');
+    expect(sessionCookieOptions().sameSite).toBe('lax');
+  });
+
+  it('honours COOKIE_SAME_SITE=none in production instead of assuming it', async () => {
+    await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'none',
+    });
+    const { sessionCookieOptions } = await import('../src/sessions/session.cookies.js');
+    const options = sessionCookieOptions();
+    expect(options.sameSite).toBe('none');
+    expect(options.secure).toBe(true);
+  });
+
   it('accepts optional Sentry runtime configuration and a shared release', async () => {
     const { env } = await loadWith({
       APP_VERSION: 'mailmind@test-release',
@@ -79,6 +127,16 @@ describe('environment validation', () => {
       'insecure production cookie',
       { NODE_ENV: 'production', COOKIE_SECURE: 'false' },
       'COOKIE_SECURE',
+    ],
+    [
+      'a production cross-site cookie that would never reach the API',
+      {
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        COOKIE_SAME_SITE: 'lax',
+        COOKIE_DOMAIN: undefined,
+      },
+      'COOKIE_SAME_SITE',
     ],
     ['empty Google client ID', { GOOGLE_CLIENT_ID: '' }, 'GOOGLE_CLIENT_ID'],
     [

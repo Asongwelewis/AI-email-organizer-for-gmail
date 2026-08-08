@@ -136,6 +136,21 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
+    // The SPA (Vercel) and API (Render) are on different sites, so anything but
+    // 'none' means the browser never sends the session cookie and login fails
+    // silently. Only a shared parent domain makes a lax or strict cookie viable.
+    if (
+      value.NODE_ENV === 'production' &&
+      value.COOKIE_SAME_SITE !== 'none' &&
+      !value.COOKIE_DOMAIN
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['COOKIE_SAME_SITE'],
+        message: "must be 'none' in production unless COOKIE_DOMAIN is set",
+      });
+      return z.NEVER;
+    }
     return { ...value, TOKEN_ENCRYPTION_KEY_BYTES: tokenEncryptionKey };
   });
 
