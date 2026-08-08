@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Prepare database roles used by the migrations
         run: |
           docker exec ${{ job.services.postgres.id }} psql -U postgres -d mailmind_test -v ON_ERROR_STOP=1 -c "create schema extensions; create role anon; create role authenticated; create role service_role;"
