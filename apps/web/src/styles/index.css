@@ -3511,6 +3511,14 @@ summary,
   border: 1px dashed var(--line);
 }
 
+.labels-error {
+  margin: 0 0 1.2rem;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  overflow-wrap: anywhere;
+}
+
 .labels-list {
   display: grid;
   gap: 0.6rem;

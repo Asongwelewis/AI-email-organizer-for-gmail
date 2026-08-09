@@ -97,8 +97,8 @@ once. Only confirmed labels exist in `user_labels`, and only those may be applie
 
 - `AUTOMATION_MAX_LABELS` caps proposals plus approved labels per account (default `25`).
 - `DYNAMIC_LABEL_MIN_MESSAGES`, `DYNAMIC_LABEL_LOOKBACK_DAYS`, `DYNAMIC_LABEL_MIN_CONFIDENCE`,
-  `DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT`, `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`, and
-  `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN` tune the engine that produces proposals.
+  `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`, and `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN` tune the engine
+  that produces proposals.
 
 Names are validated with `validateLeafName`, rejected when `isGenericLabelName` matches, and
 compared with `labelsAreSimilar` so an account cannot hold two near-duplicate labels. Confirmation

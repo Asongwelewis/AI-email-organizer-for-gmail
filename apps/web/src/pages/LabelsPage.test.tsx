@@ -1,3 +1,4 @@
+import { AxiosError, AxiosHeaders } from 'axios';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +10,24 @@ const mocks = vi.hoisted(() => ({
   rename: vi.fn(),
   remove: vi.fn(),
 }));
+const { toastError, toastSuccess } = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+}));
+
+vi.mock('sonner', () => ({ toast: { error: toastError, success: toastSuccess } }));
+
+function axiosError(code: string, message: string): AxiosError {
+  const error = new AxiosError('Request failed', 'ERR_BAD_REQUEST');
+  error.response = {
+    data: { error: { code, message } },
+    status: 409,
+    statusText: 'Conflict',
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  };
+  return error;
+}
 
 vi.mock('@web/queries/labelsQueries', () => ({
   useLabels: mocks.labels,
@@ -50,6 +69,7 @@ describe('LabelsPage', () => {
     });
     mocks.labels.mockReturnValue({
       isLoading: false,
+      isError: false,
       data: {
         maxLabels: 25,
         labels: [
@@ -126,5 +146,56 @@ describe('LabelsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Confirm and create in Gmail/i }));
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('renders a read failure instead of the empty state', () => {
+    mocks.labels.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      error: axiosError('GMAIL_ACCOUNT_NOT_CONNECTED', 'Connect Gmail before using labels.'),
+      refetch: vi.fn(),
+    });
+
+    render(<LabelsPage />);
+
+    expect(screen.getByText('Your labels could not be loaded')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /Connect Gmail before working with labels/i,
+    );
+    expect(screen.queryByText(/No labels yet/i)).not.toBeInTheDocument();
+  });
+
+  it('surfaces an unrecognized error code and message rather than a generic string', () => {
+    mocks.labels.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      error: axiosError('LABEL_ENGINE_OFFLINE', 'The discovery engine is unavailable.'),
+      refetch: vi.fn(),
+    });
+
+    render(<LabelsPage />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'LABEL_ENGINE_OFFLINE: The discovery engine is unavailable.',
+    );
+  });
+
+  it('explains an empty proposal run instead of reporting success', async () => {
+    mocks.propose.mockResolvedValue({ maxLabels: 25, labels: [], proposals: [] });
+    mocks.labels.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { maxLabels: 25, labels: [], proposals: [] },
+    });
+
+    render(<LabelsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Propose labels/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /nothing above the confidence threshold/i,
+      ),
+    );
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });

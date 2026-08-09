@@ -117,7 +117,6 @@ export class LabelsService {
         correctedCategory: null,
       }));
       const discovery = discoverDeterministicCandidates(messages, preferences, {
-        minCategoryAgreement: env.DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT,
         minSourceAgreement: env.DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT,
         minimumConfidence: env.DYNAMIC_LABEL_MIN_CONFIDENCE,
         existingLabelNames: gmailLabelNames,

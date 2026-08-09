@@ -65,7 +65,6 @@ credentials.
 | `DYNAMIC_LABEL_MIN_MESSAGES`           | `3`                                                                                        |
 | `DYNAMIC_LABEL_LOOKBACK_DAYS`          | `90`                                                                                       |
 | `DYNAMIC_LABEL_MIN_CONFIDENCE`         | `0.75`                                                                                     |
-| `DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT` | `0.7`                                                                                      |
 | `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`   | `0.7`                                                                                      |
 | `DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN` | `20`                                                                                       |
 | `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN`   | `1000`                                                                                     |

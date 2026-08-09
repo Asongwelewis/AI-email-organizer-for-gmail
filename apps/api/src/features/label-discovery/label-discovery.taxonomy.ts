@@ -35,14 +35,20 @@ export const LABEL_REASON_CODES = [
   'GENERIC_NAME_PENALTY',
 ] as const;
 
+/**
+ * Category agreement and user-correction support were retired with the fixed
+ * classification taxonomy; both were permanently zero and capped every candidate at 0.80.
+ * Their combined 0.20 went to the two signals that actually separate a good candidate
+ * from a bad one: message volume, which is the only signal with real spread across
+ * sender candidates, and source consistency, which discounts groupings scattered across
+ * unrelated senders.
+ */
 export const LABEL_CONFIDENCE_WEIGHTS = {
-  sourceConsistency: 0.3,
-  messageVolume: 0.2,
-  categoryAgreement: 0.15,
+  sourceConsistency: 0.35,
+  messageVolume: 0.35,
   recency: 0.1,
   threadDiversity: 0.1,
   namingConfidence: 0.1,
-  userCorrectionSupport: 0.05,
 } as const;
 
 export const LABEL_CANDIDATE_ACTIVE_STATUSES = ['PENDING', 'APPROVED', 'DEFERRED'] as const;

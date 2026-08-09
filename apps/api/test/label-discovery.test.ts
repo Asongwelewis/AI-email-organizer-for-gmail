@@ -88,7 +88,6 @@ describe('deterministic label discovery', () => {
       [message('1'), message('2'), message('3'), message('4')],
       preferences,
       {
-        minCategoryAgreement: 0.7,
         minSourceAgreement: 0.7,
         minimumConfidence: 0.6,
         existingLabelNames: [],
@@ -98,14 +97,23 @@ describe('deterministic label discovery', () => {
     expect(discovery.groups[0]?.reasonCodes).toContain('DOMAIN_CONSISTENCY');
   });
 
-  it('does not create candidates from volume with mixed categories', () => {
+  it('discovers a coherent sender regardless of category, which is no longer scored', () => {
     const messages = [
       message('1', { category: 'WORK' }),
       message('2', { category: 'FINANCE' }),
       message('3', { category: 'TRAVEL' }),
+      message('4', { category: null }),
     ];
     const discovery = discoverDeterministicCandidates(messages, preferences, {
-      minCategoryAgreement: 0.7,
+      minSourceAgreement: 0.7,
+      minimumConfidence: 0.6,
+      existingLabelNames: [],
+    });
+    expect(discovery.groups.some((group) => group.sourceKey === 'github.com')).toBe(true);
+  });
+
+  it('rejects a sender that has not reached the minimum message count', () => {
+    const discovery = discoverDeterministicCandidates([message('1'), message('2')], preferences, {
       minSourceAgreement: 0.7,
       minimumConfidence: 0.6,
       existingLabelNames: [],
@@ -121,7 +129,6 @@ describe('deterministic label discovery', () => {
       message('4', { subject: 'Application update', category: 'WORK' }),
     ];
     const discovery = discoverDeterministicCandidates(messages, preferences, {
-      minCategoryAgreement: 0.7,
       minSourceAgreement: 0.7,
       minimumConfidence: 0.55,
       existingLabelNames: [],
@@ -140,7 +147,6 @@ describe('deterministic label discovery', () => {
       gmailLabels: ['CATEGORY_PROMOTIONS'],
     }));
     const discovery = discoverDeterministicCandidates(messages, preferences, {
-      minCategoryAgreement: 0.7,
       minSourceAgreement: 0.7,
       minimumConfidence: 0.55,
       existingLabelNames: [],
@@ -155,7 +161,6 @@ describe('deterministic label discovery', () => {
       gmailThreadId: 'one-thread',
     }));
     const discovery = discoverDeterministicCandidates(temporary, preferences, {
-      minCategoryAgreement: 0.7,
       minSourceAgreement: 0.7,
       minimumConfidence: 0.5,
       existingLabelNames: ['MailMind/Sources/GitHub'],
@@ -172,7 +177,6 @@ describe('deterministic label discovery', () => {
       [message('1'), message('2'), message('3'), message('4')],
       { ...preferences, maxCandidates: 1 },
       {
-        minCategoryAgreement: 0.7,
         minSourceAgreement: 0.7,
         minimumConfidence: 0.5,
         existingLabelNames: [],
@@ -188,11 +192,9 @@ describe('confidence and optional provider validation', () => {
       sourceConsistency: 1,
       messageCount: 10,
       minimumMessages: 3,
-      categoryAgreement: 1,
       recent: true,
       threadCount: 5,
       namingConfidence: 1,
-      userCorrectionSupport: 0.4,
       temporary: false,
       generic: false,
       existingLabelSimilarity: false,
@@ -206,6 +208,41 @@ describe('confidence and optional provider validation', () => {
     });
     expect(strong).toBeGreaterThan(penalized);
     expect(strong).toBeLessThanOrEqual(1);
+  });
+
+  it('reaches 1.0 on perfect signals now that the dead weights are gone', () => {
+    expect(
+      calculateLabelConfidence({
+        sourceConsistency: 1,
+        messageCount: 100,
+        minimumMessages: 3,
+        recent: true,
+        threadCount: 100,
+        namingConfidence: 1,
+        temporary: false,
+        generic: false,
+        existingLabelSimilarity: false,
+        sparseDistribution: false,
+      }),
+    ).toBe(1);
+  });
+
+  it('keeps existing-label similarity as a live penalty', () => {
+    const signals = {
+      sourceConsistency: 1,
+      messageCount: 10,
+      minimumMessages: 3,
+      recent: true,
+      threadCount: 5,
+      namingConfidence: 1,
+      temporary: false,
+      generic: false,
+      sparseDistribution: false,
+    };
+    expect(calculateLabelConfidence({ ...signals, existingLabelSimilarity: true })).toBeCloseTo(
+      calculateLabelConfidence({ ...signals, existingLabelSimilarity: false }) - 0.18,
+      4,
+    );
   });
 
   it('strictly validates model output and drops unknown merge keys', () => {

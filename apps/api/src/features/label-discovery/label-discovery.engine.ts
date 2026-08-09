@@ -23,7 +23,6 @@ import type {
 } from './label-discovery.types.js';
 
 interface EngineOptions {
-  minCategoryAgreement: number;
   minSourceAgreement: number;
   minimumConfidence: number;
   existingLabelNames: string[];
@@ -130,14 +129,11 @@ function buildDomainCandidate(
 ): CandidateGroup | null {
   if (messages.length < preferences.minMessages) return null;
   const category = dominantCategory(messages);
-  const categoryAgreement = category.agreement;
+  // Every message in this group shares one registrable domain, so source agreement is 1
+  // by construction. Category agreement is no longer a gate: the free-form category is
+  // null for every synchronized message, so gating on it rejected every sender candidate.
   const sourceAgreement = 1;
-  if (
-    categoryAgreement < options.minCategoryAgreement ||
-    sourceAgreement < options.minSourceAgreement
-  ) {
-    return null;
-  }
+  if (sourceAgreement < options.minSourceAgreement) return null;
   const senderAddresses = new Set(
     messages.map((message) => message.senderEmail?.toLowerCase()).filter(Boolean),
   );
@@ -251,11 +247,9 @@ function finishGroup(input: {
     sourceConsistency: input.sourceAgreement,
     messageCount: input.messages.length,
     minimumMessages: input.preferences.minMessages,
-    categoryAgreement: input.category.agreement,
     recent,
     threadCount: threads,
     namingConfidence: input.displayNameAgreement || input.subjectPatternAgreement,
-    userCorrectionSupport,
     temporary,
     generic,
     existingLabelSimilarity: existingSimilarity,

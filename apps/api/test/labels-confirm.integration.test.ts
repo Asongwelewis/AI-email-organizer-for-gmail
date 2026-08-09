@@ -67,7 +67,6 @@ import { labelPathFor } from '../src/features/labels/labels.repository.js';
 import { labelsRouter } from '../src/features/labels/labels.routes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { LabelsService } from '../src/features/labels/labels.service.js';
-import { calculateLabelConfidence } from '../src/features/label-discovery/label-confidence.js';
 import { discoverDeterministicCandidates } from '../src/features/label-discovery/label-discovery.engine.js';
 import { LABEL_CANDIDATE_TYPES } from '../src/features/label-discovery/label-discovery.taxonomy.js';
 import type {
@@ -344,11 +343,11 @@ describe('labels propose -> confirm', () => {
 });
 
 /**
- * Why confirm never runs in production: propose returns an empty proposal set, so the web
- * client's confirm button stays disabled. These cases pin the current behaviour and the
- * exact gate that causes it. They are expected to change when the gate is fixed.
+ * Regression cover for the defect that kept user_labels empty: propose returned nothing,
+ * so the web confirm button never enabled. Sender candidates must now be scored on their
+ * live signals rather than on the retired category taxonomy.
  */
-describe('label proposal discovery gate (documents the current defect)', () => {
+describe('label proposal discovery', () => {
   const SENDERS = [
     { name: 'Chase', email: 'alerts@chase.com', subject: 'Your statement is ready' },
     { name: 'GitHub', email: 'noreply@github.com', subject: 'New pull request opened' },
@@ -382,50 +381,52 @@ describe('label proposal discovery gate (documents the current defect)', () => {
     preferTopics: true,
   };
   const options = {
-    minCategoryAgreement: 0.7,
     minSourceAgreement: 0.7,
     minimumConfidence: 0.75,
     existingLabelNames: [] as string[],
   };
 
-  it('rejects every sender candidate because propose passes category: null', () => {
-    // labels.service.propose hard-codes category and correctedCategory to null, so
-    // dominantCategory() always reports 0 agreement and buildDomainCandidate bails out.
+  it('discovers every sender even though propose passes category: null', () => {
     const result = discoverDeterministicCandidates(corpus(null), preferences, options);
 
-    expect(result.rejectedByRules).toBe(SENDERS.length);
-    expect(result.groups.every((group) => group.candidateType === 'TOPIC')).toBe(true);
-    expect(result.groups.map((group) => group.suggestedLeafName)).not.toContain('GitHub');
-  });
-
-  it('accepts the same senders once a category is present', () => {
-    const result = discoverDeterministicCandidates(corpus('WORK'), preferences, options);
-
+    expect(result.rejectedByRules).toBe(0);
     expect(result.groups.map((group) => group.suggestedLeafName)).toEqual(
       expect.arrayContaining(['Chase', 'GitHub', 'Greenhouse', 'Coursera']),
     );
   });
 
-  it('caps confidence at 0.80 when category agreement is zero, against a 0.75 floor', () => {
-    const best = calculateLabelConfidence({
-      sourceConsistency: 1,
-      messageCount: 1000,
-      minimumMessages: 3,
-      categoryAgreement: 0,
-      recent: true,
-      threadCount: 1000,
-      namingConfidence: 1,
-      userCorrectionSupport: 0,
-      temporary: false,
-      generic: false,
-      existingLabelSimilarity: false,
-      sparseDistribution: false,
-    });
+  it('scores sender candidates identically whether or not a category is present', () => {
+    // Categories still steer which topic regexes match, but they no longer move a score.
+    const senderScores = (messages: DiscoveryMessage[]) =>
+      Object.fromEntries(
+        discoverDeterministicCandidates(messages, preferences, options)
+          .groups.filter((group) => group.candidateType !== 'TOPIC')
+          .map((group) => [group.suggestedLeafName, group.confidence] as const),
+      );
 
-    // 1 - 0.15 (categoryAgreement) - 0.05 (userCorrectionSupport) = 0.80. A single
-    // penalty, such as -0.18 for resembling an existing Gmail label, drops it under 0.75.
-    expect(best).toBe(0.8);
-    expect(best - 0.18).toBeLessThan(0.75);
+    expect(senderScores(corpus(null))).toEqual(senderScores(corpus('WORK')));
+  });
+
+  it('keeps existing-label similarity live: the candidate is dropped outright', () => {
+    // finishGroup treats it as a hard rejection, so the -0.18 confidence penalty never
+    // decides anything on this path. Both are left as they are.
+    const namesFor = (existingLabelNames: string[]) =>
+      discoverDeterministicCandidates(corpus(null), preferences, {
+        ...options,
+        existingLabelNames,
+      }).groups.map((group) => group.suggestedLeafName);
+
+    expect(namesFor([])).toContain('GitHub');
+    expect(namesFor(['GitHub'])).not.toContain('GitHub');
+    expect(namesFor(['MailMind/Sources/GitHub'])).not.toContain('GitHub');
+    expect(namesFor(['GitHub'])).toContain('Chase');
+  });
+
+  it('does not match a two-level MailMind path, which normalization never strips', () => {
+    // normalizeLabelForComparison only strips MailMind/<namespace>/, but labelPathFor now
+    // builds MailMind/<leaf>. Gmail labels stored in that shape escape the penalty.
+    expect(labelsAreSimilar('MailMind/GitHub', 'GitHub')).toBe(false);
+    expect(labelsAreSimilar('MailMind/Sources/GitHub', 'GitHub')).toBe(true);
   });
 });
 

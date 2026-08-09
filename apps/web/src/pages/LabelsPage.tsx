@@ -24,6 +24,7 @@ export function LabelsPage() {
   const [drafts, setDrafts] = useState<DraftLabel[] | null>(null);
   const [customName, setCustomName] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [proposalOutcome, setProposalOutcome] = useState<'EMPTY' | null>(null);
 
   const proposals = labels.data?.proposals;
   const approved = labels.data?.labels ?? [];
@@ -43,14 +44,51 @@ export function LabelsPage() {
 
   if (labels.isLoading) return <RouteLoader label="Loading your labels" />;
 
+  // A failed read must say so. Rendering the empty state here is what made a broken
+  // labels flow look like an account that simply had no labels yet.
+  if (labels.isError) {
+    return (
+      <div className="labels-page">
+        <header className="page-heading">
+          <div>
+            <span className="eyebrow">Step 2 · Your labels</span>
+            <h1>Your labels could not be loaded</h1>
+          </div>
+        </header>
+        <section className="labels-panel" aria-labelledby="labels-error-title">
+          <h2 id="labels-error-title" className="visually-hidden">
+            Error details
+          </h2>
+          <p className="labels-error" role="alert">
+            {getSafeErrorMessage(labels.error, 'The labels service did not respond.')}
+          </p>
+          <div className="labels-actions">
+            <MagneticButton onClick={() => void labels.refetch()}>Try again</MagneticButton>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   const update = (next: DraftLabel[]) => setDrafts(next);
 
   const propose = async () => {
     try {
-      await actions.propose.mutateAsync();
+      const result = await actions.propose.mutateAsync();
       setDrafts(null);
-      toast.success('Label proposals are ready for your review.');
+      // An empty set is not a success. Say what happened instead of implying work was done.
+      if (result.proposals.length === 0) {
+        setProposalOutcome('EMPTY');
+        return;
+      }
+      setProposalOutcome(null);
+      toast.success(
+        `${result.proposals.length} label ${
+          result.proposals.length === 1 ? 'proposal is' : 'proposals are'
+        } ready for your review.`,
+      );
     } catch (error) {
+      setProposalOutcome(null);
       toast.error(getSafeErrorMessage(error, 'Labels could not be proposed.'));
     }
   };
@@ -143,9 +181,17 @@ export function LabelsPage() {
           <span>{workingSet.length} pending</span>
         </div>
         {workingSet.length === 0 ? (
-          <p className="labels-empty">
-            No pending proposals. Use Propose labels to analyze your synchronized mail.
-          </p>
+          proposalOutcome === 'EMPTY' ? (
+            <p className="labels-empty" role="status">
+              That run analyzed your synchronized mail and found nothing above the confidence
+              threshold, so no labels were proposed. Synchronize more mail, or add your own label
+              below and confirm it.
+            </p>
+          ) : (
+            <p className="labels-empty">
+              No pending proposals. Use Propose labels to analyze your synchronized mail.
+            </p>
+          )
         ) : (
           <ul className="labels-list">
             {workingSet.map((draft, index) => (

@@ -4,11 +4,9 @@ export interface ConfidenceSignals {
   sourceConsistency: number;
   messageCount: number;
   minimumMessages: number;
-  categoryAgreement: number;
   recent: boolean;
   threadCount: number;
   namingConfidence: number;
-  userCorrectionSupport: number;
   temporary: boolean;
   generic: boolean;
   existingLabelSimilarity: boolean;
@@ -23,11 +21,9 @@ export function calculateLabelConfidence(signals: ConfidenceSignals): number {
   const weighted =
     clamp(signals.sourceConsistency) * LABEL_CONFIDENCE_WEIGHTS.sourceConsistency +
     volume * LABEL_CONFIDENCE_WEIGHTS.messageVolume +
-    clamp(signals.categoryAgreement) * LABEL_CONFIDENCE_WEIGHTS.categoryAgreement +
     (signals.recent ? 1 : 0.35) * LABEL_CONFIDENCE_WEIGHTS.recency +
     threadDiversity * LABEL_CONFIDENCE_WEIGHTS.threadDiversity +
-    clamp(signals.namingConfidence) * LABEL_CONFIDENCE_WEIGHTS.namingConfidence +
-    clamp(signals.userCorrectionSupport) * LABEL_CONFIDENCE_WEIGHTS.userCorrectionSupport;
+    clamp(signals.namingConfidence) * LABEL_CONFIDENCE_WEIGHTS.namingConfidence;
   const penalty =
     (signals.temporary ? 0.25 : 0) +
     (signals.generic ? 0.25 : 0) +

@@ -60,7 +60,6 @@ const environmentSchema = z
     DYNAMIC_LABEL_MIN_MESSAGES: z.coerce.number().int().min(3).max(100).default(3),
     DYNAMIC_LABEL_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(365).default(90),
     DYNAMIC_LABEL_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.75),
-    DYNAMIC_LABEL_MIN_CATEGORY_AGREEMENT: z.coerce.number().min(0.5).max(1).default(0.7),
     DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT: z.coerce.number().min(0.5).max(1).default(0.7),
     DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN: z.coerce.number().int().min(1).max(50).default(20),
     DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(5000).default(1000),
