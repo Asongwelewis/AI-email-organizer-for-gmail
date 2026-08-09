@@ -52,7 +52,6 @@ credentials.
 | -------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `COOKIE_DOMAIN`                        | Optional cookie domain.                                                                    |
 | `COOKIE_SAME_SITE`                     | `lax` outside production. Production session cookies use `none` for cross-origin requests. |
-| `ACCESS_SESSION_TTL_MINUTES`           | `15`                                                                                       |
 | `REFRESH_SESSION_TTL_DAYS`             | `14`                                                                                       |
 | `OAUTH_STATE_TTL_MINUTES`              | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES`       | `10`                                                                                       |

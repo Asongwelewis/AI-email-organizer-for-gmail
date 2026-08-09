@@ -72,7 +72,6 @@ printing their values.
 
 Session lifetime and rate-limit controls:
 
-- `ACCESS_SESSION_TTL_MINUTES`
 - `REFRESH_SESSION_TTL_DAYS`
 - `OAUTH_STATE_TTL_MINUTES`
 - `AUTH_RATE_LIMIT_WINDOW_MINUTES`

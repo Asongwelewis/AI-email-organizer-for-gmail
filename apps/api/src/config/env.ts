@@ -47,7 +47,6 @@ const environmentSchema = z
     COOKIE_SECURE: booleanValue,
     COOKIE_DOMAIN: optionalDomain,
     COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
-    ACCESS_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
     REFRESH_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(14),
     OAUTH_STATE_TTL_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(10),
