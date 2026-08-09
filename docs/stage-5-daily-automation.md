@@ -65,16 +65,41 @@ committed. Other upstream failures use bounded retries.
 ## Configuration
 
 Set `GEMINI_API_KEY` privately; automation stays unavailable while it is absent. `GEMINI_MODEL`
-defaults to `gemini-2.5-flash-lite`, whose free tier allows 1,000 requests/day and 15
-requests/minute — Flash's 250/day cannot backfill a several-thousand-message mailbox.
+defaults to the `gemini-flash-lite-latest` **alias** rather than a pinned id. This is deliberate:
+`gemini-2.5-flash-lite` was retired and began returning `404 — no longer available to new users`,
+which would silently break an unattended daily scheduler. Flash-Lite is preferred over Flash
+because Flash-class free quota is far lower and it burns roughly twice the output tokens on the
+same batch. Google no longer publishes per-model free-tier limits; check the live figures for your
+project at <https://aistudio.google.com/rate-limit>.
 
 Rate limiting is handled proactively: `GEMINI_MIN_REQUEST_INTERVAL_MS` (default `4000`) paces
-requests to the 15/minute ceiling rather than relying on 429 retries.
+requests to a 15/minute ceiling rather than relying on 429 retries.
 
 Cost accounting is notional. The free tier bills nothing, but per-token rates taken from Gemini's
 published paid pricing are held as constants in `gemini-automation.provider.ts` so
-`AUTOMATION_MAX_COST_MICRO_USD` still bounds a runaway run. Review those constants whenever
-`GEMINI_MODEL` changes — a different model has different rates.
+`AUTOMATION_MAX_COST_MICRO_USD` still bounds a runaway run. Because the alias can be repointed
+without a code change, those constants deliberately hold the **higher** current Flash-Lite rates
+(input $0.30, cached $0.03, output $2.50 per 1M): over-estimating makes the cap stop a run early,
+whereas under-estimating would let one overshoot. Re-check them whenever `GEMINI_MODEL` is pinned
+to a specific model.
+
+### What actually bounds a full-mailbox backfill
+
+Measured on `gemini-flash-lite-latest`, a batch of 10 messages costs about **882 input and 388
+output tokens** (~1,235 µUSD notional). Extrapolating to a 3,305-message mailbox — 331 batches:
+
+| Budget                            | Default  | Needed for 3,305 | Binds?         |
+| --------------------------------- | -------- | ---------------- | -------------- |
+| `AUTOMATION_MAX_MESSAGES_PER_RUN` | `250`    | 3,305            | **yes, first** |
+| `AUTOMATION_MAX_OUTPUT_TOKENS`    | `10000`  | ~128,400         | **yes**        |
+| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000` | ~292,000         | yes            |
+| `AUTOMATION_MAX_COST_MICRO_USD`   | `500000` | ~408,800         | no             |
+
+So a default run files **250 messages in ~25 requests (~100s of pacing)**, not the whole mailbox,
+and stops `PARTIAL` with `DAILY_BUDGET_REACHED`. That is the intended bounded-batch design: the
+backlog drains oldest-first across successive runs. Note the schema maximums cap
+`AUTOMATION_MAX_MESSAGES_PER_RUN` at `1000` and `AUTOMATION_MAX_OUTPUT_TOKENS` at `100000`, so a
+3,305-message mailbox needs **at least four runs** even when every budget is raised to its ceiling.
 
 The controls are the `AUTOMATION_*` and `GEMINI_*` variables in `apps/api/.env.example`. The
 in-process scheduler polls every 15 minutes and catches up after restart. Database leases make it

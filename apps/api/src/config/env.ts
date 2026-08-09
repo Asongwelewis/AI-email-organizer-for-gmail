@@ -88,7 +88,9 @@ const environmentSchema = z
     AUTOMATION_PATTERN_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.9),
     AUTOMATION_MAX_ACTION_RETRIES: z.coerce.number().int().min(1).max(10).default(3),
     GEMINI_API_KEY: optionalSecret,
-    GEMINI_MODEL: z.string().min(1).max(200).default('gemini-2.5-flash-lite'),
+    // The alias tracks the current Flash-Lite. Pinned ids get retired: gemini-2.5-flash-lite
+    // started returning 404 "no longer available to new users" and broke the scheduler.
+    GEMINI_MODEL: z.string().min(1).max(200).default('gemini-flash-lite-latest'),
     GEMINI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
     GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
     // The free tier allows 15 requests per minute, so 4000ms between requests sits exactly on

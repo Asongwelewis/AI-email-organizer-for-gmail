@@ -104,7 +104,7 @@ describe('environment validation', () => {
       GEMINI_MODEL: undefined,
       GEMINI_MIN_REQUEST_INTERVAL_MS: undefined,
     });
-    expect(env.GEMINI_MODEL).toBe('gemini-2.5-flash-lite');
+    expect(env.GEMINI_MODEL).toBe('gemini-flash-lite-latest');
     // 15 requests per minute is the free-tier ceiling; 4000ms between calls sits exactly on it.
     expect(env.GEMINI_MIN_REQUEST_INTERVAL_MS).toBe(4000);
   });

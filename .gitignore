@@ -13,3 +13,6 @@ test-results
 apps/*/dist
 packages/*/dist
 apps/*/.vite
+
+# Local database dumps taken before destructive migrations
+backups/

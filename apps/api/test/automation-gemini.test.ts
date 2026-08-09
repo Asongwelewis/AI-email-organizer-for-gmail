@@ -304,14 +304,14 @@ describe('GeminiAutomationProvider', () => {
   });
 
   it('derives a non-zero notional cost so the run budget can still bound usage', () => {
-    // 1M uncached input + 1M output at the recorded paid rates: 100000 + 400000 micro-USD.
+    // 1M uncached input + 1M output at the recorded paid rates: 300000 + 2500000 micro-USD.
     expect(
       estimatedCostMicroUsd({
         inputTokens: 1_000_000,
         cachedInputTokens: 0,
         outputTokens: 1_000_000,
       }),
-    ).toBe(500_000);
+    ).toBe(2_800_000);
     // Cached input is priced an order of magnitude lower than fresh input.
     expect(
       estimatedCostMicroUsd({
@@ -319,6 +319,6 @@ describe('GeminiAutomationProvider', () => {
         cachedInputTokens: 1_000_000,
         outputTokens: 0,
       }),
-    ).toBe(10_000);
+    ).toBe(30_000);
   });
 });

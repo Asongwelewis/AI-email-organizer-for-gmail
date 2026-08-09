@@ -16,15 +16,21 @@ const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
  * Notional cost rates for the configured model, in micro-USD per million tokens.
  *
  * MailMind runs on Gemini's free tier, where the real cost is $0. These are Google's published
- * PAID rates for gemini-2.5-flash-lite, recorded so AUTOMATION_MAX_COST_MICRO_USD still bounds a
- * runaway run: without a non-zero rate the budget check can never trip. Verified 2026-08-09 at
- * https://ai.google.dev/gemini-api/docs/pricing — standard (non-batch) tier, per 1M tokens:
- *   input $0.10, cached input (context caching) $0.01, output $0.40.
- * Update these together with GEMINI_MODEL; a different model has different rates.
+ * PAID rates, recorded so AUTOMATION_MAX_COST_MICRO_USD still bounds a runaway run: without a
+ * non-zero rate the budget check can never trip. Verified 2026-08-09 at
+ * https://ai.google.dev/gemini-api/docs/pricing — standard (non-batch) tier, per 1M tokens for
+ * Gemini 3.5 Flash-Lite: input $0.30, context caching $0.03, output $2.50.
+ *
+ * GEMINI_MODEL defaults to the `gemini-flash-lite-latest` alias, which Google repoints as models
+ * are retired — gemini-2.5-flash-lite was retired out from under this code, which is why the
+ * alias is preferred. The trade-off is that the alias's rates can change without a code change,
+ * so these are deliberately the HIGHER current Flash-Lite rates: over-estimating cost makes the
+ * budget cap trip early and stop a run, while under-estimating would let one overshoot.
+ * Re-check them whenever GEMINI_MODEL is pinned to a specific model.
  */
-const INPUT_MICRO_USD_PER_MILLION_TOKENS = 100_000;
-const CACHED_INPUT_MICRO_USD_PER_MILLION_TOKENS = 10_000;
-const OUTPUT_MICRO_USD_PER_MILLION_TOKENS = 400_000;
+const INPUT_MICRO_USD_PER_MILLION_TOKENS = 300_000;
+const CACHED_INPUT_MICRO_USD_PER_MILLION_TOKENS = 30_000;
+const OUTPUT_MICRO_USD_PER_MILLION_TOKENS = 2_500_000;
 
 // PRIVACY BOUNDARY. Google's FREE tier states "Content used to improve our products: Yes", so the
 // email metadata sent from here may be used to improve Google's products. That is an accepted

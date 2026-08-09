@@ -117,7 +117,7 @@ starting. The scheduler starts only after Prisma connects and stops during grace
 Provider and Gmail errors are logged
 through safe structured fields; request bodies, tokens, secrets, and message content are excluded.
 
-The classifier is Google Gemini (`GEMINI_MODEL`, default `gemini-2.5-flash-lite`). Requests are
+The classifier is Google Gemini (`GEMINI_MODEL`, default `gemini-flash-lite-latest`). Requests are
 paced by `GEMINI_MIN_REQUEST_INTERVAL_MS` rather than driven into 429s, and cost accounting is
 notional — the free tier bills nothing, but the provider computes micro-USD from Gemini's published
 paid rates so `AUTOMATION_MAX_COST_MICRO_USD` still bounds a runaway run.
