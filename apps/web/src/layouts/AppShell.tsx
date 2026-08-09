@@ -1,17 +1,15 @@
 import { useState } from 'react';
-import { CircleHelp, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
 import { BrandMark } from '@web/components/BrandMark';
 import { ConfirmDialog } from '@web/components/ConfirmDialog';
-import { MotionTabs } from '@web/components/MotionTabs';
 import { useAuth } from '@web/context/useAuth';
-import { TutorialExperience } from '@web/features/tutorial/TutorialExperience';
 
 export function AppShell() {
-  const { user, logout, logoutAll, completeTutorial } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   const location = useLocation();
   const [logoutAllOpen, setLogoutAllOpen] = useState(false);
 
@@ -21,7 +19,6 @@ export function AppShell() {
     <div className="app-shell">
       <header className="app-header">
         <BrandMark />
-        <MotionTabs />
         <div className="app-header__user">
           <div className="app-header__identity">
             <strong>{user.displayName ?? 'MailMind member'}</strong>
@@ -31,29 +28,12 @@ export function AppShell() {
           <button
             className="icon-button"
             type="button"
-            onClick={() => window.dispatchEvent(new Event('mailmind:start-tutorial'))}
-            aria-label="Start product tour"
-            title="Start product tour"
-          >
-            <CircleHelp aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
             onClick={() => void logout()}
             aria-label="Log out"
           >
             <LogOut aria-hidden="true" />
           </button>
         </div>
-        <button
-          className="mobile-tour icon-button"
-          type="button"
-          onClick={() => window.dispatchEvent(new Event('mailmind:start-tutorial'))}
-          aria-label="Start product tour"
-        >
-          <CircleHelp aria-hidden="true" />
-        </button>
         <button
           className="mobile-logout icon-button"
           type="button"
@@ -82,11 +62,6 @@ export function AppShell() {
         destructive
         onCancel={() => setLogoutAllOpen(false)}
         onConfirm={() => void logoutAll()}
-      />
-      <TutorialExperience
-        accountId={user.id}
-        eligible={user.tutorialCompletedAt === null}
-        onComplete={completeTutorial}
       />
     </div>
   );

@@ -19,7 +19,7 @@ function renderLogin(entry = '/login') {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/dashboard" element={<div>Dashboard destination</div>} />
+        <Route path="/sorted" element={<div>Sorted destination</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -60,9 +60,9 @@ describe('LoginPage', () => {
     expect(screen.queryByText('database-secret')).not.toBeInTheDocument();
   });
 
-  it('redirects an authenticated user to the dashboard', () => {
+  it('redirects an authenticated user to the sorted screen', () => {
     authState.isAuthenticated = true;
     renderLogin();
-    expect(screen.getByText('Dashboard destination')).toBeInTheDocument();
+    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
   });
 });
