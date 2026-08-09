@@ -88,18 +88,13 @@ const environmentSchema = z
     AUTOMATION_PATTERN_MIN_SAMPLES: z.coerce.number().int().min(1).max(100).default(2),
     AUTOMATION_PATTERN_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.9),
     AUTOMATION_MAX_ACTION_RETRIES: z.coerce.number().int().min(1).max(10).default(3),
-    OPENAI_API_KEY: optionalSecret,
-    OPENAI_MODEL: z.string().min(1).max(200).default('gpt-5.6-sol'),
-    OPENAI_RESPONSES_URL: z.string().url().default('https://api.openai.com/v1/responses'),
-    OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
-    OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
-    OPENAI_INPUT_COST_PER_MILLION_MICRO_USD: z.coerce.number().int().positive().default(5000000),
-    OPENAI_CACHED_INPUT_COST_PER_MILLION_MICRO_USD: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(500000),
-    OPENAI_OUTPUT_COST_PER_MILLION_MICRO_USD: z.coerce.number().int().positive().default(30000000),
+    GEMINI_API_KEY: optionalSecret,
+    GEMINI_MODEL: z.string().min(1).max(200).default('gemini-2.5-flash-lite'),
+    GEMINI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
+    GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+    // The free tier allows 15 requests per minute, so 4000ms between requests sits exactly on
+    // that ceiling. Pacing is the primary rate-limit strategy; 429 retries are the fallback.
+    GEMINI_MIN_REQUEST_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(4000),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

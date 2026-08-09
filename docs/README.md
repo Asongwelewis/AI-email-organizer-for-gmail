@@ -24,5 +24,5 @@ longer exist. The discovery engine survives as the source of label proposals, de
 [Architecture](architecture.md) and [API reference](api.md).
 
 These documents describe the current implementation. Daily automatic Gmail labeling is
-implemented with bounded OpenAI usage and human review; billing and attachment or full-body
+implemented with bounded Gemini usage and human review; billing and attachment or full-body
 ingestion are not implemented.

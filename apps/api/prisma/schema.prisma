@@ -411,7 +411,7 @@ enum automation_action_status {
 }
 
 enum automation_classification_source {
-  OPENAI
+  AI
   LEARNED_PATTERN
   USER
 }
@@ -483,7 +483,7 @@ model automation_runs {
   status                      automation_run_status        @default(RUNNING)
   messages_seen               Int                          @default(0)
   pattern_reused_count        Int                          @default(0)
-  openai_classified_count     Int                          @default(0)
+  ai_classified_count         Int                          @default(0)
   review_required_count       Int                          @default(0)
   no_label_skipped_count      Int                          @default(0)
   backlog_remaining           Int                          @default(0)

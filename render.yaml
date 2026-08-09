@@ -58,5 +58,5 @@ services:
         sync: false
       - key: TOKEN_ENCRYPTION_KEY_VERSION
         sync: false
-      - key: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false

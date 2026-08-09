@@ -7,7 +7,7 @@ let timer: NodeJS.Timeout | null = null;
 let ticking = false;
 
 async function tick(): Promise<void> {
-  if (ticking || !env.AUTOMATION_ENABLED || !env.OPENAI_API_KEY) return;
+  if (ticking || !env.AUTOMATION_ENABLED || !env.GEMINI_API_KEY) return;
   ticking = true;
   try {
     const accounts = await automationService.eligibleScheduledAccounts();

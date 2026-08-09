@@ -627,7 +627,7 @@ databaseTests('PostgreSQL authentication repositories', () => {
       label_name: 'Work',
       label_path: 'MailMind/Work',
       confidence: 0.9,
-      source: 'OPENAI' as const,
+      source: 'AI' as const,
       explanation: 'Work metadata.',
       input_hash: 'e'.repeat(64),
     };

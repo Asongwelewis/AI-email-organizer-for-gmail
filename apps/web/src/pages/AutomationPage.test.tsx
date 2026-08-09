@@ -92,7 +92,7 @@ describe('AutomationPage', () => {
           trigger: 'SCHEDULED',
           messagesSeen: 12,
           patternReused: 7,
-          openaiClassified: 5,
+          aiClassified: 5,
           reviewRequired: 1,
           noLabelSkipped: 2,
           backlogRemaining: 0,
@@ -188,18 +188,18 @@ describe('AutomationPage', () => {
     expect(screen.getByText('Gmail needs attention')).toBeInTheDocument();
   });
 
-  it('shows an actionable but credential-safe quota error', () => {
+  it('shows an actionable but credential-safe rate-limit error', () => {
     mocks.status.mockReturnValue({
       ...mocks.status(),
       data: {
         ...mocks.status().data,
-        lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+        lastErrorCode: 'PROVIDER_RATE_LIMITED',
         lastRun: {
           ...mocks.status().data.lastRun,
           status: 'PARTIAL',
-          lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+          lastErrorCode: 'PROVIDER_RATE_LIMITED',
           lastProviderStatus: 429,
-          lastProviderCode: 'insufficient_quota',
+          lastProviderCode: 'RESOURCE_EXHAUSTED',
           lastProviderRequestId: 'request-safe-id',
         },
       },
@@ -207,11 +207,11 @@ describe('AutomationPage', () => {
     render(<AutomationPage />);
     expect(
       screen.getByText(
-        'OpenAI quota is unavailable. Add billing or raise the project usage limit, then retry.',
+        'The AI provider daily limit is reached. MailMind resumes on the next scheduled run.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/Provider status: 429/i)).toBeInTheDocument();
-    expect(screen.getByText(/Safe code: insufficient_quota/i)).toBeInTheDocument();
+    expect(screen.getByText(/Safe code: RESOURCE_EXHAUSTED/i)).toBeInTheDocument();
     expect(screen.getByText(/Request reference: request-safe-id/i)).toBeInTheDocument();
     expect(screen.queryByText(/authorization|email body/i)).not.toBeInTheDocument();
   });

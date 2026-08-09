@@ -4,7 +4,7 @@
 
 The MailMind API is an Express 5 and TypeScript service in `apps/api`. It owns authentication,
 encrypted Google credentials, metadata-only Gmail synchronization, the user-approved label set,
-daily OpenAI/Gmail automation, audit records, and all PostgreSQL access through Prisma.
+daily Gemini/Gmail automation, audit records, and all PostgreSQL access through Prisma.
 
 The backend is the only application component allowed to access the database, Google client secret,
 Gmail OAuth tokens, session secrets, token-encryption key, or an external classifier credential.
@@ -113,10 +113,22 @@ overlap for the same account.
 ### Daily automation
 
 Stage 5 configuration is documented in [Stage 5 daily automation](stage-5-daily-automation.md).
-Without `OPENAI_API_KEY`, automation remains unavailable without preventing the existing API from
+Without `GEMINI_API_KEY`, automation remains unavailable without preventing the existing API from
 starting. The scheduler starts only after Prisma connects and stops during graceful shutdown.
 Provider and Gmail errors are logged
 through safe structured fields; request bodies, tokens, secrets, and message content are excluded.
+
+The classifier is Google Gemini (`GEMINI_MODEL`, default `gemini-2.5-flash-lite`). Requests are
+paced by `GEMINI_MIN_REQUEST_INTERVAL_MS` rather than driven into 429s, and cost accounting is
+notional — the free tier bills nothing, but the provider computes micro-USD from Gemini's published
+paid rates so `AUTOMATION_MAX_COST_MICRO_USD` still bounds a runaway run.
+
+> **Free-tier data use.** On Google's **free** Gemini tier, submitted content may be used to
+> improve Google's products. MailMind sends only bounded Gmail _metadata_ — subject, sender,
+> truncated snippet, and state flags — never bodies, raw MIME, or attachments. That trade-off is
+> acceptable for **single-user personal use only**. Before any third party's mail flows through
+> this provider, move the project to a **paid** tier, where submitted content is not used that way.
+> See <https://ai.google.dev/gemini-api/docs/pricing> (checked 2026-08-09).
 
 ## Request pipeline
 
@@ -154,7 +166,7 @@ tokens, session tokens, passwords, database URLs, and the token-encryption key.
 | Gmail sync            | `src/integrations/gmail`                 | Labels, initial sync, history-based incremental sync   |
 | Labels                | `src/features/labels`                    | Proposal, approval, rename, delete of the label set    |
 | Discovery engine      | `src/features/label-discovery`           | Engine-only: normalization, confidence, candidates     |
-| Daily automation      | `src/features/automation`                | Scheduler, OpenAI, Gmail apply, budgets, review        |
+| Daily automation      | `src/features/automation`                | Scheduler, Gemini, Gmail apply, budgets, review        |
 | Persistence           | `src/repositories`, feature repositories | Account-scoped Prisma queries and leases               |
 | Security              | `src/security`, `src/middleware`         | Encryption, hashing, safe redirects, CORS/CSRF, limits |
 | Audit                 | `src/audit`                              | Security and user-action audit records                 |

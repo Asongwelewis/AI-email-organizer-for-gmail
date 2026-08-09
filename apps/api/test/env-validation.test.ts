@@ -100,6 +100,21 @@ describe('environment validation', () => {
     expect(options.secure).toBe(true);
   });
 
+  it('defaults the Gemini model and pacing to the free-tier friendly values', async () => {
+    const { env } = await loadWith({
+      GEMINI_MODEL: undefined,
+      GEMINI_MIN_REQUEST_INTERVAL_MS: undefined,
+    });
+    expect(env.GEMINI_MODEL).toBe('gemini-2.5-flash-lite');
+    // 15 requests per minute is the free-tier ceiling; 4000ms between calls sits exactly on it.
+    expect(env.GEMINI_MIN_REQUEST_INTERVAL_MS).toBe(4000);
+  });
+
+  it('treats a missing Gemini key as absent rather than aborting startup', async () => {
+    const { env } = await loadWith({ GEMINI_API_KEY: undefined });
+    expect(env.GEMINI_API_KEY).toBeUndefined();
+  });
+
   it('accepts optional Sentry runtime configuration and a shared release', async () => {
     const { env } = await loadWith({
       APP_VERSION: 'mailmind@test-release',

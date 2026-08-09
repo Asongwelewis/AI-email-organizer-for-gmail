@@ -4,7 +4,7 @@ export interface AutomationRun {
   trigger: 'SCHEDULED' | 'MANUAL';
   messagesSeen: number;
   patternReused: number;
-  openaiClassified: number;
+  aiClassified: number;
   reviewRequired: number;
   noLabelSkipped: number;
   backlogRemaining: number;

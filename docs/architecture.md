@@ -25,7 +25,7 @@ flowchart LR
     A[Express API]
     P[(PostgreSQL / Supabase)]
     G[Google OAuth and Gmail API]
-    C[OpenAI Responses API]
+    C[Gemini generateContent API]
 
     U --> W
     W -->|HTTPS JSON + HttpOnly cookie| A
@@ -151,7 +151,7 @@ label removes only MailMind's record — the Gmail label and the mail already un
 The scheduler and manual endpoint share one resumable service. Account leases prevent overlap;
 scheduled account/date keys and unique message actions provide idempotency. Learned sender-domain
 patterns are reused only after repeated, consistent successful applications. Remaining messages
-use OpenAI in bounded batches. Confident outcomes create or reuse `MailMind/<Category>` and call
+use Gemini in bounded batches. Confident outcomes create or reuse `MailMind/<Category>` and call
 Gmail `messages.modify`; uncertain outcomes enter a review queue.
 
 Run records store counters, tokens, cached input, estimated micro-USD cost, stop reason, and safe

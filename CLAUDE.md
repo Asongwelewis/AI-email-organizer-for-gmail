@@ -51,7 +51,7 @@ Full detail lives in [docs/](docs/) — [architecture.md](docs/architecture.md),
 [backend.md](docs/backend.md), [frontend.md](docs/frontend.md), [api.md](docs/api.md), plus the
 per-stage design notes. Read those before non-trivial work; the key invariants:
 
-**Trust boundary.** Only `apps/api` touches PostgreSQL, Google, or OpenAI. The SPA gets DTOs and an
+**Trust boundary.** Only `apps/api` touches PostgreSQL, Google, or Gemini. The SPA gets DTOs and an
 HttpOnly `mailmind_session` cookie — never OAuth tokens, secrets, or direct Supabase access. Any
 `VITE_`-prefixed value ends up in the browser bundle and must not be a secret.
 
@@ -82,7 +82,7 @@ Deleting a label never unlabels mail. Nothing else may mutate Gmail.
 
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one
-database. External calls (Google, OpenAI) happen _outside_ database transactions so partial work
+database. External calls (Google, Gemini) happen _outside_ database transactions so partial work
 stays durable and resumable.
 
 **Frontend state.** TanStack Query owns server state with retries and refetch-on-focus disabled by

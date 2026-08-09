@@ -50,7 +50,7 @@ vi.mock('../src/integrations/gmail/gmail.service.js', () => ({
 }));
 vi.mock('../src/config/logger.js', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-  safeErrorDetails: () => ({ errorType: 'OpenAiProviderError' }),
+  safeErrorDetails: () => ({ errorType: 'GeminiProviderError' }),
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
@@ -91,7 +91,7 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 
 import { env } from '../src/config/env.js';
-import { OpenAiProviderError } from '../src/features/automation/openai-automation.provider.js';
+import { GeminiProviderError } from '../src/features/automation/gemini-automation.provider.js';
 import { AutomationService } from '../src/features/automation/automation.service.js';
 
 const approvedLabel = {
@@ -127,12 +127,12 @@ function classification(overrides: Record<string, unknown> = {}) {
 }
 
 describe('AutomationService', () => {
-  const originalKey = env.OPENAI_API_KEY;
+  const originalKey = env.GEMINI_API_KEY;
   const originalEnabled = env.AUTOMATION_ENABLED;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    env.OPENAI_API_KEY = 'test-openai-key';
+    env.GEMINI_API_KEY = 'test-gemini-key';
     env.AUTOMATION_ENABLED = true;
     mocks.connectedAccount.mockResolvedValue({ id: 'account-1', user_id: 'user-1' });
     mocks.settingsUpsert.mockResolvedValue({});
@@ -175,7 +175,7 @@ describe('AutomationService', () => {
   });
 
   afterEach(() => {
-    env.OPENAI_API_KEY = originalKey;
+    env.GEMINI_API_KEY = originalKey;
     env.AUTOMATION_ENABLED = originalEnabled;
   });
 
@@ -263,7 +263,7 @@ describe('AutomationService', () => {
     );
   });
 
-  it('still sends learned-pattern mail through OpenAI and checkpoints quota recovery', async () => {
+  it('still sends learned-pattern mail through Gemini and checkpoints rate-limit recovery', async () => {
     mocks.patternFindMany.mockResolvedValue([
       {
         id: 'pattern-1',
@@ -287,12 +287,12 @@ describe('AutomationService', () => {
       },
     ]);
     mocks.classifier.mockRejectedValue(
-      new OpenAiProviderError(
-        'OPENAI_INSUFFICIENT_QUOTA',
-        'OpenAI quota is unavailable.',
+      new GeminiProviderError(
+        'PROVIDER_RATE_LIMITED',
+        'Gemini is rate limited.',
         503,
         429,
-        'insufficient_quota',
+        'RESOURCE_EXHAUSTED',
         'request-safe-id',
         false,
       ),
@@ -313,9 +313,11 @@ describe('AutomationService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           provider_call_count: 1,
-          last_error_code: 'OPENAI_INSUFFICIENT_QUOTA',
+          // A rate limit stops the run so the next scheduled tick resumes from the checkpoint.
+          stopped_reason: 'PROVIDER_RATE_LIMITED',
+          last_error_code: 'PROVIDER_RATE_LIMITED',
           last_provider_status: 429,
-          last_provider_code: 'insufficient_quota',
+          last_provider_code: 'RESOURCE_EXHAUSTED',
           last_provider_request_id: 'request-safe-id',
         }),
       }),

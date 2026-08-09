@@ -33,7 +33,7 @@ deployment requirements.
 See [Stage 3 Gmail synchronization](docs/stage-3-gmail-sync.md) for the metadata boundary, managed
 labels, sync lifecycle, retry/checkpoint behavior, environment controls, and verification steps.
 
-See [Stage 5 daily automation](docs/stage-5-daily-automation.md) for scheduling, OpenAI and Gmail
+See [Stage 5 daily automation](docs/stage-5-daily-automation.md) for scheduling, Gemini and Gmail
 boundaries, budgets, idempotency, retries, review, and deployment configuration.
 
 See the [documentation index](docs/README.md) for the backend guide, frontend guide, system

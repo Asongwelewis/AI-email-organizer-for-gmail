@@ -8,7 +8,11 @@ import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
-import { OpenAiProviderError, openAiAutomationProvider } from './openai-automation.provider.js';
+import {
+  GeminiProviderError,
+  estimatedCostMicroUsd,
+  geminiAutomationProvider,
+} from './gemini-automation.provider.js';
 import {
   NO_LABEL,
   type AutomationClassification,
@@ -20,7 +24,7 @@ import {
 type RunCounters = {
   messagesSeen: number;
   patternReused: number;
-  openaiClassified: number;
+  aiClassified: number;
   reviewRequired: number;
   noLabelSkipped: number;
   backfillRemaining: number;
@@ -41,7 +45,7 @@ type RunCounters = {
 const emptyCounters = (): RunCounters => ({
   messagesSeen: 0,
   patternReused: 0,
-  openaiClassified: 0,
+  aiClassified: 0,
   reviewRequired: 0,
   noLabelSkipped: 0,
   backfillRemaining: 0,
@@ -92,7 +96,7 @@ function errorCode(error: unknown): string {
 }
 
 function safeProviderDetails(error: unknown) {
-  return error instanceof OpenAiProviderError
+  return error instanceof GeminiProviderError
     ? {
         providerStatus: error.providerStatus,
         providerCode: error.providerCode,
@@ -102,19 +106,15 @@ function safeProviderDetails(error: unknown) {
     : {};
 }
 
+// Notional only: the free tier bills nothing. The provider derives this from Gemini's published
+// paid rates so AUTOMATION_MAX_COST_MICRO_USD still bounds a runaway run.
 function estimatedCost(usage: AutomationUsage): number {
-  const uncached = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
-  return Math.ceil(
-    (uncached * env.OPENAI_INPUT_COST_PER_MILLION_MICRO_USD +
-      usage.cachedInputTokens * env.OPENAI_CACHED_INPUT_COST_PER_MILLION_MICRO_USD +
-      usage.outputTokens * env.OPENAI_OUTPUT_COST_PER_MILLION_MICRO_USD) /
-      1_000_000,
-  );
+  return estimatedCostMicroUsd(usage);
 }
 
 export class AutomationService {
   constructor(
-    private readonly classifier: AutomationClassifier = openAiAutomationProvider,
+    private readonly classifier: AutomationClassifier = geminiAutomationProvider,
     private readonly gmail: AutomationGmailService = automationGmailService,
   ) {}
 
@@ -182,7 +182,7 @@ export class AutomationService {
     return {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
-      enabled: (settings?.enabled ?? env.AUTOMATION_ENABLED) && Boolean(env.OPENAI_API_KEY),
+      enabled: (settings?.enabled ?? env.AUTOMATION_ENABLED) && Boolean(env.GEMINI_API_KEY),
       running: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
       nextRunAt: state?.next_run_at?.toISOString() ?? null,
       retryAt: state?.retry_at?.toISOString() ?? null,
@@ -340,8 +340,8 @@ export class AutomationService {
     if (!env.AUTOMATION_ENABLED) {
       throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
     }
-    if (!env.OPENAI_API_KEY) {
-      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'OpenAI is not configured.', 503);
+    if (!env.GEMINI_API_KEY) {
+      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
     const approvedLabels = await prisma.user_labels.findMany({
       where: { connected_google_account_id: accountId },
@@ -518,7 +518,7 @@ export class AutomationService {
             labelNames: approvedLabels.map((label) => label.leaf_name),
             maxOutputTokens: outputTokenReserve,
           });
-          counters.openaiClassified += result.classifications.length;
+          counters.aiClassified += result.classifications.length;
           counters.usage.inputTokens += result.usage.inputTokens;
           counters.usage.cachedInputTokens += result.usage.cachedInputTokens;
           counters.usage.outputTokens += result.usage.outputTokens;
@@ -547,10 +547,16 @@ export class AutomationService {
         } catch (error) {
           counters.failed += batch.length;
           counters.lastErrorCode = errorCode(error);
-          if (error instanceof OpenAiProviderError) {
+          if (error instanceof GeminiProviderError) {
             counters.lastProviderStatus = error.providerStatus;
             counters.lastProviderCode = error.providerCode;
             counters.lastProviderRequestId = error.requestId;
+            // Pacing already respects the per-minute cap, so a 429 that outlived its retries is
+            // almost certainly the daily request cap. Stop the run and let the next scheduled
+            // tick resume from the checkpoints rather than spending the remaining quota here.
+            if (error.code === 'PROVIDER_RATE_LIMITED') {
+              counters.stoppedReason = 'PROVIDER_RATE_LIMITED';
+            }
           }
           logger.error(
             {
@@ -695,7 +701,7 @@ export class AutomationService {
           label_name: NO_LABEL,
           label_path: '',
           confidence: classification.confidence,
-          source: 'OPENAI',
+          source: 'AI',
           explanation: classification.explanation.slice(0, 500),
           reason_codes: classification.reasonCodes.slice(0, 16),
           input_hash: inputHash,
@@ -716,7 +722,7 @@ export class AutomationService {
         label_name: matched.leaf_name,
         label_path: matched.full_path,
         confidence: classification.confidence,
-        source: 'OPENAI',
+        source: 'AI',
         explanation: classification.explanation.slice(0, 500),
         reason_codes: classification.reasonCodes.slice(0, 16),
         input_hash: inputHash,
@@ -909,12 +915,14 @@ export class AutomationService {
             ? { last_successful_run_at: new Date(), failure_count: 0 }
             : { failure_count: { increment: 1 } }),
           last_error_code: counters.lastErrorCode,
+          // A rate limit that survived pacing and retries means the daily request cap, which only
+          // resets at midnight Pacific. Back off for an hour instead of re-failing every tick.
           retry_at:
             status !== 'COMPLETED' && counters.lastErrorCode
               ? new Date(
                   Date.now() +
-                    (counters.lastErrorCode === 'OPENAI_INSUFFICIENT_QUOTA'
-                      ? 6 * 60 * 60_000
+                    (counters.lastErrorCode === 'PROVIDER_RATE_LIMITED'
+                      ? 60 * 60_000
                       : 15 * 60_000),
                 )
               : null,
@@ -931,7 +939,7 @@ export class AutomationService {
           completed_at: new Date(),
           messages_seen: counters.messagesSeen,
           pattern_reused_count: counters.patternReused,
-          openai_classified_count: counters.openaiClassified,
+          ai_classified_count: counters.aiClassified,
           review_required_count: counters.reviewRequired,
           no_label_skipped_count: counters.noLabelSkipped,
           backlog_remaining: counters.backfillRemaining,
@@ -1027,7 +1035,7 @@ export class AutomationService {
     trigger: string;
     messages_seen: number;
     pattern_reused_count: number;
-    openai_classified_count: number;
+    ai_classified_count: number;
     review_required_count: number;
     no_label_skipped_count: number;
     backlog_remaining: number;
@@ -1052,7 +1060,7 @@ export class AutomationService {
       trigger: run.trigger,
       messagesSeen: run.messages_seen,
       patternReused: run.pattern_reused_count,
-      openaiClassified: run.openai_classified_count,
+      aiClassified: run.ai_classified_count,
       reviewRequired: run.review_required_count,
       noLabelSkipped: run.no_label_skipped_count,
       backlogRemaining: run.backlog_remaining,

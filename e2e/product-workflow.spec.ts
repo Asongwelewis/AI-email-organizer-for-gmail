@@ -78,14 +78,14 @@ async function apiMock(route: Route) {
       running: false,
       nextRunAt: '2026-07-27T02:00:00.000Z',
       retryAt: '2026-07-27T00:00:00.000Z',
-      lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+      lastErrorCode: 'PROVIDER_RATE_LIMITED',
       lastRun: {
         id: 'run-1',
         status: 'PARTIAL',
         trigger: 'MANUAL',
         messagesSeen: 250,
         patternReused: 0,
-        openaiClassified: 0,
+        aiClassified: 0,
         reviewRequired: 0,
         noLabelSkipped: 0,
         backlogRemaining: 0,
@@ -97,9 +97,9 @@ async function apiMock(route: Route) {
         outputTokens: 0,
         estimatedCostMicrousd: 0,
         stoppedReason: null,
-        lastErrorCode: 'OPENAI_INSUFFICIENT_QUOTA',
+        lastErrorCode: 'PROVIDER_RATE_LIMITED',
         lastProviderStatus: 429,
-        lastProviderCode: 'insufficient_quota',
+        lastProviderCode: 'RESOURCE_EXHAUSTED',
         lastProviderRequestId: 'request-safe-id',
         startedAt: '2026-07-26T18:00:00.000Z',
         completedAt: '2026-07-26T18:00:05.000Z',
@@ -175,9 +175,9 @@ test('the dashboard navigates to automation and shows safe provider failure deta
   await tooltipButton.hover();
   await expect(page.getByRole('tooltip')).toContainText(/automation has not acted on/i);
 
-  await expect(page.getByText(/OpenAI quota is unavailable/i)).toBeVisible();
+  await expect(page.getByText(/AI provider daily limit is reached/i)).toBeVisible();
   await expect(page.getByText(/Provider status: 429/i)).toBeVisible();
-  await expect(page.getByText(/Safe code: insufficient_quota/i)).toBeVisible();
+  await expect(page.getByText(/Safe code: RESOURCE_EXHAUSTED/i)).toBeVisible();
   await expect(page.getByText(/Request reference: request-safe-id/i)).toBeVisible();
   await expect(page.getByText(/authorization|api key|email body/i)).toHaveCount(0);
 });

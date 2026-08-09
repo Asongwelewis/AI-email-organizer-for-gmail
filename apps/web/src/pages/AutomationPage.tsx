@@ -39,12 +39,12 @@ const dateTime = (value: string | null | undefined) =>
 
 const automationErrorMessage = (code: string) => {
   const messages: Record<string, string> = {
-    OPENAI_INSUFFICIENT_QUOTA:
-      'OpenAI quota is unavailable. Add billing or raise the project usage limit, then retry.',
-    OPENAI_AUTHENTICATION_FAILED:
-      'OpenAI credentials or project access need attention before automation can continue.',
-    OPENAI_MODEL_UNAVAILABLE: 'The configured OpenAI model is unavailable to this project.',
-    OPENAI_RATE_LIMITED: 'OpenAI is rate limited. MailMind will retry safely.',
+    PROVIDER_NOT_CONFIGURED: 'Automation has no AI provider key configured yet.',
+    PROVIDER_AUTHENTICATION_FAILED:
+      'The AI provider credentials need attention before automation can continue.',
+    PROVIDER_MODEL_UNAVAILABLE: 'The configured AI model is unavailable to this project.',
+    PROVIDER_RATE_LIMITED:
+      'The AI provider daily limit is reached. MailMind resumes on the next scheduled run.',
     AUTOMATION_NO_APPROVED_LABELS:
       'Confirm a label set on the Labels screen before automation can file mail.',
   };
@@ -91,8 +91,8 @@ export function AutomationPage() {
             <em>on repeat.</em>
           </h1>
           <p>
-            OpenAI classifies every new message, using trusted sender patterns as context, and Gmail
-            labels are applied only when confidence clears the review threshold.
+            MailMind's AI classifies every new message, using trusted sender patterns as context,
+            and Gmail labels are applied only when confidence clears the review threshold.
           </p>
         </div>
         <div
@@ -153,14 +153,14 @@ export function AutomationPage() {
           tooltip="Uncertain AI classifications held back from Gmail until you approve or skip them."
         />
         <MetricCard
-          label="OpenAI calls"
+          label="AI calls"
           value={data?.usageToday.providerCalls ?? 0}
           tooltip="Bounded provider requests attempted today, including safely failed attempts."
         />
         <MetricCard
           label="Estimated today"
           value={`$${cost}`}
-          tooltip="Estimated OpenAI cost calculated from recorded input, cached-input, and output tokens."
+          tooltip="Notional AI cost calculated from recorded input, cached-input, and output tokens. The free tier bills nothing; this bounds runaway usage."
         />
       </section>
 
@@ -199,10 +199,10 @@ export function AutomationPage() {
             label="Current automation run"
             value={
               last.messagesSeen > 0
-                ? Math.min(100, Math.round((last.openaiClassified / last.messagesSeen) * 100))
+                ? Math.min(100, Math.round((last.aiClassified / last.messagesSeen) * 100))
                 : 0
             }
-            detail={`${last.openaiClassified} AI-classified · ${last.messagesLabeled} labeled · ${last.reviewRequired} sent to review`}
+            detail={`${last.aiClassified} AI-classified · ${last.messagesLabeled} labeled · ${last.reviewRequired} sent to review`}
           />
         </section>
       )}
@@ -217,7 +217,7 @@ export function AutomationPage() {
             <dt>
               Input tokens
               <InfoTooltip label="Input tokens">
-                Non-cached tokens sent to OpenAI today for bounded metadata classification.
+                Non-cached tokens sent to the AI provider today for bounded metadata classification.
               </InfoTooltip>
             </dt>
             <dd>{data?.usageToday.inputTokens.toLocaleString() ?? 0}</dd>
@@ -226,7 +226,7 @@ export function AutomationPage() {
             <dt>
               Cached input
               <InfoTooltip label="Cached input">
-                Input tokens OpenAI reports as served from cache and priced separately.
+                Input tokens the AI provider reports as served from cache and priced separately.
               </InfoTooltip>
             </dt>
             <dd>{data?.usageToday.cachedInputTokens.toLocaleString() ?? 0}</dd>
@@ -235,7 +235,7 @@ export function AutomationPage() {
             <dt>
               Output tokens
               <InfoTooltip label="Output tokens">
-                Structured classification tokens returned by OpenAI today.
+                Structured classification tokens returned by the AI provider today.
               </InfoTooltip>
             </dt>
             <dd>{data?.usageToday.outputTokens.toLocaleString() ?? 0}</dd>
