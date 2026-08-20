@@ -24,6 +24,28 @@ async function apiMock(route: Route) {
       requiresReauthentication: false,
       connectedAt: '2026-07-20T00:00:00.000Z',
     },
+    '/api/labels': {
+      maxLabels: 40,
+      maxDepth: 3,
+      labels: [
+        {
+          id: '00000000-0000-4000-8000-000000000010',
+          parentId: null,
+          depth: 1,
+          leafName: 'Job hunt',
+          fullPath: 'MailMind/Job hunt',
+          path: 'Job hunt',
+          isLeaf: true,
+          rationale: null,
+          messageCount: 12,
+          source: 'AI_PROPOSED',
+          gmailLabelId: 'Label_1',
+          createdAt: '2026-08-20T00:00:00.000Z',
+        },
+      ],
+      plan: null,
+    },
+    '/api/activity/runs': { runs: [] },
   };
   const response = responses[path];
   if (response === undefined) {
@@ -66,23 +88,38 @@ test('a signed-in visitor lands in the authenticated shell', async ({ page }) =>
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
   await page.goto('/sorted');
 
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Sorted' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Job hunt/ })).toBeVisible();
+});
+
+test('the three screens are reachable from the navigation', async ({ page }) => {
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/sorted');
+
+  await page.getByRole('link', { name: 'Approve' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Approve' })).toBeVisible();
+  await page.getByRole('link', { name: 'Activity' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
+  await expect(page.getByText('Nothing has run yet')).toBeVisible();
 });
 
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
 
-  for (const retired of [
-    '/dashboard',
-    '/dashboard/automation',
-    '/dashboard/classification',
-    '/dashboard/labels/discover',
-    '/labels',
-    '/settings/connections',
-  ]) {
+  // Each retired screen lands on whichever of the three replaced it.
+  for (const [retired, destination] of [
+    ['/dashboard', /\/sorted$/],
+    ['/dashboard/automation', /\/sorted$/],
+    ['/dashboard/classification', /\/sorted$/],
+    ['/dashboard/labels/discover', /\/sorted$/],
+    ['/labels', /\/approve$/],
+    ['/automation', /\/activity$/],
+    ['/settings/connections', /\/sorted$/],
+  ] as const) {
     await page.goto(retired);
-    await expect(page).toHaveURL(/\/sorted$/);
+    await expect(page).toHaveURL(destination);
   }
 });
 
@@ -94,7 +131,7 @@ test('every surviving page renders without console or page errors', async ({ pag
   page.on('pageerror', (error) => failures.push(`pageerror: ${error.message}`));
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
 
-  for (const route of ['/', '/login', '/sorted', '/privacy', '/terms']) {
+  for (const route of ['/', '/login', '/sorted', '/approve', '/activity', '/privacy', '/terms']) {
     await page.goto(route);
     await expect(page.locator('h1').first()).toBeVisible();
   }

@@ -74,25 +74,26 @@ HttpOnly session cookie, and redirects back to the frontend.
 1. Motion reduced-motion support.
 2. `AuthProvider`.
 3. React Router.
-4. The custom cursor and toast region.
+4. The service-worker update prompt and toast region.
 
 The query client disables automatic retries and refetch-on-window-focus by default. Individual
 feature hooks add polling only while a Gmail sync or automation run is active.
 
 ### Directory guide
 
-| Location         | Responsibility                                                   |
-| ---------------- | ---------------------------------------------------------------- |
-| `src/router`     | Public and protected route definitions                           |
-| `src/pages`      | Route-level screens                                              |
-| `src/layouts`    | Public layout and authenticated application shell                |
-| `src/components` | Shared visual, navigation, dialog, and route-guard components    |
-| `src/context`    | Authentication and Gmail connection orchestration                |
-| `src/services`   | Axios client and user-facing API error translation               |
-| `src/queries`    | TanStack Query keys, reads, mutations, invalidation, and polling |
-| `src/types`      | API response and feature taxonomy types                          |
-| `src/styles`     | Global Tailwind-driven design and component classes              |
-| `src/test`       | Vitest and Testing Library setup                                 |
+| Location         | Responsibility                                                    |
+| ---------------- | ----------------------------------------------------------------- |
+| `src/router`     | Public and protected route definitions                            |
+| `src/pages`      | Route-level screens                                               |
+| `src/layouts`    | Public layout and authenticated application shell                 |
+| `src/components` | Shared visual, navigation, dialog, and route-guard components     |
+| `src/context`    | Authentication and Gmail connection orchestration                 |
+| `src/services`   | Axios client and user-facing API error translation                |
+| `src/queries`    | TanStack Query keys, reads, mutations, invalidation, and polling  |
+| `src/types`      | API response and feature taxonomy types                           |
+| `src/lib`        | Folder colour hashing, Gmail deep links, and display formatting   |
+| `src/styles`     | `index.css` for the public pages, `app.css` for the three screens |
+| `src/test`       | Vitest and Testing Library setup                                  |
 
 ## Routes
 
@@ -110,20 +111,26 @@ Unknown routes redirect to `/`.
 
 ### Protected routes
 
-All protected routes render inside `ProtectedRoute` and `AppShell`:
+Three screens, and only three. Everything you _watch_ happen was removed; what remains are the
+screens where a decision gets made. All of them render inside `ProtectedRoute` and `AppShell`:
 
-| Route                   | Purpose                                                             |
-| ----------------------- | ------------------------------------------------------------------- |
-| `/dashboard`            | Session and Gmail connection summary                                |
-| `/settings/connections` | Connect, inspect, disconnect, and synchronize Gmail                 |
-| `/labels`               | Propose, edit, and confirm the label set automation may use         |
-| `/dashboard/automation` | Inspect daily runs/usage/errors, run now, and review uncertain mail |
+| Route       | Purpose                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `/sorted`   | The approved folder tree as tiles; drill in and open a message in Gmail    |
+| `/approve`  | Review a proposed folder tree and approve what you keep                    |
+| `/activity` | Run records, newest first, with state, progress, stop reasons, error codes |
 
-`/dashboard/classification` and `/dashboard/labels/discover` are retired and redirect to
-`/dashboard`.
+`/dashboard/*` and `/settings/*` redirect to `/sorted`, `/labels` to `/approve`, and `/automation`
+to `/activity`. Unknown routes redirect to `/`.
 
-The app shell provides primary tabs, user identity, logout, logout-all, route transitions, and the
-nested route outlet.
+`AppShell` is one layout with one breakpoint at 768px: a bottom tab bar and a two-column tile grid
+below it, a left nav rail and a four-column grid inside a max-width column above it. A phone layout
+stretched across a desktop is the failure mode this avoids.
+
+The signed-in app is deliberately plain — no gradients, no shadows, no decorative motion. Depth
+comes from hairlines and tint. Fraunces sets the app name and every numeral, Manrope sets UI text,
+DM Mono sets timestamps and codes, at weights 400 and 500 only. The editorial treatment stays on
+the landing and sign-in pages, where the atmosphere component still runs.
 
 ## Authentication state
 
@@ -144,52 +151,76 @@ Login does not grant Gmail access. Gmail authorization is a separate, user-initi
 out clears query data and redirects to login. Disconnecting Gmail invalidates both user and Gmail
 connection queries.
 
-## Feature data flows
+## The three screens
 
-### Gmail synchronization
+### Sorted
 
-The connections screen can initialize MailMind labels, run a bounded initial metadata sync, or run
-an incremental history sync. The status query polls every two seconds only while `syncRunning` is
-true. Successful mutations invalidate the status query.
+`GET /api/labels` returns the approved tree flat, with `parentId` and `depth`; the grid renders one
+level at a time and the breadcrumb walks back up. The open folder is held in the `?folder=` search
+parameter, so the browser's back button and an installed app's back gesture both work.
 
-### Labels
+Each tile takes its colour from a hash of the folder's path, never from its position in the grid.
+Sorting, filtering, or adding a folder must not repaint the rest: a folder you have learned to find
+by colour keeps that colour between renders and between sessions. Tint, icon, and label share one
+hue so the label reads as part of the tile.
 
-The labels screen loads the approved set plus pending proposals. "Propose labels" runs the discovery
-engine; the proposal list is editable in place — rename, delete, or add a custom label — and stays
-local until "Confirm and create in Gmail", which is guarded by a `ConfirmDialog`. Only confirmation
-creates labels in Gmail. Renaming an approved label renames it in Gmail too; deleting one removes
-MailMind's record and leaves the Gmail label alone. Mutations invalidate both the labels and
-automation-status queries.
+Search looks through the whole tree rather than the level in view, because a folder you remember by
+name should not require retracing the path you filed it under.
 
-### Daily automation
+Opening a message hands off to Gmail rather than rendering mail here. Two details in that link
+decide whether it lands:
 
-The automation control room reflects backend Gmail state directly, polls while a run is active,
-shows last-run and daily token/cost counters, and disables manual execution when Gmail is
-disconnected or requires reauthorization. When no label is approved yet, the screen explains that
-automation is waiting for a label set instead of offering a run. Review approval offers only the
-account's approved labels and is the only UI action that applies a label to an uncertain message.
-Remaining backfill is shown as a progress line while a backlog exists.
+- `#all/<id>`, not `#inbox/<id>` — filed mail has left the inbox, so an inbox fragment resolves to
+  nothing.
+- `?authuser=<connected email>`, not `/u/0/` — the `/u/N` index is per-browser-profile ordering, so
+  with several Google accounts signed in `/u/0/` is whichever happens to be first.
 
-### Guided product tutorial
+### Approve
 
-The protected app shell includes a ten-step product tour for new accounts. Existing accounts
-were backfilled as already onboarded when the feature shipped. It moves through Dashboard,
-Connections, Labels, and Automation while highlighting stable `data-tutorial` anchors.
-The overlay blocks all underlying controls, so advancing the tutorial cannot open OAuth, run a
-sync, create a Gmail label, or modify Gmail.
+The pending plan arrives on `GET /api/labels` as `plan`. The tree is shown with each folder's
+rolled-up count, its rationale, and the routing rules that will file mail into it, plus a
+collapsed list of what the validator rejected. Unchecking a folder drops everything beneath it: a
+child cannot be created without its parent.
 
-Temporary progress is account-namespaced in `sessionStorage`, while Skip and Finish persist
-`tutorial_completed_at` through the authenticated backend. This prevents the tour from returning
-on another browser or device. If persistence fails, the dialog stays open and reports the safe
-error. The header Tour button still allows any account to restart the scenario voluntarily. The
-dialog supports Escape, arrow-key navigation, a focus loop, reduced motion, mobile placement, and
-explicit progress semantics.
+Approval posts `{ planId }`, or `{ planId, nodeIds }` when part of the tree was dropped.
+
+Every failure is rendered inline, next to what failed, carrying the server's own error code and
+message. Nothing here uses a toast, and an empty proposal is an explicit empty state. Reporting a
+proposal that produced nothing as a success is the exact defect that let a broken planner go
+unnoticed for weeks.
+
+### Activity
+
+`GET /api/activity/runs` in reverse chronological order. Each run shows its kind, state, progress
+against its total, duration, per-kind counters, and the reason it ended. `STOPPED` is presented as
+its own state rather than as a failure: the run did what it could and quit for a stated reason,
+such as the daily Gemini budget. The list polls every two seconds only while a run is `RUNNING`.
+
+## Installable app
+
+`vite-plugin-pwa` generates the manifest and service worker.
+
+- Standalone display, `#f3ecdf` theme and background, icons at 192, 512, and 512 maskable. The
+  icons are generated by `apps/web/scripts/generate-pwa-icons.mjs` so the mark stays reviewable as
+  code rather than as opaque binaries.
+- The service worker precaches the app shell only — JavaScript, CSS, HTML, and the icons. The
+  editorial artwork is large and non-essential, so it stays on the network.
+- API requests are `NetworkOnly`, and `/api/` is denied the navigation fallback. Every API response
+  is authenticated by an HttpOnly session cookie, and caching one is how a shared device shows one
+  account's mail to the next person who signs in.
+- `registerType: 'prompt'`. A new build waits behind a toast rather than reloading underneath
+  someone part-way through an approval.
+
+Sign-in is a top-level `window.location.assign` to the backend, so the OAuth round trip stays in
+the installed window rather than opening a detached browser context.
 
 ## Testing and build
 
 Vitest runs in jsdom with Testing Library. Tests cover route protection, landing/login and OAuth
-callback behavior, dashboard/connections/labels/automation screens, visual atmosphere, and the
-Axios refresh/retry contract.
+callback behavior, the three screens and their empty, error, and stopped states, the folder colour
+hash, the Gmail deep-link contract, the visual atmosphere, and the Axios refresh/retry contract.
+Playwright covers the signed-out and signed-in paths, the retired-route redirects, and every
+surviving route rendering without console errors.
 
 Vite creates explicit vendor chunks for React/router, TanStack Query/Axios, Motion, and interface
 dependencies. The resulting static SPA in `apps/web/dist` must be served with a history fallback so

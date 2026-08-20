@@ -16,6 +16,8 @@ export interface UserLabel {
   path: string;
   isLeaf: boolean;
   rationale: string | null;
+  /** Mail filed here. Null when the API build in use does not report counts. */
+  messageCount?: number | null;
   source: LabelSource;
   gmailLabelId: string | null;
   createdAt: string;
@@ -60,6 +62,21 @@ export interface TaxonomyPlan {
   warnings: string[];
   createdAt: string;
   nodes: TaxonomyPlanNode[];
+}
+
+/** One filed message, as the Sorted drill-in lists it. */
+export interface FolderMessage {
+  id: string;
+  gmailMessageId: string;
+  subject: string | null;
+  senderName: string | null;
+  senderEmail: string | null;
+  receivedAt: string | null;
+}
+
+export interface FolderMessagesResponse {
+  messages: FolderMessage[];
+  total: number;
 }
 
 export interface LabelsOverview {

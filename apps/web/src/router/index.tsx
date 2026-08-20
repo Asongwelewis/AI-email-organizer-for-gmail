@@ -10,10 +10,17 @@ import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
+import { ActivityPage } from '@web/pages/ActivityPage';
+import { ApprovePage } from '@web/pages/ApprovePage';
 import { SortedPage } from '@web/pages/SortedPage';
 import { isSentryEnabled } from '@web/instrument';
 
-const routes: RouteObject[] = [
+/**
+ * The marketing and sign-in surfaces keep their editorial treatment. The signed-in app does not:
+ * decorative motion behind a screen you use every day is noise, so the atmosphere stops at the
+ * door and the three screens are laid out plainly.
+ */
+const publicRoutes: RouteObject[] = [
   {
     path: '/',
     element: (
@@ -24,21 +31,14 @@ const routes: RouteObject[] = [
   },
   { path: '/login', element: <LoginPage /> },
   { path: '/auth/callback', element: <AuthCallbackPage /> },
-  {
-    element: (
-      <ProtectedRoute>
-        <AppShell />
-      </ProtectedRoute>
-    ),
-    children: [{ path: '/sorted', element: <SortedPage /> }],
-  },
-  // Retired surfaces; keep old links working rather than bouncing them to the landing page.
-  { path: '/dashboard/*', element: <Navigate to="/sorted" replace /> },
-  { path: '/labels', element: <Navigate to="/sorted" replace /> },
-  { path: '/settings/*', element: <Navigate to="/sorted" replace /> },
   { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },
   { path: '/terms', element: <LegalPlaceholder title="Terms of Service" /> },
-  { path: '*', element: <Navigate to="/" replace /> },
+];
+
+const appRoutes: RouteObject[] = [
+  { path: '/sorted', element: <SortedPage /> },
+  { path: '/approve', element: <ApprovePage /> },
+  { path: '/activity', element: <ActivityPage /> },
 ];
 
 const sentryCreateBrowserRouter = isSentryEnabled
@@ -49,6 +49,21 @@ export const router = sentryCreateBrowserRouter([
   {
     element: <VisualRoot />,
     errorElement: <RouteErrorBoundary />,
-    children: routes,
+    children: publicRoutes,
   },
+  {
+    element: (
+      <ProtectedRoute>
+        <AppShell />
+      </ProtectedRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+    children: appRoutes,
+  },
+  // Retired surfaces; keep old links working rather than bouncing them to the landing page.
+  { path: '/dashboard/*', element: <Navigate to="/sorted" replace /> },
+  { path: '/labels', element: <Navigate to="/approve" replace /> },
+  { path: '/automation', element: <Navigate to="/activity" replace /> },
+  { path: '/settings/*', element: <Navigate to="/sorted" replace /> },
+  { path: '*', element: <Navigate to="/" replace /> },
 ]);
