@@ -1,0 +1,770 @@
+/**
+ * The signed-in app. Restrained on purpose: no gradients, no shadows, no decorative motion. Depth
+ * comes from hairlines and tint alone, so the only thing with visual weight on a screen is the
+ * mail itself.
+ *
+ * Fraunces carries the app name and every numeral, Manrope carries UI text, DM Mono carries
+ * timestamps and codes. Fraunces is loaded at 500 only; nothing here reaches for 600 or 700.
+ *
+ * One breakpoint, at 768px. Below it the navigation is a bottom tab bar and the grid is two
+ * columns; above it a left rail and four columns inside a max-width column.
+ */
+
+.shell {
+  --app-paper: #f3ecdf;
+  --app-card: #fbf8f1;
+  --app-ink: #14181d;
+  --app-ink-soft: #5a6068;
+  --app-line: #e0d8c8;
+  --app-line-strong: #cfc4ae;
+  --app-focus: #123f78;
+  --app-danger: #a1341a;
+  --app-rail: 15rem;
+  --app-tabs: 4.25rem;
+
+  min-height: 100dvh;
+  background: var(--app-paper);
+  color: var(--app-ink);
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-weight: 400;
+}
+
+.shell *:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- navigation */
+
+.shell__rail {
+  display: none;
+}
+
+.shell__tabs {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  height: var(--app-tabs);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--app-card);
+  border-top: 1px solid var(--app-line);
+}
+
+.tab-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+  text-decoration: none;
+}
+
+.tab-item svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.tab-item--active {
+  font-weight: 500;
+  color: var(--app-ink);
+}
+
+.shell__main {
+  padding: 1.5rem 1.25rem calc(var(--app-tabs) + 2rem);
+}
+
+.shell__column {
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- screens */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.screen__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screen__title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.screen__lede,
+.screen__hint {
+  max-width: 46rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--app-ink-soft);
+}
+
+.screen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding-top: 0.5rem;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.search {
+  display: flex;
+  flex: 1 1 14rem;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 22rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--app-card);
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+}
+
+.search svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--app-ink-soft);
+}
+
+.search input {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.button {
+  padding: 0.55rem 0.95rem;
+  font: inherit;
+  font-weight: 500;
+  color: var(--app-ink);
+  cursor: pointer;
+  background: var(--app-card);
+  border: 1px solid var(--app-line-strong);
+  border-radius: 8px;
+}
+
+.button:disabled {
+  color: var(--app-ink-soft);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button--primary {
+  color: var(--app-card);
+  background: var(--app-ink);
+  border-color: var(--app-ink);
+}
+
+.button--quiet {
+  background: none;
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+.button--icon {
+  display: inline-flex;
+  padding: 0.4rem;
+  border-color: transparent;
+  background: none;
+}
+
+.button--icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* ---------------------------------------------------------------- folder grid */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.crumbs__step {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.crumbs svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.crumbs__link {
+  padding: 0;
+  font: inherit;
+  color: var(--app-focus);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.folder-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+  min-height: 8.5rem;
+  padding: 0.9rem;
+  color: var(--tile-ink);
+  text-align: left;
+  cursor: pointer;
+  background: var(--tile-surface);
+  border: 1px solid var(--tile-line);
+  border-radius: 12px;
+}
+
+.folder-tile__top {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.folder-tile__icon {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.folder-tile__children {
+  font-size: 0.6875rem;
+  opacity: 0.75;
+}
+
+.folder-tile__count {
+  margin-top: auto;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.folder-tile__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* ---------------------------------------------------------------- mail list */
+
+.mail-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--app-line);
+  border-radius: 10px;
+  background: var(--app-card);
+  overflow: hidden;
+}
+
+.mail-list li + li .mail-row {
+  border-top: 1px solid var(--app-line);
+}
+
+.mail-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.75rem;
+  padding: 0.75rem 0.9rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mail-row__from {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.mail-row__subject {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.mail-row__date {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+.mail-row__open {
+  display: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- proposal */
+
+.plan-meta,
+.run__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.plan-meta dt,
+.run__stats dt {
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+.plan-meta dd,
+.run__stats dd {
+  margin: 0.1rem 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-tree {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-node {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--app-line);
+}
+
+.plan-node--depth-2 {
+  padding-left: 1.25rem;
+}
+
+.plan-node--depth-3 {
+  padding-left: 2.5rem;
+}
+
+.plan-node--dropped {
+  opacity: 0.45;
+}
+
+.plan-node__main {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  cursor: pointer;
+}
+
+.plan-node__name {
+  font-weight: 500;
+}
+
+.plan-node__count,
+.plan-node__rule-count {
+  margin-left: auto;
+  font-family: 'Fraunces', Georgia, serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-node__rationale {
+  margin: 0.35rem 0 0 1.85rem;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.plan-node__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.5rem 0 0 1.85rem;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+  list-style: none;
+}
+
+.plan-node__rules li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.plan-node__rules code,
+.notice__code,
+.run__reason-code {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+.plan-warnings summary {
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+  cursor: pointer;
+}
+
+.plan-warnings ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- runs */
+
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  background: var(--app-card);
+  border: 1px solid var(--app-line);
+  border-radius: 10px;
+}
+
+.run__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.run__kind {
+  font-weight: 500;
+}
+
+.run__time,
+.run__duration,
+.run__counts {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+.run__time {
+  margin-left: auto;
+}
+
+.badge {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 999px;
+}
+
+.badge--running {
+  color: #123f78;
+  border-color: #b8c9de;
+  background: #e7eef7;
+}
+
+.badge--succeeded {
+  color: #1d5137;
+  border-color: #b7d2c3;
+  background: #e6f1ea;
+}
+
+.badge--stopped {
+  color: #7a5312;
+  border-color: #ddc79a;
+  background: #f6eeda;
+}
+
+.badge--failed {
+  color: var(--app-danger);
+  border-color: #ddb3a6;
+  background: #f7e7e2;
+}
+
+.run__trigger {
+  font-size: 0.6875rem;
+  color: var(--app-ink-soft);
+}
+
+.run__progress {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.run__bar {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  background: var(--app-line);
+  border-radius: 999px;
+}
+
+.run__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--app-ink-soft);
+}
+
+.run__reason {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+.run__reason--error {
+  color: var(--app-danger);
+}
+
+/* ---------------------------------------------------------------- states */
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.85rem;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 10px;
+  background: var(--app-card);
+}
+
+.notice--error {
+  color: var(--app-danger);
+  border-color: #ddb3a6;
+  background: #f9efec;
+}
+
+.notice__title {
+  margin: 0;
+  font-weight: 500;
+}
+
+.notice__message {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+}
+
+.notice__code {
+  display: inline-block;
+  margin-top: 0.4rem;
+  opacity: 0.85;
+}
+
+.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--app-line-strong);
+  border-radius: 12px;
+}
+
+.empty-state__title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+.empty-state__description {
+  max-width: 34rem;
+  margin: 0.4rem auto 0;
+  font-size: 0.9375rem;
+  color: var(--app-ink-soft);
+}
+
+.empty-state__action {
+  margin-top: 1rem;
+}
+
+.loading-state {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- update prompt */
+
+.update-toast {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: calc(var(--app-tabs) + 1rem);
+  left: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  background: var(--app-card);
+  border: 1px solid var(--app-line-strong);
+  border-radius: 10px;
+}
+
+.update-toast p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* ---------------------------------------------------------------- desktop */
+
+@media (min-width: 768px) {
+  .shell {
+    display: grid;
+    grid-template-columns: var(--app-rail) minmax(0, 1fr);
+  }
+
+  .shell__tabs {
+    display: none;
+  }
+
+  .shell__rail {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    height: 100dvh;
+    padding: 1.5rem 1rem;
+    border-right: 1px solid var(--app-line);
+  }
+
+  .shell__brand {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .shell__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nav-item {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.9375rem;
+    color: var(--app-ink-soft);
+    text-decoration: none;
+    border-radius: 8px;
+  }
+
+  .nav-item svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .nav-item--active {
+    font-weight: 500;
+    color: var(--app-ink);
+    background: var(--app-card);
+  }
+
+  .shell__account {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: auto;
+    font-size: 0.8125rem;
+    color: var(--app-ink-soft);
+  }
+
+  .shell__email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell__main {
+    padding: 2.5rem 2rem 3rem;
+  }
+
+  .tile-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .folder-tile {
+    min-height: 9.5rem;
+  }
+
+  .mail-row {
+    grid-template-columns: 14rem 1fr 6rem 1.25rem;
+    align-items: center;
+  }
+
+  .mail-row__subject {
+    grid-column: auto;
+  }
+
+  .mail-row__open {
+    display: block;
+  }
+
+  .update-toast {
+    right: 1.5rem;
+    bottom: 1.5rem;
+    left: auto;
+    max-width: 26rem;
+  }
+}

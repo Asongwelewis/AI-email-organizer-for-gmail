@@ -8,8 +8,15 @@ import type {
   GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
+import type { ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
-import type { ConfirmLabelInput, LabelsOverview, UserLabel } from '@web/types/labels';
+import type {
+  ApprovePlanInput,
+  ConfirmLabelInput,
+  FolderMessagesResponse,
+  LabelsOverview,
+  UserLabel,
+} from '@web/types/labels';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -128,8 +135,9 @@ export const api = {
     return response.data;
   },
 
-  async initialGmailSync(): Promise<GmailSyncResult> {
-    const response = await http.post<GmailSyncResult>('/gmail/sync/initial');
+  /** 202: the backfill outlives the request, so this returns a run id to poll. */
+  async initialGmailSync(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/gmail/sync/initial');
     return response.data;
   },
 
@@ -153,6 +161,23 @@ export const api = {
     return response.data;
   },
 
+  /** Approves a proposed tree. Omitting nodeIds approves all of it. */
+  async approvePlan(input: ApprovePlanInput): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/confirm', input);
+    return response.data;
+  },
+
+  /** The mail filed into one folder, for the drill-in list on Sorted. */
+  async getFolderMessages(labelId: string): Promise<FolderMessagesResponse> {
+    const response = await http.get<FolderMessagesResponse>(`/labels/${labelId}/messages`);
+    return response.data;
+  },
+
+  async getActivityRuns(limit = 20): Promise<ActivityRunsResponse> {
+    const response = await http.get<ActivityRunsResponse>('/activity/runs', { params: { limit } });
+    return response.data;
+  },
+
   async renameLabel(id: string, leafName: string): Promise<UserLabel> {
     const response = await http.patch<UserLabel>(`/labels/${id}`, { leafName });
     return response.data;
@@ -172,11 +197,9 @@ export const api = {
     return response.data;
   },
 
-  async runAutomation(): Promise<{ success: boolean; runId: string; status: string }> {
-    const response = await http.post<{ success: boolean; runId: string; status: string }>(
-      '/automation/run',
-      {},
-    );
+  /** 202: filing outlives the request, so this returns a run id to poll. */
+  async runAutomation(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/automation/run', {});
     return response.data;
   },
 

@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@web': fileURLToPath(new URL('./src', import.meta.url)),
+      // Supplied by vite-plugin-pwa at build time; tests get a no-op registration instead.
+      'virtual:pwa-register/react': fileURLToPath(
+        new URL('./src/test/pwaRegisterStub.ts', import.meta.url),
+      ),
     },
   },
   test: {
