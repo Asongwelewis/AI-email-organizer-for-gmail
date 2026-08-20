@@ -7,6 +7,12 @@ import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
+import {
+  RULE_PRIORITY,
+  byRuleSpecificity,
+  findMatchingRule,
+  type RoutingRuleKind,
+} from '@api/features/label-discovery/routing-rules.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import {
   GeminiProviderError,
@@ -284,8 +290,7 @@ export class AutomationService {
     await this.learn(
       action.connected_google_account_id,
       senderDomain(action.message),
-      approved.leaf_name,
-      labelPath,
+      { ...approved, gmail_label_id: label.id },
       1,
     );
     await auditService.record({
@@ -465,18 +470,48 @@ export class AutomationService {
         0,
         (await this.backlogCount(accountId)) - messages.length,
       );
-      const patterns = await prisma.learned_classification_patterns.findMany({
-        where: {
-          connected_google_account_id: accountId,
-          active: true,
-          confidence: { gte: env.AUTOMATION_PATTERN_MIN_CONFIDENCE },
-          sample_count: { gte: env.AUTOMATION_PATTERN_MIN_SAMPLES },
-        },
-      });
-      const bySender = new Map(patterns.map((pattern) => [pattern.sender_domain, pattern]));
 
-      for (let index = 0; index < messages.length; index += env.AUTOMATION_BATCH_SIZE) {
-        const batch = messages.slice(index, index + env.AUTOMATION_BATCH_SIZE);
+      // Rules before AI. Every message a routing rule covers is filed here, with no model call
+      // and no token budget spent; only what is left over reaches Gemini.
+      const rules = await this.routingRules(accountId, approvedLabels);
+      const undecided: gmail_message_metadata[] = [];
+      for (const [index, message] of messages.entries()) {
+        if (index % env.AUTOMATION_BATCH_SIZE === 0) await this.renewLease(accountId, token);
+        const rule = findMatchingRule(rules, {
+          subject: message.subject,
+          senderEmail: message.sender_email,
+        });
+        if (!rule) {
+          undecided.push(message);
+          continue;
+        }
+        counters.patternReused += 1;
+        await this.persistAndApply(
+          run.id,
+          userId,
+          accountId,
+          message,
+          {
+            key: message.id,
+            labelName: rule.label.leaf_name,
+            confidence: rule.confidence,
+            explanation: `Routing rule ${rule.kind} "${rule.value}".`,
+            reasonCodes: ['ROUTING_RULE', rule.kind],
+          },
+          approvedLabels,
+          counters,
+          'LEARNED_PATTERN',
+        );
+      }
+      if (rules.length > 0) {
+        await prisma.learned_classification_patterns.updateMany({
+          where: { id: { in: rules.map((rule) => rule.id) } },
+          data: { last_used_at: new Date() },
+        });
+      }
+
+      for (let index = 0; index < undecided.length; index += env.AUTOMATION_BATCH_SIZE) {
+        const batch = undecided.slice(index, index + env.AUTOMATION_BATCH_SIZE);
         const roughTokens = Math.ceil(
           batch.reduce(
             (total, message) =>
@@ -507,13 +542,10 @@ export class AutomationService {
         try {
           await this.renewLease(accountId, token);
           const providerInputs = batch.map((message, batchIndex) => ({
-            ...this.providerInput(message, bySender.get(senderDomain(message))),
+            ...this.providerInput(message),
             key: `m${batchIndex + 1}`,
           }));
           counters.providerCalls += 1;
-          counters.patternReused += providerInputs.filter(
-            (message) => message.learnedPattern,
-          ).length;
           const result = await this.classifier.classify(providerInputs, {
             labelNames: approvedLabels.map((label) => label.leaf_name),
             maxOutputTokens: outputTokenReserve,
@@ -534,15 +566,6 @@ export class AutomationService {
               approvedLabels,
               counters,
             );
-          }
-          const usedPatternIds = batch
-            .map((message) => bySender.get(senderDomain(message))?.id)
-            .filter((id): id is string => Boolean(id));
-          if (usedPatternIds.length > 0) {
-            await prisma.learned_classification_patterns.updateMany({
-              where: { id: { in: usedPatternIds } },
-              data: { last_used_at: new Date() },
-            });
           }
         } catch (error) {
           counters.failed += batch.length;
@@ -608,13 +631,7 @@ export class AutomationService {
     }
   }
 
-  private providerInput(
-    message: gmail_message_metadata,
-    pattern?: {
-      label_name: string;
-      confidence: number;
-    },
-  ): AutomationMessageInput {
+  private providerInput(message: gmail_message_metadata): AutomationMessageInput {
     return {
       key: message.id,
       subject: (message.subject ?? '').slice(0, 500),
@@ -624,15 +641,46 @@ export class AutomationService {
       isUnread: message.is_unread,
       isImportant: message.is_important,
       hasAttachments: message.has_attachments,
-      ...(pattern
-        ? {
-            learnedPattern: {
-              labelName: pattern.label_name,
-              confidence: pattern.confidence,
-            },
-          }
-        : {}),
     };
+  }
+
+  /**
+   * The account's active routing rules, most specific first, restricted to labels the user has
+   * actually approved. Planner rules are authoritative; rules learned from applied mail still have
+   * to clear the confidence and sample thresholds before they can skip the model.
+   */
+  private async routingRules(accountId: string, approvedLabels: user_labels[]) {
+    const stored = await prisma.learned_classification_patterns.findMany({
+      where: {
+        connected_google_account_id: accountId,
+        active: true,
+        OR: [
+          { rule_source: 'PLANNER' },
+          {
+            confidence: { gte: env.AUTOMATION_PATTERN_MIN_CONFIDENCE },
+            sample_count: { gte: env.AUTOMATION_PATTERN_MIN_SAMPLES },
+          },
+        ],
+      },
+    });
+    const byId = new Map(approvedLabels.map((label) => [label.id, label]));
+    const byName = new Map(approvedLabels.map((label) => [label.leaf_name, label]));
+    return stored
+      .flatMap((rule) => {
+        const label =
+          (rule.user_label_id ? byId.get(rule.user_label_id) : null) ?? byName.get(rule.label_name);
+        if (!label) return [];
+        return [
+          {
+            id: rule.id,
+            kind: rule.rule_kind as RoutingRuleKind,
+            value: rule.match_value,
+            confidence: rule.confidence,
+            label,
+          },
+        ];
+      })
+      .sort(byRuleSpecificity);
   }
 
   /**
@@ -685,6 +733,7 @@ export class AutomationService {
     classification: AutomationClassification,
     approvedLabels: user_labels[],
     counters: RunCounters,
+    source: 'AI' | 'LEARNED_PATTERN' = 'AI',
   ): Promise<void> {
     const inputHash = hashMessage(message);
     const matched = approvedLabels.find((label) => label.leaf_name === classification.labelName);
@@ -701,7 +750,7 @@ export class AutomationService {
           label_name: NO_LABEL,
           label_path: '',
           confidence: classification.confidence,
-          source: 'AI',
+          source,
           explanation: classification.explanation.slice(0, 500),
           reason_codes: classification.reasonCodes.slice(0, 16),
           input_hash: inputHash,
@@ -722,7 +771,7 @@ export class AutomationService {
         label_name: matched.leaf_name,
         label_path: matched.full_path,
         confidence: classification.confidence,
-        source: 'AI',
+        source,
         explanation: classification.explanation.slice(0, 500),
         reason_codes: classification.reasonCodes.slice(0, 16),
         input_hash: inputHash,
@@ -739,14 +788,9 @@ export class AutomationService {
       matched.full_path,
       counters,
     );
-    if (applied) {
-      await this.learn(
-        accountId,
-        senderDomain(message),
-        matched.leaf_name,
-        matched.full_path,
-        classification.confidence,
-      );
+    // A message filed by a rule already has one; only the model's own decisions teach new rules.
+    if (applied && source === 'AI') {
+      await this.learn(accountId, senderDomain(message), matched, classification.confidence);
     }
   }
 
@@ -830,22 +874,28 @@ export class AutomationService {
     }
   }
 
+  /**
+   * Learns a sender-domain rule from a decision that stuck. A domain that turns out to feed two
+   * different folders is deactivated rather than flip-flopping: the planner owns the cross-sender
+   * routing, and a learned rule only earns its keep while it stays unambiguous.
+   */
   private async learn(
     accountId: string,
     domain: string,
-    labelName: string,
-    labelPath: string,
+    label: user_labels,
     confidence: number,
   ): Promise<void> {
+    const key = {
+      connected_google_account_id: accountId,
+      rule_kind: 'SENDER_DOMAIN' as const,
+      match_value: domain,
+    };
     const existing = await prisma.learned_classification_patterns.findUnique({
-      where: {
-        connected_google_account_id_sender_domain: {
-          connected_google_account_id: accountId,
-          sender_domain: domain,
-        },
-      },
+      where: { connected_google_account_id_rule_kind_match_value: key },
     });
-    if (existing && existing.label_name !== labelName) {
+    if (existing && existing.label_name !== label.leaf_name) {
+      // A planner rule is the user's decision; never let observed mail overwrite or disable it.
+      if (existing.rule_source === 'PLANNER') return;
       await prisma.learned_classification_patterns.update({
         where: { id: existing.id },
         data: { active: false },
@@ -853,17 +903,14 @@ export class AutomationService {
       return;
     }
     await prisma.learned_classification_patterns.upsert({
-      where: {
-        connected_google_account_id_sender_domain: {
-          connected_google_account_id: accountId,
-          sender_domain: domain,
-        },
-      },
+      where: { connected_google_account_id_rule_kind_match_value: key },
       create: {
-        connected_google_account_id: accountId,
-        sender_domain: domain,
-        label_name: labelName,
-        label_path: labelPath,
+        ...key,
+        rule_source: 'LEARNED',
+        user_label_id: label.id,
+        priority: RULE_PRIORITY.SENDER_DOMAIN,
+        label_name: label.leaf_name,
+        label_path: label.full_path,
         confidence,
         successful_apply_count: 1,
       },
@@ -871,7 +918,8 @@ export class AutomationService {
         sample_count: { increment: 1 },
         successful_apply_count: { increment: 1 },
         confidence: Math.max(existing?.confidence ?? 0, confidence),
-        label_path: labelPath,
+        user_label_id: label.id,
+        label_path: label.full_path,
         last_used_at: new Date(),
       },
     });

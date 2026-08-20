@@ -20,8 +20,9 @@ This directory documents the current MailMind AI MVP implementation.
   the approved-label vocabulary and the backfill.
 
 The stage 4 classification and stage 4.5 label-discovery notes were removed: those workflows no
-longer exist. The discovery engine survives as the source of label proposals, described in
-[Architecture](architecture.md) and [API reference](api.md).
+longer exist. The heuristic candidate-scoring engine that replaced them is gone too — one Gemini
+call now plans the whole folder tree, described in [Architecture](architecture.md),
+[Backend](backend.md), and [API reference](api.md).
 
 These documents describe the current implementation. Daily automatic Gmail labeling is
 implemented with bounded Gemini usage and human review; billing and attachment or full-body

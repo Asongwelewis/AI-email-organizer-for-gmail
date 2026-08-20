@@ -9,6 +9,6 @@
     },
     "types": ["node", "vitest/globals"]
   },
-  "include": ["./**/*.ts", "../src/**/*.ts"],
+  "include": ["./**/*.ts", "../src/**/*.ts", "../scripts/**/*.ts"],
   "exclude": ["../dist", "../node_modules"]
 }

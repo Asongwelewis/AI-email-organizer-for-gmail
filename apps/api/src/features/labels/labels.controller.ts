@@ -6,21 +6,36 @@ import { labelsService } from './labels.service.js';
 
 const uuid = z.string().uuid();
 const leafName = z.string().min(1).max(60);
-const confirmSchema = z
-  .object({
-    labels: z
-      .array(
-        z
-          .object({
-            leafName,
-            source: z.enum(['AI_PROPOSED', 'USER_CREATED']),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(200),
-  })
-  .strict();
+
+/**
+ * Confirmation is either approval of a proposed tree or manual folder creation. Both end in the
+ * same place — a row in user_labels and a Gmail label for each leaf — but only the plan form can
+ * bring routing rules with it.
+ */
+const confirmSchema = z.union([
+  z
+    .object({
+      planId: uuid,
+      nodeIds: z.array(uuid).max(200).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      labels: z
+        .array(
+          z
+            .object({
+              leafName,
+              parentId: uuid.nullish(),
+              source: z.enum(['AI_PROPOSED', 'USER_CREATED']),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(200),
+    })
+    .strict(),
+]);
 const renameSchema = z.object({ leafName }).strict();
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -43,7 +58,15 @@ export class LabelsController {
 
   async confirm(request: Request, response: Response): Promise<void> {
     const body = parse(confirmSchema, request.body);
-    response.json(await labelsService.confirm(request.auth!.user.id, body.labels));
+    const userId = request.auth!.user.id;
+    response.json(
+      'planId' in body
+        ? await labelsService.approvePlan(userId, {
+            planId: body.planId,
+            nodeIds: body.nodeIds,
+          })
+        : await labelsService.confirm(userId, body.labels),
+    );
   }
 
   async rename(request: Request, response: Response): Promise<void> {

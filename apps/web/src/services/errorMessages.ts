@@ -21,7 +21,11 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   LABEL_SET_EMPTY: 'Select at least one label before confirming.',
   LABEL_NOT_FOUND: 'That label was not found for this account.',
   LABEL_VALIDATION_FAILED: 'That label request was not valid.',
-  LABEL_PROPOSAL_NOT_ENOUGH_MAIL: 'Synchronize more mail before proposing labels.',
+  LABEL_PROPOSAL_NOT_ENOUGH_MAIL: 'Synchronize more mail before proposing a folder tree.',
+  LABEL_PLAN_EMPTY: 'The planner found no folders worth creating for this mailbox yet.',
+  LABEL_PLAN_NOT_FOUND: 'That proposed folder tree was not found.',
+  LABEL_PLAN_NOT_PENDING: 'That proposed folder tree was already reviewed. Propose a new one.',
+  LABEL_PLAN_NODE_NOT_FOUND: 'One of the selected folders is not part of that proposal.',
   LABEL_PROPOSAL_ALREADY_RUNNING:
     'Another label or automation run is already active for this Gmail account.',
   CSRF_ORIGIN_INVALID: 'This request came from an origin MailMind does not trust.',

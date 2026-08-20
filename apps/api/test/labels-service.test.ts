@@ -4,19 +4,21 @@ const mocks = vi.hoisted(() => ({
   auditRecord: vi.fn(),
   activeAccountForUser: vi.fn(),
   approvedLabels: vi.fn(),
-  pendingProposals: vi.fn(),
+  pendingPlan: vi.fn(),
+  planForAccount: vi.fn(),
+  storePlan: vi.fn(),
+  markPlanApproved: vi.fn(),
+  replacePlannerRules: vi.fn(),
   acquireProposalLease: vi.fn(),
   releaseProposalLease: vi.fn(),
   eligibleMessages: vi.fn(),
   existingGmailLabelNames: vi.fn(),
-  clearPendingProposals: vi.fn(),
-  storeProposal: vi.fn(),
   createLabel: vi.fn(),
   setGmailLabelId: vi.fn(),
   renameLabel: vi.fn(),
   deleteLabel: vi.fn(),
   labelForAccount: vi.fn(),
-  markProposalsApproved: vi.fn(),
+  descendantsOf: vi.fn(),
 }));
 
 vi.mock('../src/audit/audit.service.js', () => ({
@@ -29,28 +31,44 @@ vi.mock('../src/config/logger.js', () => ({
 
 import { LabelsService } from '../src/features/labels/labels.service.js';
 import type { LabelsRepository } from '../src/features/labels/labels.repository.js';
+import type { TaxonomyPlanner } from '../src/features/label-discovery/taxonomy-planner.js';
 
 const account = { id: 'account-1', user_id: 'user-1' };
 
-function label(leafName: string, gmailLabelId: string | null = 'Label_1') {
+function label(
+  leafName: string,
+  options: {
+    gmailLabelId?: string | null;
+    parentId?: string | null;
+    depth?: number;
+    path?: string;
+  } = {},
+) {
+  const path = options.path ?? leafName;
   return {
     id: `label-${leafName}`,
     connected_google_account_id: account.id,
+    parent_id: options.parentId ?? null,
+    depth: options.depth ?? 1,
     leaf_name: leafName,
-    full_path: `MailMind/${leafName}`,
-    normalized_name: leafName.toLowerCase(),
+    full_path: `MailMind/${path}`,
+    normalized_name: leafName.toLowerCase().replace(/[^a-z0-9]/g, ''),
+    rationale: null,
     source: 'USER_CREATED' as const,
-    gmail_label_id: gmailLabelId,
+    gmail_label_id: options.gmailLabelId === undefined ? 'Label_1' : options.gmailLabelId,
     created_at: new Date('2026-07-31T00:00:00.000Z'),
     updated_at: new Date('2026-07-31T00:00:00.000Z'),
   };
 }
+
+const planner: TaxonomyPlanner = { plan: vi.fn() };
 
 function service(gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() }) {
   return {
     instance: new LabelsService(
       mocks as unknown as LabelsRepository,
       gmail as unknown as ConstructorParameters<typeof LabelsService>[1],
+      planner,
     ),
     gmail,
   };
@@ -61,15 +79,16 @@ describe('LabelsService', () => {
     vi.resetAllMocks();
     mocks.activeAccountForUser.mockResolvedValue(account);
     mocks.approvedLabels.mockResolvedValue([]);
-    mocks.pendingProposals.mockResolvedValue([]);
+    mocks.pendingPlan.mockResolvedValue(null);
     mocks.acquireProposalLease.mockResolvedValue({ accountId: account.id, token: 'token' });
     mocks.releaseProposalLease.mockResolvedValue(undefined);
-    mocks.markProposalsApproved.mockResolvedValue(undefined);
-    mocks.clearPendingProposals.mockResolvedValue(undefined);
-    mocks.createLabel.mockImplementation(({ leafName }: { leafName: string }) =>
-      Promise.resolve(label(leafName, null)),
+    mocks.markPlanApproved.mockResolvedValue(undefined);
+    mocks.replacePlannerRules.mockResolvedValue(0);
+    mocks.descendantsOf.mockResolvedValue([]);
+    mocks.createLabel.mockImplementation(({ name }: { name: string }) =>
+      Promise.resolve(label(name, { gmailLabelId: null })),
     );
-    mocks.setGmailLabelId.mockResolvedValue(label('Invoices'));
+    mocks.setGmailLabelId.mockResolvedValue(label('Money in'));
   });
 
   it('rejects a generic label name', async () => {
@@ -98,7 +117,7 @@ describe('LabelsService', () => {
     expect(mocks.createLabel).not.toHaveBeenCalled();
   });
 
-  it('creates each approved label in Gmail and stores the returned id', async () => {
+  it('creates a manual label in Gmail and stores the returned id', async () => {
     const gmail = {
       ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_9', created: true }),
       applyLabel: vi.fn(),
@@ -106,65 +125,90 @@ describe('LabelsService', () => {
     };
     const { instance } = service(gmail);
 
-    await instance.confirm('user-1', [{ leafName: 'Invoices', source: 'AI_PROPOSED' }]);
+    await instance.confirm('user-1', [{ leafName: 'Money in', source: 'AI_PROPOSED' }]);
 
-    expect(gmail.ensureLabel).toHaveBeenCalledWith(account.id, 'MailMind/Invoices');
-    expect(mocks.setGmailLabelId).toHaveBeenCalledWith('label-Invoices', 'Label_9');
-    expect(mocks.markProposalsApproved).toHaveBeenCalledWith(account.id, ['Invoices']);
+    expect(gmail.ensureLabel).toHaveBeenCalledWith(account.id, 'MailMind/Money in');
+    expect(mocks.setGmailLabelId).toHaveBeenCalledWith('label-Money in', 'Label_9');
+  });
+
+  it('nests a manual label under its parent and refuses a fourth level', async () => {
+    const parent = label('Job hunt');
+    mocks.labelForAccount.mockResolvedValue(parent);
+    const gmail = {
+      ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_9', created: true }),
+      applyLabel: vi.fn(),
+      renameLabel: vi.fn(),
+    };
+    const { instance } = service(gmail);
+
+    await instance.confirm('user-1', [
+      { leafName: 'Money in', parentId: parent.id, source: 'USER_CREATED' },
+    ]);
+    expect(mocks.createLabel).toHaveBeenCalledWith(
+      expect.objectContaining({ treePath: 'Job hunt/Money in', depth: 2, parentId: parent.id }),
+    );
+
+    mocks.labelForAccount.mockResolvedValue(label('Deep', { depth: 3, path: 'a/b/Deep' }));
+    await expect(
+      instance.confirm('user-1', [
+        { leafName: 'Too deep', parentId: 'label-Deep', source: 'USER_CREATED' },
+      ]),
+    ).rejects.toMatchObject({ code: 'LABEL_NAME_INVALID' });
   });
 
   it('reuses an already approved label instead of creating a duplicate', async () => {
-    mocks.approvedLabels.mockResolvedValue([label('Invoices')]);
+    mocks.approvedLabels.mockResolvedValue([label('Money in')]);
     const gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() };
     const { instance } = service(gmail);
 
-    await instance.confirm('user-1', [{ leafName: 'Invoices', source: 'AI_PROPOSED' }]);
+    await instance.confirm('user-1', [{ leafName: 'Money in', source: 'AI_PROPOSED' }]);
 
     expect(mocks.createLabel).not.toHaveBeenCalled();
     expect(gmail.ensureLabel).not.toHaveBeenCalled();
   });
 
-  it('renames in Gmail and rejects a rename that collides with another label', async () => {
-    mocks.labelForAccount.mockResolvedValue(label('Invoices'));
-    mocks.approvedLabels.mockResolvedValue([label('Invoices'), label('Flights')]);
-    mocks.renameLabel.mockResolvedValue(label('Bills'));
+  it('renames every Gmail label beneath the folder it renames', async () => {
+    const parent = label('Job hunt');
+    const child = label('Applications sent', {
+      depth: 2,
+      parentId: parent.id,
+      path: 'Job hunt/Applications sent',
+      gmailLabelId: 'Label_child',
+    });
+    mocks.labelForAccount.mockResolvedValue(parent);
+    mocks.descendantsOf.mockResolvedValue([child]);
+    mocks.approvedLabels.mockResolvedValue([parent, child, label('Money in')]);
+    mocks.renameLabel.mockResolvedValue([label('Job search'), child]);
     const gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() };
     const { instance } = service(gmail);
 
-    await instance.rename('user-1', 'label-Invoices', 'Bills');
-    expect(gmail.renameLabel).toHaveBeenCalledWith(account.id, 'Label_1', 'MailMind/Bills');
+    await instance.rename('user-1', parent.id, 'Job search');
 
-    await expect(instance.rename('user-1', 'label-Invoices', 'Flights')).rejects.toMatchObject({
+    expect(gmail.renameLabel).toHaveBeenCalledWith(account.id, 'Label_1', 'MailMind/Job search');
+    expect(gmail.renameLabel).toHaveBeenCalledWith(
+      account.id,
+      'Label_child',
+      'MailMind/Job search/Applications sent',
+    );
+
+    await expect(instance.rename('user-1', parent.id, 'Money in')).rejects.toMatchObject({
       code: 'LABEL_DUPLICATE',
       statusCode: 409,
     });
   });
 
   it('deletes the MailMind record and leaves the Gmail label alone', async () => {
-    mocks.labelForAccount.mockResolvedValue(label('Invoices'));
-    mocks.deleteLabel.mockResolvedValue(label('Invoices'));
+    mocks.labelForAccount.mockResolvedValue(label('Money in'));
+    mocks.deleteLabel.mockResolvedValue(label('Money in'));
     const gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() };
     const { instance } = service(gmail);
 
-    await expect(instance.remove('user-1', 'label-Invoices')).resolves.toMatchObject({
+    await expect(instance.remove('user-1', 'label-Money in')).resolves.toMatchObject({
       success: true,
       gmailLabelRetained: true,
+      removedDescendants: 0,
     });
-    expect(mocks.deleteLabel).toHaveBeenCalledWith('label-Invoices');
-  });
-
-  it('refuses to propose past the configured label cap', async () => {
-    const { env } = await import('../src/config/env.js');
-    mocks.approvedLabels.mockResolvedValue(
-      Array.from({ length: env.AUTOMATION_MAX_LABELS }, (_, index) => label(`Label ${index}`)),
-    );
-    const { instance } = service();
-
-    await expect(instance.propose('user-1')).rejects.toMatchObject({
-      code: 'LABEL_LIMIT_REACHED',
-      statusCode: 409,
-    });
-    expect(mocks.acquireProposalLease).not.toHaveBeenCalled();
+    expect(mocks.deleteLabel).toHaveBeenCalledWith('label-Money in');
   });
 
   it('releases the proposal lease even when there is too little mail', async () => {
@@ -179,6 +223,66 @@ describe('LabelsService', () => {
     expect(mocks.releaseProposalLease).toHaveBeenCalledWith({
       accountId: account.id,
       token: 'token',
+    });
+    expect(planner.plan).not.toHaveBeenCalled();
+  });
+
+  it('releases the proposal lease when the planner fails', async () => {
+    mocks.eligibleMessages.mockResolvedValue(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `m-${index}`,
+        subject: 'Subject',
+        sender_name: 'Sender',
+        sender_email: 'someone@example.com',
+        internal_date: new Date(),
+      })),
+    );
+    mocks.existingGmailLabelNames.mockResolvedValue([]);
+    vi.mocked(planner.plan).mockRejectedValue(new Error('provider down'));
+    const { instance } = service();
+
+    await expect(instance.propose('user-1')).rejects.toThrow('provider down');
+    expect(mocks.releaseProposalLease).toHaveBeenCalled();
+    expect(mocks.storePlan).not.toHaveBeenCalled();
+  });
+
+  it('refuses to approve a plan that would exceed the folder cap', async () => {
+    const { env } = await import('../src/config/env.js');
+    mocks.approvedLabels.mockResolvedValue(
+      Array.from({ length: env.AUTOMATION_MAX_LABELS }, (_, index) => label(`Label ${index}`)),
+    );
+    mocks.planForAccount.mockResolvedValue({
+      id: 'plan-1',
+      status: 'PENDING',
+      nodes: [
+        {
+          id: 'node-1',
+          parent_id: null,
+          depth: 1,
+          name: 'One more',
+          full_path: 'MailMind/One more',
+          rationale: 'because',
+          is_leaf: true,
+          rules: [],
+        },
+      ],
+    });
+    const { instance } = service();
+
+    await expect(instance.approvePlan('user-1', { planId: 'plan-1' })).rejects.toMatchObject({
+      code: 'LABEL_LIMIT_REACHED',
+      statusCode: 409,
+    });
+    expect(mocks.createLabel).not.toHaveBeenCalled();
+  });
+
+  it('reports a plan that does not belong to the account as missing', async () => {
+    mocks.planForAccount.mockResolvedValue(null);
+    const { instance } = service();
+
+    await expect(instance.approvePlan('user-1', { planId: 'plan-1' })).rejects.toMatchObject({
+      code: 'LABEL_PLAN_NOT_FOUND',
+      statusCode: 404,
     });
   });
 });

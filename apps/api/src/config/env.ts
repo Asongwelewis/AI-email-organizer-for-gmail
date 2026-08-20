@@ -56,24 +56,21 @@ const environmentSchema = z
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
-    DYNAMIC_LABEL_DISCOVERY_ENABLED: booleanValue.default(true),
-    DYNAMIC_LABEL_MIN_MESSAGES: z.coerce.number().int().min(3).max(100).default(3),
-    DYNAMIC_LABEL_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(365).default(90),
-    DYNAMIC_LABEL_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.75),
-    DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT: z.coerce.number().min(0.5).max(1).default(0.7),
-    DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN: z.coerce.number().int().min(1).max(50).default(20),
-    DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(5000).default(1000),
-    DYNAMIC_LABEL_MAX_PENDING_CANDIDATES: z.coerce.number().int().min(1).max(500).default(50),
-    DYNAMIC_LABEL_MAX_APPROVED_LABELS: z.coerce.number().int().min(1).max(500).default(100),
-    DYNAMIC_LABEL_REDISCOVERY_DAYS: z.coerce.number().int().min(1).max(365).default(14),
-    DYNAMIC_LABEL_AI_NAMING_ENABLED: booleanValue.default(false),
+    // One planning call reads a sample of stored metadata. Depth, leaf count, and the minimum
+    // messages per folder are structural invariants and live in the planner, not in config.
+    TAXONOMY_SAMPLE_SIZE: z.coerce.number().int().min(20).max(2000).default(500),
+    TAXONOMY_LOOKBACK_DAYS: z.coerce.number().int().min(7).max(3650).default(365),
+    TAXONOMY_MAX_MESSAGES: z.coerce.number().int().min(50).max(20000).default(5000),
+    TAXONOMY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1000).max(64000).default(16000),
     AUTOMATION_ENABLED: booleanValue.default(true),
     AUTOMATION_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(2),
     AUTOMATION_POLL_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
     AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
     AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
-    AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(25),
+    // Caps approved LEAF folders: the vocabulary automation classifies into. The default
+    // matches the planner's 40-leaf ceiling so an approved tree always fits.
+    AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(40),
     AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(1000000).default(100000),
     AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(100000).default(10000),
     AUTOMATION_MAX_COST_MICRO_USD: z.coerce

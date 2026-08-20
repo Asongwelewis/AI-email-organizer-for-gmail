@@ -1,15 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import type { user_label_source, user_labels } from '@prisma/client';
+import type {
+  Prisma,
+  routing_rule_kind,
+  taxonomy_node_kind,
+  user_label_source,
+  user_labels,
+} from '@prisma/client';
 
 import { env } from '@api/config/env.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
-import type { CandidateGroup } from '@api/features/label-discovery/label-discovery.types.js';
+import { RULE_PRIORITY } from '@api/features/label-discovery/routing-rules.js';
 import {
-  LABEL_DISCOVERY_VERSION,
-  LABEL_NAMING_VERSION,
-} from '@api/features/label-discovery/label-discovery.taxonomy.js';
+  LABEL_ROOT,
+  gmailPathFor,
+  type PlannedNode,
+  type TaxonomyPlan,
+} from '@api/features/label-discovery/taxonomy-planner.js';
 
 const PROPOSAL_LEASE_SECONDS = 120;
 
@@ -18,8 +26,14 @@ export interface ProposalLease {
   token: string;
 }
 
-export function labelPathFor(leafName: string): string {
-  return `MailMind/${leafName}`;
+/** The Gmail label name for a tree path such as "Job hunt/Applications sent". */
+export function labelPathFor(treePath: string): string {
+  return gmailPathFor(treePath);
+}
+
+/** The tree path stored on a label row, without the MailMind namespace. */
+export function treePathOf(label: Pick<user_labels, 'full_path'>): string {
+  return label.full_path.slice(LABEL_ROOT.length + 1);
 }
 
 export class LabelsRepository {
@@ -76,19 +90,30 @@ export class LabelsRepository {
     });
   }
 
-  eligibleMessages(accountId: string, lookbackDays: number, limit: number) {
+  /** The population the planner samples from. Metadata only, as everywhere else. */
+  eligibleMessages(accountId: string) {
     return prisma.gmail_message_metadata.findMany({
       where: {
         connected_google_account_id: accountId,
         deleted_at: null,
         is_draft: false,
+        is_sent: false,
         is_trashed: false,
-        internal_date: { gte: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000) },
+        internal_date: {
+          gte: new Date(Date.now() - env.TAXONOMY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
+        },
         sender_email: { not: null },
         NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
       },
+      select: {
+        id: true,
+        subject: true,
+        sender_name: true,
+        sender_email: true,
+        internal_date: true,
+      },
       orderBy: [{ internal_date: 'desc' }, { id: 'desc' }],
-      take: limit,
+      take: env.TAXONOMY_MAX_MESSAGES,
     });
   }
 
@@ -97,13 +122,24 @@ export class LabelsRepository {
       where: { connected_google_account_id: accountId },
       select: { name: true },
     });
-    return labels.map((label) => label.name);
+    // MailMind's own labels are not competition for a proposed name.
+    return labels
+      .map((label) => label.name)
+      .filter((name) => !name.startsWith(`${LABEL_ROOT}/`))
+      .map((name) => name.split('/').at(-1) ?? name);
   }
 
   approvedLabels(accountId: string) {
     return prisma.user_labels.findMany({
       where: { connected_google_account_id: accountId },
-      orderBy: { created_at: 'asc' },
+      orderBy: [{ depth: 'asc' }, { full_path: 'asc' }],
+    });
+  }
+
+  approvedLeafLabels(accountId: string) {
+    return prisma.user_labels.findMany({
+      where: { connected_google_account_id: accountId, children: { none: {} } },
+      orderBy: [{ depth: 'asc' }, { full_path: 'asc' }],
     });
   }
 
@@ -118,83 +154,112 @@ export class LabelsRepository {
     });
   }
 
-  pendingProposals(accountId: string) {
-    return prisma.dynamic_label_candidates.findMany({
+  pendingPlan(accountId: string) {
+    return prisma.taxonomy_plans.findFirst({
       where: { connected_google_account_id: accountId, status: 'PENDING' },
-      orderBy: [{ confidence: 'desc' }, { message_count: 'desc' }],
-      take: env.AUTOMATION_MAX_LABELS,
-    });
-  }
-
-  async clearPendingProposals(accountId: string): Promise<void> {
-    await prisma.dynamic_label_candidates.updateMany({
-      where: { connected_google_account_id: accountId, status: 'PENDING' },
-      data: { status: 'SUPERSEDED' },
-    });
-  }
-
-  async storeProposal(accountId: string, group: CandidateGroup, leafName: string) {
-    const fullPath = labelPathFor(leafName);
-    const normalized = normalizeLabelForComparison(leafName);
-    const existing = await prisma.dynamic_label_candidates.findUnique({
-      where: {
-        connected_google_account_id_input_hash: {
-          connected_google_account_id: accountId,
-          input_hash: group.inputHash,
+      orderBy: { created_at: 'desc' },
+      include: {
+        nodes: {
+          orderBy: [{ depth: 'asc' }, { position: 'asc' }],
+          include: { rules: { orderBy: { match_value: 'asc' } } },
         },
       },
     });
-    const data = {
-      candidate_type: group.candidateType,
-      source_key: group.sourceKey,
-      suggested_leaf_name: leafName,
-      suggested_full_path: fullPath,
-      normalized_name: normalized,
-      status: 'PENDING' as const,
-      confidence: group.confidence,
-      message_count: group.messageCount,
-      thread_count: group.threadCount,
-      first_message_at: group.firstMessageAt,
-      last_message_at: group.lastMessageAt,
-      dominant_category: group.dominantCategory,
-      category_agreement: group.categoryAgreement,
-      source_agreement: group.sourceAgreement,
-      reason_codes: group.reasonCodes,
-      discovery_version: LABEL_DISCOVERY_VERSION,
-      naming_version: LABEL_NAMING_VERSION,
-      last_discovered_at: new Date(),
-    };
-    const candidate = existing
-      ? await prisma.dynamic_label_candidates.update({ where: { id: existing.id }, data })
-      : await prisma.dynamic_label_candidates.create({
-          data: { ...data, connected_google_account_id: accountId, input_hash: group.inputHash },
+  }
+
+  planForAccount(accountId: string, planId: string) {
+    return prisma.taxonomy_plans.findFirst({
+      where: { id: planId, connected_google_account_id: accountId },
+      include: {
+        nodes: {
+          orderBy: [{ depth: 'asc' }, { position: 'asc' }],
+          include: { rules: { orderBy: { match_value: 'asc' } } },
+        },
+      },
+    });
+  }
+
+  /**
+   * Replaces whatever plan was awaiting review. A plan is one indivisible proposal, so a new run
+   * supersedes the old one rather than merging into it.
+   */
+  async storePlan(accountId: string, plan: TaxonomyPlan) {
+    return prisma.$transaction(async (transaction) => {
+      await transaction.taxonomy_plans.updateMany({
+        where: { connected_google_account_id: accountId, status: 'PENDING' },
+        data: { status: 'SUPERSEDED' },
+      });
+      const stored = await transaction.taxonomy_plans.create({
+        data: {
+          connected_google_account_id: accountId,
+          model: plan.model,
+          prompt_version: plan.promptVersion,
+          sampled_message_count: plan.sampledMessageCount,
+          analyzed_message_count: plan.analyzedMessageCount,
+          leaf_count: plan.nodes.filter((node) => node.isLeaf).length,
+          input_tokens: plan.usage.inputTokens,
+          output_tokens: plan.usage.outputTokens,
+          estimated_cost_microusd: plan.estimatedCostMicrousd,
+          warnings: plan.warnings.slice(0, 100),
+        },
+      });
+      const idByPath = new Map<string, string>();
+      // Shallowest first so a child always finds its parent's freshly created id.
+      for (const [position, node] of plan.nodes.entries()) {
+        const created = await transaction.taxonomy_plan_nodes.create({
+          data: {
+            plan_id: stored.id,
+            parent_id: node.parentPath ? (idByPath.get(node.parentPath) ?? null) : null,
+            depth: node.depth,
+            kind: node.kind as taxonomy_node_kind,
+            name: node.name,
+            full_path: gmailPathFor(node.path),
+            normalized_name: node.normalizedName,
+            rationale: node.rationale,
+            estimated_message_count: node.estimatedMessageCount,
+            matched_message_count: node.matchedMessageCount,
+            is_leaf: node.isLeaf,
+            position,
+            rules: {
+              create: node.rules.map((rule) => ({
+                rule_kind: rule.kind as routing_rule_kind,
+                match_value: rule.value,
+                matched_message_count: rule.matchedMessageCount,
+              })),
+            },
+          },
         });
-    await prisma.dynamic_label_candidate_messages.deleteMany({
-      where: { candidate_id: candidate.id },
+        idByPath.set(node.path, created.id);
+      }
+      return stored.id;
     });
-    await prisma.dynamic_label_candidate_messages.createMany({
-      data: group.messageIds.map((messageId) => ({
-        candidate_id: candidate.id,
-        gmail_message_id: messageId,
-        association_score: group.confidence,
-        reason_codes: group.reasonCodes,
-      })),
-      skipDuplicates: true,
+  }
+
+  async markPlanApproved(planId: string): Promise<void> {
+    await prisma.taxonomy_plans.updateMany({
+      where: { id: planId, status: 'PENDING' },
+      data: { status: 'APPROVED', approved_at: new Date() },
     });
-    return { candidate, created: !existing };
   }
 
   createLabel(input: {
     accountId: string;
-    leafName: string;
+    name: string;
+    treePath: string;
+    depth: number;
+    parentId: string | null;
     source: user_label_source;
+    rationale?: string | null;
   }): Promise<user_labels> {
     return prisma.user_labels.create({
       data: {
         connected_google_account_id: input.accountId,
-        leaf_name: input.leafName,
-        full_path: labelPathFor(input.leafName),
-        normalized_name: normalizeLabelForComparison(input.leafName),
+        parent_id: input.parentId,
+        depth: input.depth,
+        leaf_name: input.name,
+        full_path: labelPathFor(input.treePath),
+        normalized_name: normalizeLabelForComparison(input.name),
+        rationale: input.rationale ?? null,
         source: input.source,
       },
     });
@@ -204,14 +269,41 @@ export class LabelsRepository {
     return prisma.user_labels.update({ where: { id }, data: { gmail_label_id: gmailLabelId } });
   }
 
-  renameLabel(id: string, leafName: string): Promise<user_labels> {
-    return prisma.user_labels.update({
-      where: { id },
-      data: {
-        leaf_name: leafName,
-        full_path: labelPathFor(leafName),
-        normalized_name: normalizeLabelForComparison(leafName),
+  /**
+   * Renaming a folder rewrites its descendants' paths too, parent before children so the tree
+   * trigger always sees a consistent chain.
+   */
+  async renameLabel(label: user_labels, name: string): Promise<user_labels[]> {
+    const oldPath = label.full_path;
+    const parentPath = oldPath.slice(0, oldPath.lastIndexOf('/'));
+    const newPath = `${parentPath}/${name}`;
+    const descendants = await prisma.user_labels.findMany({
+      where: {
+        connected_google_account_id: label.connected_google_account_id,
+        full_path: { startsWith: `${oldPath}/` },
       },
+      orderBy: { depth: 'asc' },
+    });
+    return prisma.$transaction(async (transaction) => {
+      const updated = [
+        await transaction.user_labels.update({
+          where: { id: label.id },
+          data: {
+            leaf_name: name,
+            full_path: newPath,
+            normalized_name: normalizeLabelForComparison(name),
+          },
+        }),
+      ];
+      for (const descendant of descendants) {
+        updated.push(
+          await transaction.user_labels.update({
+            where: { id: descendant.id },
+            data: { full_path: `${newPath}${descendant.full_path.slice(oldPath.length)}` },
+          }),
+        );
+      }
+      return updated;
     });
   }
 
@@ -229,21 +321,81 @@ export class LabelsRepository {
     return label;
   }
 
-  async markProposalsApproved(accountId: string, leafNames: string[]): Promise<void> {
-    if (leafNames.length === 0) return;
-    await prisma.dynamic_label_candidates.updateMany({
+  descendantsOf(label: user_labels) {
+    return prisma.user_labels.findMany({
       where: {
-        connected_google_account_id: accountId,
-        normalized_name: { in: leafNames.map(normalizeLabelForComparison) },
-        status: 'PENDING',
+        connected_google_account_id: label.connected_google_account_id,
+        full_path: { startsWith: `${label.full_path}/` },
       },
-      data: { status: 'CREATED' },
+      orderBy: { depth: 'asc' },
     });
-    await prisma.dynamic_label_candidates.updateMany({
-      where: { connected_google_account_id: accountId, status: 'PENDING' },
-      data: { status: 'REJECTED' },
+  }
+
+  /**
+   * Installs the approved plan's rules as the account's planner rules. Rules learned from applied
+   * mail are left alone: they encode what the user actually accepted.
+   */
+  async replacePlannerRules(
+    accountId: string,
+    rules: Array<{
+      kind: routing_rule_kind;
+      value: string;
+      labelId: string;
+      labelName: string;
+      labelPath: string;
+    }>,
+  ): Promise<number> {
+    return prisma.$transaction(async (transaction) => {
+      await transaction.learned_classification_patterns.deleteMany({
+        where: { connected_google_account_id: accountId, rule_source: 'PLANNER' },
+      });
+      let stored = 0;
+      for (const rule of rules) {
+        const data: Prisma.learned_classification_patternsUncheckedCreateInput = {
+          connected_google_account_id: accountId,
+          rule_kind: rule.kind,
+          match_value: rule.value,
+          rule_source: 'PLANNER',
+          user_label_id: rule.labelId,
+          priority: RULE_PRIORITY[rule.kind],
+          label_name: rule.labelName,
+          label_path: rule.labelPath,
+          // A rule the user approved is authoritative; the executor applies it without a model.
+          confidence: 1,
+          sample_count: 1,
+        };
+        await transaction.learned_classification_patterns.upsert({
+          where: {
+            connected_google_account_id_rule_kind_match_value: {
+              connected_google_account_id: accountId,
+              rule_kind: rule.kind,
+              match_value: rule.value,
+            },
+          },
+          create: data,
+          update: {
+            rule_source: 'PLANNER',
+            user_label_id: rule.labelId,
+            label_name: rule.labelName,
+            label_path: rule.labelPath,
+            priority: RULE_PRIORITY[rule.kind],
+            confidence: 1,
+            active: true,
+          },
+        });
+        stored += 1;
+      }
+      return stored;
+    });
+  }
+
+  routingRules(accountId: string) {
+    return prisma.learned_classification_patterns.findMany({
+      where: { connected_google_account_id: accountId, active: true },
+      orderBy: [{ priority: 'asc' }, { confidence: 'desc' }],
     });
   }
 }
 
 export const labelsRepository = new LabelsRepository();
+export type { PlannedNode };

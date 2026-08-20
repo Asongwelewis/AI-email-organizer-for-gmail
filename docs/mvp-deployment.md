@@ -48,36 +48,29 @@ These names are supported by the production configuration. Values shown are appl
 when the variable is omitted, except `COOKIE_DOMAIN` and the two optional external-provider
 credentials.
 
-| Name                                   | Default or condition                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `COOKIE_DOMAIN`                        | Optional cookie domain.                                                                    |
-| `COOKIE_SAME_SITE`                     | `lax` outside production. Production session cookies use `none` for cross-origin requests. |
-| `REFRESH_SESSION_TTL_DAYS`             | `14`                                                                                       |
-| `OAUTH_STATE_TTL_MINUTES`              | `10`                                                                                       |
-| `AUTH_RATE_LIMIT_WINDOW_MINUTES`       | `10`                                                                                       |
-| `AUTH_RATE_LIMIT_MAX_REQUESTS`         | `30`                                                                                       |
-| `GMAIL_SYNC_PAGE_SIZE`                 | `100`                                                                                      |
-| `GMAIL_SYNC_BATCH_SIZE`                | `10`                                                                                       |
-| `GMAIL_SYNC_MAX_RETRIES`               | `3`                                                                                        |
-| `GMAIL_SYNC_RETRY_BASE_MS`             | `250`                                                                                      |
-| `GMAIL_SYNC_LEASE_SECONDS`             | `300`                                                                                      |
-| `DYNAMIC_LABEL_DISCOVERY_ENABLED`      | `true`                                                                                     |
-| `DYNAMIC_LABEL_MIN_MESSAGES`           | `3`                                                                                        |
-| `DYNAMIC_LABEL_LOOKBACK_DAYS`          | `90`                                                                                       |
-| `DYNAMIC_LABEL_MIN_CONFIDENCE`         | `0.75`                                                                                     |
-| `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`   | `0.7`                                                                                      |
-| `DYNAMIC_LABEL_MAX_CANDIDATES_PER_RUN` | `20`                                                                                       |
-| `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN`   | `1000`                                                                                     |
-| `DYNAMIC_LABEL_MAX_PENDING_CANDIDATES` | `50`                                                                                       |
-| `DYNAMIC_LABEL_MAX_APPROVED_LABELS`    | `100`                                                                                      |
-| `DYNAMIC_LABEL_REDISCOVERY_DAYS`       | `14`                                                                                       |
-| `DYNAMIC_LABEL_AI_NAMING_ENABLED`      | `false`                                                                                    |
-| `LOG_LEVEL`                            | `info`                                                                                     |
-| `TRUST_PROXY_HOPS`                     | `0`; set to the backend host's trusted reverse-proxy hop count when applicable.            |
-| `APP_VERSION`                          | Shared immutable release. Render derives `mailmind@<RENDER_GIT_COMMIT>` when omitted.      |
-| `SENTRY_ENVIRONMENT`                   | Defaults to `NODE_ENV`. Use `production` on Render.                                        |
-| `SENTRY_TRACES_SAMPLE_RATE`            | `1` outside production and `0.1` in production when omitted by the preloader.              |
-| `SENTRY_DEBUG`                         | `false`; enable only while diagnosing SDK transport.                                       |
+| Name                             | Default or condition                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `COOKIE_DOMAIN`                  | Optional cookie domain.                                                                    |
+| `COOKIE_SAME_SITE`               | `lax` outside production. Production session cookies use `none` for cross-origin requests. |
+| `REFRESH_SESSION_TTL_DAYS`       | `14`                                                                                       |
+| `OAUTH_STATE_TTL_MINUTES`        | `10`                                                                                       |
+| `AUTH_RATE_LIMIT_WINDOW_MINUTES` | `10`                                                                                       |
+| `AUTH_RATE_LIMIT_MAX_REQUESTS`   | `30`                                                                                       |
+| `GMAIL_SYNC_PAGE_SIZE`           | `100`                                                                                      |
+| `GMAIL_SYNC_BATCH_SIZE`          | `10`                                                                                       |
+| `GMAIL_SYNC_MAX_RETRIES`         | `3`                                                                                        |
+| `GMAIL_SYNC_RETRY_BASE_MS`       | `250`                                                                                      |
+| `GMAIL_SYNC_LEASE_SECONDS`       | `300`                                                                                      |
+| `TAXONOMY_SAMPLE_SIZE`           | `500`                                                                                      |
+| `TAXONOMY_LOOKBACK_DAYS`         | `365`                                                                                      |
+| `TAXONOMY_MAX_MESSAGES`          | `5000`                                                                                     |
+| `TAXONOMY_MAX_OUTPUT_TOKENS`     | `16000`                                                                                    |
+| `LOG_LEVEL`                      | `info`                                                                                     |
+| `TRUST_PROXY_HOPS`               | `0`; set to the backend host's trusted reverse-proxy hop count when applicable.            |
+| `APP_VERSION`                    | Shared immutable release. Render derives `mailmind@<RENDER_GIT_COMMIT>` when omitted.      |
+| `SENTRY_ENVIRONMENT`             | Defaults to `NODE_ENV`. Use `production` on Render.                                        |
+| `SENTRY_TRACES_SAMPLE_RATE`      | `1` outside production and `0.1` in production when omitted by the preloader.              |
+| `SENTRY_DEBUG`                   | `false`; enable only while diagnosing SDK transport.                                       |
 
 ### Frontend
 

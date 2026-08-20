@@ -92,19 +92,48 @@ request or store full message bodies, raw MIME, or attachment content.
 
 ### Labels
 
-The label set is proposed by the deterministic discovery engine, edited by the user, and confirmed
-once. Only confirmed labels exist in `user_labels`, and only those may be applied by automation.
+One Gemini call designs the whole folder tree from a sample of stored metadata; the user approves
+it; only then does anything reach Gmail. `POST /api/labels/propose` stores a `taxonomy_plans` row
+with its nodes and proposed routing rules and creates nothing. `POST /api/labels/confirm` with a
+`planId` writes the approved nodes into `user_labels` and installs the rules.
 
-- `AUTOMATION_MAX_LABELS` caps proposals plus approved labels per account (default `25`).
-- `DYNAMIC_LABEL_MIN_MESSAGES`, `DYNAMIC_LABEL_LOOKBACK_DAYS`, `DYNAMIC_LABEL_MIN_CONFIDENCE`,
-  `DYNAMIC_LABEL_MIN_SOURCE_AGREEMENT`, and `DYNAMIC_LABEL_MAX_MESSAGES_PER_RUN` tune the engine
-  that produces proposals.
+`user_labels` is a tree: `parent_id`, `depth` (1-3), and `full_path` equal to `MailMind/` plus the
+joined ancestor chain. A database trigger rejects any row whose depth, owning account, or path does
+not agree with its parent.
+
+- `AUTOMATION_MAX_LABELS` caps approved **leaf** folders per account — the vocabulary automation
+  may choose from (default `40`, matching the planner's leaf limit).
+- `TAXONOMY_SAMPLE_SIZE`, `TAXONOMY_LOOKBACK_DAYS`, and `TAXONOMY_MAX_MESSAGES` decide how much
+  mail the planner reads; `TAXONOMY_MAX_OUTPUT_TOKENS` bounds the tree it may return.
+- Depth, the 40-leaf ceiling, the 3-message minimum per folder, and the 1-3 word naming rule are
+  structural invariants enforced in `taxonomy-planner.ts` after parsing, not configuration.
 
 Names are validated with `validateLeafName`, rejected when `isGenericLabelName` matches, and
-compared with `labelsAreSimilar` so an account cannot hold two near-duplicate labels. Confirmation
-creates `MailMind/<leafName>` in Gmail through the automation Gmail adapter and stores the returned
-Gmail label id. Deleting a label removes only MailMind's record; the Gmail label and the mail
-already filed under it are never touched.
+compared with `labelsAreSimilar` so an account cannot hold two near-duplicate folders. Names are
+unique across the whole tree because a leaf name is the token automation classifies into.
+
+**Gmail nesting is cosmetic.** `A/B` is a single Gmail label whose name contains a slash: applying
+it does not apply `A`, and `label:A` does not return its mail. So the tree lives in the database and
+only a leaf's `full_path` is created in Gmail, through the automation Gmail adapter. Renaming a
+folder renames every Gmail label beneath it, since a Gmail label's name is its whole path. Deleting
+a folder removes only MailMind's record; the Gmail label and the mail already filed under it are
+never touched.
+
+Proposals take the account's automation lease, so a proposal and an automation run can never
+overlap for the same account.
+
+### Routing rules
+
+`learned_classification_patterns` holds both the rules an approved plan installed (`PLANNER`) and
+the ones observed from mail that was actually filed (`LEARNED`). A rule is a `SENDER_DOMAIN`,
+`SENDER_ADDRESS`, or `SUBJECT_CONTAINS` match — never a regular expression, because the values come
+from an untrusted model and are replayed against every message.
+
+Automation resolves rules most-specific-first (address, then domain, then subject) and files every
+matching message with **no model call**; only what no rule covers is batched to Gemini. Planner
+rules are authoritative; a learned rule must still clear `AUTOMATION_PATTERN_MIN_CONFIDENCE` and
+`AUTOMATION_PATTERN_MIN_SAMPLES`, and a sender domain that turns out to feed two folders is
+deactivated rather than flip-flopping.
 
 Proposals take the account's automation lease, so a proposal and an automation run can never
 overlap for the same account.
@@ -163,8 +192,9 @@ tokens, session tokens, passwords, database URLs, and the token-encryption key.
 | Authentication        | `src/auth`, `src/sessions`               | Google login, opaque sessions, cookie lifecycle        |
 | Google connection     | `src/integrations/google`                | Separate Gmail consent, encrypted tokens, revocation   |
 | Gmail sync            | `src/integrations/gmail`                 | Labels, initial sync, history-based incremental sync   |
-| Labels                | `src/features/labels`                    | Proposal, approval, rename, delete of the label set    |
-| Discovery engine      | `src/features/label-discovery`           | Engine-only: normalization, confidence, candidates     |
+| Labels                | `src/features/labels`                    | Plan proposal, approval, rename, delete of the tree    |
+| Taxonomy planner      | `src/features/label-discovery`           | Engine-only: planning, normalization, routing rules    |
+| Gemini transport      | `src/integrations/gemini`                | Shared paced/retried JSON calls and cost accounting    |
 | Daily automation      | `src/features/automation`                | Scheduler, Gemini, Gmail apply, budgets, review        |
 | Persistence           | `src/repositories`, feature repositories | Account-scoped Prisma queries and leases               |
 | Security              | `src/security`, `src/middleware`         | Encryption, hashing, safe redirects, CORS/CSRF, limits |
@@ -189,9 +219,11 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Ordered migrations are sto
 9. `20260726210000_ai_automation_recovery`
 10. `20260729090000_remove_classification_and_discovery_workflow`
 11. `20260731090000_stage2_user_labels`
+12. `20260809120000_gemini_automation_provider`
+13. `20260820120000_semantic_taxonomy_tree`
 
 The schema groups data into identity/session/audit records, connected Google credentials, Gmail
-metadata and sync state, the approved `user_labels` set, discovery candidates, and automation
+metadata and sync state, the approved `user_labels` tree, proposed taxonomy plans, and automation
 settings/state/runs/actions plus learned patterns. Foreign-key cascades keep account-owned data
 bounded. Migrations add database
 constraints, indexes, privileges, and forced RLS that Prisma schema syntax cannot fully express.

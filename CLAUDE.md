@@ -57,9 +57,10 @@ HttpOnly `mailmind_session` cookie — never OAuth tokens, secrets, or direct Su
 
 **API layering.** routes/middleware → controllers (Zod transport validation) → services (business
 and privacy rules) → repositories (Prisma, always scoped to the authenticated user's connected
-account). Feature code lives under `src/features/{labels,automation}`; Google/Gmail adapters under
-`src/integrations`. `src/features/label-discovery` is engine-only — normalization, confidence,
-taxonomy, and candidate discovery — consumed by the labels feature; it has no routes of its own.
+account). Feature code lives under `src/features/{labels,automation}`; Google/Gmail/Gemini adapters
+under `src/integrations`. `src/features/label-discovery` is engine-only — the taxonomy planner,
+name normalization, and the routing-rule vocabulary — consumed by the labels and automation
+features; it has no routes of its own.
 
 **Identity vs. Gmail authorization are separate flows** with separate callbacks
 (`/api/auth/google/callback` vs `/api/integrations/google/callback`). Signing in must never grant
@@ -70,14 +71,26 @@ encrypted with a versioned key.
 and stores IDs, a truncated snippet, label ids, flags, size, and attachment presence. Never fetch
 or persist full bodies, raw MIME, or attachment content.
 
-**Approved labels are the only vocabulary.** `user_labels` holds the set the user confirmed.
-Automation files each message into exactly one of those labels or records `NONE` and leaves the
-message in the inbox — it never invents a label. New labels arrive only through
-`POST /api/labels/propose` → `POST /api/labels/confirm`, and only confirmation creates them in
-Gmail. Automation refuses to run (`AUTOMATION_NO_APPROVED_LABELS`) until at least one is confirmed.
+**Approved labels are the only vocabulary.** `user_labels` holds the tree the user confirmed —
+`parent_id`, `depth` 1–3, `full_path` equal to `MailMind/` plus the joined ancestor chain, enforced
+by a database trigger. Automation files each message into exactly one approved leaf or records
+`NONE` and leaves the message in the inbox — it never invents a label. New folders arrive only
+through `POST /api/labels/propose` (one Gemini call designs the whole tree; nothing is created) →
+`POST /api/labels/confirm` (the human approves; only then does Gmail change). Automation refuses to
+run (`AUTOMATION_NO_APPROVED_LABELS`) until at least one is confirmed.
+
+**Gmail nesting is cosmetic, so only leaves exist there.** `A/B` is one Gmail label whose name
+contains a slash: applying it does not apply `A`, and `label:A` does not return its mail. The tree
+lives in the database; only a leaf's `full_path` is created in Gmail. Renaming a folder renames
+every Gmail label beneath it.
+
+**Rules before AI.** `learned_classification_patterns` holds routing rules — `SENDER_DOMAIN`,
+`SENDER_ADDRESS`, or `SUBJECT_CONTAINS`, never regular expressions — installed when a plan is
+approved and learned from mail that was actually filed. Automation applies matching rules with no
+model call and sends only the remainder to Gemini.
 
 **Gmail mutation is confined to two paths.** `src/features/automation` applies labels via
-`messages.modify`; the labels feature creates/renames `MailMind/<leaf>` on confirm and rename.
+`messages.modify`; the labels feature creates/renames leaf paths on confirm and rename.
 Deleting a label never unlabels mail. Nothing else may mutate Gmail.
 
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes

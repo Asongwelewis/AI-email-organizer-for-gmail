@@ -46,9 +46,13 @@ describe('environment validation', () => {
     expect(env.TOKEN_ENCRYPTION_KEY_VERSION).toBe(1);
   });
 
-  it('enables dynamic label discovery when no explicit override is configured', async () => {
-    const { env } = await loadWith({ DYNAMIC_LABEL_DISCOVERY_ENABLED: undefined });
-    expect(env.DYNAMIC_LABEL_DISCOVERY_ENABLED).toBe(true);
+  it('defaults the taxonomy planner to a 500-message sample', async () => {
+    const { env } = await loadWith({ TAXONOMY_SAMPLE_SIZE: undefined });
+    expect(env.TAXONOMY_SAMPLE_SIZE).toBe(500);
+  });
+
+  it('rejects a taxonomy sample larger than one planning call can carry', async () => {
+    await expect(loadWith({ TAXONOMY_SAMPLE_SIZE: '5000' })).rejects.toThrow();
   });
 
   it('accepts the cross-site cookie production deployments require', async () => {

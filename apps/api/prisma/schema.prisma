@@ -61,7 +61,7 @@ model connected_google_accounts {
   gmail_message_metadata          gmail_message_metadata[]
   gmail_sync_runs                 gmail_sync_runs[]
   gmail_sync_state                gmail_sync_states?
-  dynamic_label_candidates        dynamic_label_candidates[]
+  taxonomy_plans                  taxonomy_plans[]
   automation_settings             automation_settings?
   automation_state                automation_states?
   automation_runs                 automation_runs[]
@@ -126,7 +126,6 @@ model gmail_message_metadata {
   created_at                    DateTime                           @default(now()) @db.Timestamptz(6)
   updated_at                    DateTime                           @default(now()) @db.Timestamptz(6)
   connected_google_accounts     connected_google_accounts          @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
-  dynamicLabelAssociations      dynamic_label_candidate_messages[]
   automationAction              automation_message_actions?
 
   @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
@@ -192,57 +191,67 @@ model gmail_sync_runs {
   @@index([status])
 }
 
-/// Metadata-only, user-specific label suggestion. It never applies a Gmail label to a message.
-model dynamic_label_candidates {
-  id                          String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id String                             @db.Uuid
-  candidate_type              dynamic_label_candidate_type
-  source_key                  String
-  suggested_leaf_name         String
-  suggested_full_path         String
-  normalized_name             String
-  status                      dynamic_label_candidate_status     @default(PENDING)
-  confidence                  Float
-  message_count               Int
-  thread_count                Int
-  first_message_at            DateTime?                          @db.Timestamptz(6)
-  last_message_at             DateTime?                          @db.Timestamptz(6)
-  dominant_category           String?
-  category_agreement          Float
-  source_agreement            Float
-  reason_codes                String[]                           @default([])
-  discovery_version           String
-  naming_version              String
-  input_hash                  String
-  provider                    String                             @default("rules")
-  model                       String?
-  merged_into_candidate_id    String?                            @db.Uuid
-  created_at                  DateTime                           @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime                           @default(now()) @db.Timestamptz(6)
-  last_discovered_at          DateTime                           @default(now()) @db.Timestamptz(6)
-  connected_google_accounts   connected_google_accounts          @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
-  merged_into_candidate       dynamic_label_candidates?          @relation("label_candidate_merge", fields: [merged_into_candidate_id], references: [id], onDelete: Restrict)
-  merged_candidates           dynamic_label_candidates[]         @relation("label_candidate_merge")
-  messages                    dynamic_label_candidate_messages[]
+/// One model-designed folder tree awaiting human approval. Nothing here exists in Gmail yet.
+model taxonomy_plans {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  status                      taxonomy_plan_status      @default(PENDING)
+  model                       String
+  prompt_version              String
+  sampled_message_count       Int
+  analyzed_message_count      Int
+  leaf_count                  Int                       @default(0)
+  input_tokens                Int                       @default(0)
+  output_tokens               Int                       @default(0)
+  estimated_cost_microusd     Int                       @default(0)
+  warnings                    String[]                  @default([])
+  approved_at                 DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  nodes                       taxonomy_plan_nodes[]
 
-  @@unique([connected_google_account_id, input_hash], map: "dynamic_label_candidates_account_hash_unique_idx")
-  @@index([connected_google_account_id, status, last_discovered_at(sort: Desc)], map: "dynamic_label_candidates_account_status_idx")
-  @@index([connected_google_account_id, normalized_name], map: "dynamic_label_candidates_account_name_idx")
-  @@index([merged_into_candidate_id])
+  @@index([connected_google_account_id, status, created_at(sort: Desc)], map: "taxonomy_plans_account_status_idx")
 }
 
-/// Association only; message content is not duplicated.
-model dynamic_label_candidate_messages {
-  candidate_id      String                   @db.Uuid
-  gmail_message_id  String                   @db.Uuid
-  association_score Float
-  reason_codes      String[]                 @default([])
-  created_at        DateTime                 @default(now()) @db.Timestamptz(6)
-  candidate         dynamic_label_candidates @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
-  message           gmail_message_metadata   @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
+/// A proposed folder. `full_path` is the joined ancestor chain; only leaves are created in Gmail.
+model taxonomy_plan_nodes {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plan_id                 String                    @db.Uuid
+  parent_id               String?                   @db.Uuid
+  depth                   Int
+  kind                    taxonomy_node_kind
+  name                    String
+  full_path               String
+  normalized_name         String
+  rationale               String
+  estimated_message_count Int
+  matched_message_count   Int                       @default(0)
+  is_leaf                 Boolean                   @default(true)
+  position                Int                       @default(0)
+  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  plan                    taxonomy_plans            @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  parent                  taxonomy_plan_nodes?      @relation("taxonomy_plan_node_tree", fields: [parent_id], references: [id], onDelete: Cascade)
+  children                taxonomy_plan_nodes[]     @relation("taxonomy_plan_node_tree")
+  rules                   taxonomy_plan_node_rules[]
 
-  @@id([candidate_id, gmail_message_id])
-  @@index([gmail_message_id])
+  @@unique([plan_id, full_path], map: "taxonomy_plan_nodes_path_unique_idx")
+  @@index([plan_id, depth, position], map: "taxonomy_plan_nodes_plan_idx")
+  @@index([parent_id], map: "taxonomy_plan_nodes_parent_idx")
+}
+
+/// A proposed routing rule. Confirmation copies it into learned_classification_patterns.
+model taxonomy_plan_node_rules {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  node_id               String              @db.Uuid
+  rule_kind             routing_rule_kind
+  match_value           String
+  matched_message_count Int                 @default(0)
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  node                  taxonomy_plan_nodes @relation(fields: [node_id], references: [id], onDelete: Cascade)
+
+  @@unique([node_id, rule_kind, match_value], map: "taxonomy_plan_node_rules_unique_idx")
+  @@index([node_id], map: "taxonomy_plan_node_rules_node_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -370,24 +379,27 @@ enum gmail_sync_run_status {
   FAILED
 }
 
-enum dynamic_label_candidate_type {
-  SOURCE
-  ORGANIZATION
-  TOPIC
-  SUBSCRIPTION
-  PROJECT
-  WORKFLOW
-}
-
-enum dynamic_label_candidate_status {
+enum taxonomy_plan_status {
   PENDING
   APPROVED
-  REJECTED
-  DEFERRED
-  MERGED
-  CREATED
   SUPERSEDED
-  FAILED
+}
+
+enum taxonomy_node_kind {
+  CATEGORY
+  TOPIC
+  STATE
+}
+
+enum routing_rule_kind {
+  SENDER_DOMAIN
+  SENDER_ADDRESS
+  SUBJECT_CONTAINS
+}
+
+enum routing_rule_source {
+  PLANNER
+  LEARNED
 }
 
 enum automation_run_status {
@@ -418,20 +430,28 @@ enum automation_classification_source {
 
 /// User-approved label set. Automation may only apply labels present here.
 model user_labels {
-  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id String                    @db.Uuid
+  id                          String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                            @db.Uuid
+  parent_id                   String?                           @db.Uuid
+  depth                       Int                               @default(1)
   leaf_name                   String
   full_path                   String
   normalized_name             String
+  rationale                   String?
   source                      user_label_source
   gmail_label_id              String?
-  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
-  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  created_at                  DateTime                          @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                          @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts         @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  parent                      user_labels?                      @relation("user_label_tree", fields: [parent_id], references: [id], onDelete: Cascade)
+  children                    user_labels[]                     @relation("user_label_tree")
+  routing_rules               learned_classification_patterns[]
 
   @@unique([connected_google_account_id, full_path], map: "user_labels_account_path_unique_idx")
   @@unique([connected_google_account_id, normalized_name], map: "user_labels_account_normalized_unique_idx")
   @@index([connected_google_account_id, created_at(sort: Desc)], map: "user_labels_account_created_idx")
+  @@index([connected_google_account_id, depth], map: "user_labels_account_depth_idx")
+  @@index([parent_id], map: "user_labels_parent_idx")
 }
 
 enum user_label_source {
@@ -549,7 +569,11 @@ model automation_message_actions {
 model learned_classification_patterns {
   id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connected_google_account_id String                    @db.Uuid
-  sender_domain               String
+  rule_kind                   routing_rule_kind         @default(SENDER_DOMAIN)
+  match_value                 String
+  rule_source                 routing_rule_source       @default(LEARNED)
+  user_label_id               String?                   @db.Uuid
+  priority                    Int                       @default(100)
   label_name                  String
   label_path                  String
   confidence                  Float
@@ -560,7 +584,9 @@ model learned_classification_patterns {
   created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
   connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  user_label                  user_labels?              @relation(fields: [user_label_id], references: [id], onDelete: Cascade)
 
-  @@unique([connected_google_account_id, sender_domain], map: "learned_patterns_account_sender_unique_idx")
+  @@unique([connected_google_account_id, rule_kind, match_value], map: "learned_patterns_account_rule_unique_idx")
   @@index([connected_google_account_id, active, confidence], map: "learned_patterns_reuse_idx")
+  @@index([user_label_id], map: "learned_patterns_account_label_idx")
 }

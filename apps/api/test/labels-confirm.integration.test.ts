@@ -1,12 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Exercises propose -> confirm end to end against an in-memory repository so the real
- * service, controller, routes and normalization run. Only Gmail, the session and the
- * audit log are faked.
+ * Exercises propose -> confirm end to end against an in-memory repository so the real service,
+ * controller, routes and normalization run. Only Gmail, the planner's model call, the session and
+ * the audit log are faked.
  */
 
 const { mocks, forwardTo } = vi.hoisted(() => {
@@ -67,65 +68,67 @@ import { labelPathFor } from '../src/features/labels/labels.repository.js';
 import { labelsRouter } from '../src/features/labels/labels.routes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { LabelsService } from '../src/features/labels/labels.service.js';
-import { discoverDeterministicCandidates } from '../src/features/label-discovery/label-discovery.engine.js';
-import { LABEL_CANDIDATE_TYPES } from '../src/features/label-discovery/label-discovery.taxonomy.js';
-import type {
-  CandidateGroup,
-  DiscoveryMessage,
-  DiscoveryPreferences,
-} from '../src/features/label-discovery/label-discovery.types.js';
 import {
   labelsAreSimilar,
   normalizeLabelForComparison,
 } from '../src/features/label-discovery/label-normalization.js';
+import {
+  validateTaxonomyPlan,
+  type PlannerMessage,
+  type TaxonomyPlan,
+  type TaxonomyPlanner,
+} from '../src/features/label-discovery/taxonomy-planner.js';
 
 const ACCOUNT_ID = 'account-1';
 const USER_ID = 'user-1';
 
-interface StoredProposal {
+interface StoredNode {
   id: string;
-  suggested_leaf_name: string;
-  suggested_full_path: string;
+  parent_id: string | null;
+  depth: number;
+  kind: string;
+  name: string;
+  full_path: string;
   normalized_name: string;
-  status: 'PENDING' | 'CREATED' | 'REJECTED' | 'SUPERSEDED';
-  confidence: number;
-  message_count: number;
-  reason_codes: string[];
+  rationale: string;
+  estimated_message_count: number;
+  matched_message_count: number;
+  is_leaf: boolean;
+  rules: Array<{ rule_kind: string; match_value: string; matched_message_count: number }>;
+}
+
+interface StoredPlan {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'SUPERSEDED';
+  model: string;
+  prompt_version: string;
+  sampled_message_count: number;
+  analyzed_message_count: number;
+  leaf_count: number;
+  warnings: string[];
+  created_at: Date;
+  nodes: StoredNode[];
 }
 
 /** Minimal stand-in for the Prisma-backed repository: real data, no database. */
 class InMemoryLabelsRepository {
   labels: user_labels[] = [];
-  proposals: StoredProposal[] = [];
-  messages: Parameters<InMemoryLabelsRepository['seedMessages']>[0] = [];
+  plans: StoredPlan[] = [];
+  rules: Array<{ kind: string; value: string; labelId: string; labelName: string }> = [];
+  messages: Array<{
+    id: string;
+    internal_date: Date | null;
+    subject: string | null;
+    sender_name: string | null;
+    sender_email: string | null;
+  }> = [];
   gmailLabelNames: string[] = [];
   private sequence = 0;
 
-  seedMessages(
-    messages: {
-      id: string;
-      gmail_thread_id: string | null;
-      internal_date: Date | null;
-      subject: string | null;
-      sender_name: string | null;
-      sender_email: string | null;
-      label_ids: string[];
-    }[],
-  ) {
-    this.messages = messages;
-  }
-
-  seedProposals(leafNames: string[]) {
-    this.proposals = leafNames.map((leafName, index) => ({
-      id: `proposal-${index}`,
-      suggested_leaf_name: leafName,
-      suggested_full_path: labelPathFor(leafName),
-      normalized_name: normalizeLabelForComparison(leafName),
-      status: 'PENDING' as const,
-      confidence: 0.8,
-      message_count: 12,
-      reason_codes: ['SOURCE_VOLUME'],
-    }));
+  /** Ids are real uuids because the controller validates them before the service sees them. */
+  private next(_prefix: string): string {
+    this.sequence += 1;
+    return randomUUID();
   }
 
   activeAccountForUser() {
@@ -152,40 +155,81 @@ class InMemoryLabelsRepository {
     return Promise.resolve([...this.labels]);
   }
 
-  pendingProposals() {
-    return Promise.resolve(this.proposals.filter((proposal) => proposal.status === 'PENDING'));
+  pendingPlan() {
+    return Promise.resolve(this.plans.find((plan) => plan.status === 'PENDING') ?? null);
   }
 
-  clearPendingProposals() {
-    for (const proposal of this.proposals) {
-      if (proposal.status === 'PENDING') proposal.status = 'SUPERSEDED';
+  planForAccount(_accountId: string, planId: string) {
+    return Promise.resolve(this.plans.find((plan) => plan.id === planId) ?? null);
+  }
+
+  storePlan(_accountId: string, plan: TaxonomyPlan) {
+    for (const stored of this.plans) {
+      if (stored.status === 'PENDING') stored.status = 'SUPERSEDED';
     }
-    return Promise.resolve();
-  }
-
-  storeProposal(_accountId: string, group: CandidateGroup, leafName: string) {
-    this.sequence += 1;
-    this.proposals.push({
-      id: `proposal-${this.sequence}`,
-      suggested_leaf_name: leafName,
-      suggested_full_path: labelPathFor(leafName),
-      normalized_name: normalizeLabelForComparison(leafName),
-      status: 'PENDING',
-      confidence: group.confidence,
-      message_count: group.messageCount,
-      reason_codes: group.reasonCodes,
+    const idByPath = new Map<string, string>();
+    const nodes: StoredNode[] = plan.nodes.map((node) => {
+      const id = this.next('node');
+      idByPath.set(node.path, id);
+      return {
+        id,
+        parent_id: node.parentPath ? (idByPath.get(node.parentPath) ?? null) : null,
+        depth: node.depth,
+        kind: node.kind,
+        name: node.name,
+        full_path: `MailMind/${node.path}`,
+        normalized_name: node.normalizedName,
+        rationale: node.rationale,
+        estimated_message_count: node.estimatedMessageCount,
+        matched_message_count: node.matchedMessageCount,
+        is_leaf: node.isLeaf,
+        rules: node.rules.map((rule) => ({
+          rule_kind: rule.kind,
+          match_value: rule.value,
+          matched_message_count: rule.matchedMessageCount,
+        })),
+      };
     });
+    const stored: StoredPlan = {
+      id: this.next('plan'),
+      status: 'PENDING',
+      model: plan.model,
+      prompt_version: plan.promptVersion,
+      sampled_message_count: plan.sampledMessageCount,
+      analyzed_message_count: plan.analyzedMessageCount,
+      leaf_count: nodes.filter((node) => node.is_leaf).length,
+      warnings: plan.warnings,
+      created_at: new Date('2026-08-20T00:00:00.000Z'),
+      nodes,
+    };
+    this.plans.push(stored);
+    return Promise.resolve(stored.id);
+  }
+
+  markPlanApproved(planId: string) {
+    const plan = this.plans.find((stored) => stored.id === planId);
+    if (plan) plan.status = 'APPROVED';
     return Promise.resolve();
   }
 
-  createLabel(input: { accountId: string; leafName: string; source: user_label_source }) {
-    this.sequence += 1;
+  createLabel(input: {
+    accountId: string;
+    name: string;
+    treePath: string;
+    depth: number;
+    parentId: string | null;
+    source: user_label_source;
+    rationale?: string | null;
+  }) {
     const row = {
-      id: `label-${this.sequence}`,
+      id: this.next('label'),
       connected_google_account_id: input.accountId,
-      leaf_name: input.leafName,
-      full_path: labelPathFor(input.leafName),
-      normalized_name: normalizeLabelForComparison(input.leafName),
+      parent_id: input.parentId,
+      depth: input.depth,
+      leaf_name: input.name,
+      full_path: labelPathFor(input.treePath),
+      normalized_name: normalizeLabelForComparison(input.name),
+      rationale: input.rationale ?? null,
       source: input.source,
       gmail_label_id: null,
       created_at: new Date('2026-08-01T00:00:00.000Z'),
@@ -202,17 +246,95 @@ class InMemoryLabelsRepository {
     return Promise.resolve(row);
   }
 
-  markProposalsApproved(_accountId: string, leafNames: string[]) {
-    const normalized = leafNames.map(normalizeLabelForComparison);
-    for (const proposal of this.proposals) {
-      if (proposal.status !== 'PENDING') continue;
-      proposal.status = normalized.includes(proposal.normalized_name) ? 'CREATED' : 'REJECTED';
-    }
-    return Promise.resolve();
+  descendantsOf(label: user_labels) {
+    return Promise.resolve(
+      this.labels.filter((row) => row.full_path.startsWith(`${label.full_path}/`)),
+    );
+  }
+
+  replacePlannerRules(
+    _accountId: string,
+    rules: Array<{ kind: string; value: string; labelId: string; labelName: string }>,
+  ) {
+    this.rules = [...rules];
+    return Promise.resolve(rules.length);
   }
 }
 
-function build() {
+/** A planner that returns a fixed tree through the real validator, so no model call happens. */
+function stubPlanner(nodes: Array<Record<string, unknown>>): TaxonomyPlanner {
+  return {
+    plan: ({ messages, existingGmailLabelNames }) => {
+      const sample = messages as PlannerMessage[];
+      const validated = validateTaxonomyPlan({ nodes }, { sample, existingGmailLabelNames });
+      return Promise.resolve({
+        ...validated,
+        sampledMessageCount: sample.length,
+        analyzedMessageCount: sample.length,
+        model: 'stub-model',
+        promptVersion: 'stub-v1',
+        usage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 50 },
+        estimatedCostMicrousd: 155,
+      });
+    },
+  };
+}
+
+const JOB_HUNT_TREE = [
+  {
+    name: 'Job hunt',
+    depth: 1,
+    parentPath: '',
+    kind: 'CATEGORY',
+    rationale: 'Job search mail arrives from boards, tracking systems and recruiters alike.',
+    estimatedMessageCount: 40,
+    rules: [],
+  },
+  {
+    name: 'Applications sent',
+    depth: 2,
+    parentPath: 'Job hunt',
+    kind: 'TOPIC',
+    rationale: 'Confirmations that an application reached a company.',
+    estimatedMessageCount: 25,
+    rules: [
+      { kind: 'SENDER_DOMAIN', value: 'linkedin.com' },
+      { kind: 'SENDER_DOMAIN', value: 'greenhouse.io' },
+    ],
+  },
+  {
+    name: 'Applications rejected',
+    depth: 3,
+    parentPath: 'Job hunt/Applications sent',
+    kind: 'STATE',
+    rationale: 'Rejections say so in the subject line.',
+    estimatedMessageCount: 8,
+    rules: [{ kind: 'SUBJECT_CONTAINS', value: 'not moving forward' }],
+  },
+];
+
+function seedMail(repository: InMemoryLabelsRepository) {
+  const senders = [
+    { email: 'jobs-noreply@linkedin.com', name: 'LinkedIn', subject: 'Your application was sent' },
+    { email: 'no-reply@greenhouse.io', name: 'Greenhouse', subject: 'Application received' },
+    {
+      email: 'notifications@jobright.ai',
+      name: 'Jobright',
+      subject: 'Update: not moving forward',
+    },
+  ];
+  repository.messages = senders.flatMap((sender, senderIndex) =>
+    Array.from({ length: 6 }, (_, index) => ({
+      id: `message-${senderIndex}-${index}`,
+      internal_date: new Date(Date.parse('2026-08-01T00:00:00.000Z') - index * 3_600_000),
+      subject: `${sender.subject} ${index}`,
+      sender_name: sender.name,
+      sender_email: sender.email,
+    })),
+  );
+}
+
+function build(nodes: Array<Record<string, unknown>> = JOB_HUNT_TREE) {
   const repository = new InMemoryLabelsRepository();
   const gmail = {
     ensureLabel: vi.fn(async (_accountId: string, labelPath: string) => ({
@@ -225,6 +347,7 @@ function build() {
   const service = new LabelsService(
     repository as unknown as LabelsRepository,
     gmail as unknown as ConstructorParameters<typeof LabelsService>[1],
+    stubPlanner(nodes),
   );
   // Also bind the module singletons so the HTTP suite hits the same fakes.
   mocks.repository.current = repository as unknown as Record<string, unknown>;
@@ -247,186 +370,123 @@ function httpApp() {
   return app;
 }
 
-const REALISTIC_PROPOSALS = [
-  'Finance',
-  'Job applications',
-  'Dev tools',
-  'Verification codes',
-  'School',
-];
-
 describe('labels propose -> confirm', () => {
   beforeEach(() => {
     mocks.auditRecord.mockReset();
     mocks.auditRecord.mockResolvedValue(undefined);
   });
 
-  it('writes a user_labels row with a gmail_label_id for every seeded proposal', async () => {
+  it('proposes a tree with counts and creates nothing in Gmail', async () => {
     const { repository, gmail, service } = build();
-    repository.seedProposals(REALISTIC_PROPOSALS);
+    seedMail(repository);
 
-    const overview = await service.confirm(
-      USER_ID,
-      REALISTIC_PROPOSALS.map((leafName) => ({ leafName, source: 'AI_PROPOSED' as const })),
-    );
+    const overview = await service.propose(USER_ID);
 
-    expect(repository.labels).toHaveLength(REALISTIC_PROPOSALS.length);
-    for (const leafName of REALISTIC_PROPOSALS) {
-      const row = repository.labels.find((label) => label.leaf_name === leafName);
-      expect(row, `${leafName} should have a user_labels row`).toBeDefined();
-      expect(row?.full_path).toBe(`MailMind/${leafName}`);
-      expect(row?.gmail_label_id, `${leafName} should carry a Gmail label id`).toEqual(
-        expect.stringMatching(/^Label_/),
-      );
-    }
-    expect(gmail.ensureLabel).toHaveBeenCalledTimes(REALISTIC_PROPOSALS.length);
-    expect(overview.labels).toHaveLength(REALISTIC_PROPOSALS.length);
-    expect(overview.proposals).toHaveLength(0);
-    expect(repository.proposals.every((proposal) => proposal.status === 'CREATED')).toBe(true);
+    expect(gmail.ensureLabel).not.toHaveBeenCalled();
+    expect(repository.labels).toHaveLength(0);
+    expect(overview.plan?.nodes.map((node) => node.path)).toEqual([
+      'Job hunt',
+      'Job hunt/Applications sent',
+      'Job hunt/Applications sent/Applications rejected',
+    ]);
+    const sent = overview.plan?.nodes.find((node) => node.name === 'Applications sent');
+    expect(sent?.matchedMessageCount).toBe(12);
+    expect(sent?.rules.map((rule) => rule.value)).toEqual(['greenhouse.io', 'linkedin.com']);
+    // A parent shows what its whole subtree would receive.
+    expect(overview.plan?.nodes[0]?.rolledUpMessageCount).toBe(18);
   });
 
-  it('is idempotent: confirming the same set twice does not duplicate rows', async () => {
+  it('creates only the leaf in Gmail but keeps the whole chain in the database', async () => {
     const { repository, gmail, service } = build();
-    repository.seedProposals(REALISTIC_PROPOSALS);
-    const payload = REALISTIC_PROPOSALS.map((leafName) => ({
-      leafName,
-      source: 'AI_PROPOSED' as const,
-    }));
-
-    await service.confirm(USER_ID, payload);
-    await service.confirm(USER_ID, payload);
-
-    expect(repository.labels).toHaveLength(REALISTIC_PROPOSALS.length);
-    expect(gmail.ensureLabel).toHaveBeenCalledTimes(REALISTIC_PROPOSALS.length);
-  });
-
-  it('proposes from synchronized metadata and confirms what it proposed', async () => {
-    const { repository, service } = build();
-    const now = Date.now();
-    repository.seedMessages(
-      Array.from({ length: 40 }, (_, index) => ({
-        id: `message-${index}`,
-        gmail_thread_id: `thread-${index}`,
-        internal_date: new Date(now - index * 60 * 60 * 1000),
-        subject: index % 2 === 0 ? `Invoice ${index} is ready` : `Your statement for July`,
-        sender_name: 'Stripe',
-        sender_email: 'receipts@stripe.com',
-        label_ids: ['INBOX'],
-      })),
-    );
-
+    seedMail(repository);
     const proposed = await service.propose(USER_ID);
-    expect(proposed.proposals.length).toBeGreaterThan(0);
 
-    const confirmed = await service.confirm(
-      USER_ID,
-      proposed.proposals.map((proposal) => ({
-        leafName: proposal.leafName,
-        source: 'AI_PROPOSED' as const,
-      })),
+    const confirmed = await service.approvePlan(USER_ID, { planId: proposed.plan!.id });
+
+    expect(repository.labels.map((label) => label.full_path)).toEqual([
+      'MailMind/Job hunt',
+      'MailMind/Job hunt/Applications sent',
+      'MailMind/Job hunt/Applications sent/Applications rejected',
+    ]);
+    // Gmail nesting is cosmetic, so only the leaf's full path becomes a Gmail label.
+    expect(gmail.ensureLabel).toHaveBeenCalledTimes(1);
+    expect(gmail.ensureLabel).toHaveBeenCalledWith(
+      ACCOUNT_ID,
+      'MailMind/Job hunt/Applications sent/Applications rejected',
     );
-    expect(confirmed.labels.length).toBe(proposed.proposals.length);
-    expect(confirmed.labels.every((label) => label.gmailLabelId !== null)).toBe(true);
+    expect(confirmed.labels.filter((label) => label.isLeaf)).toHaveLength(1);
+    expect(repository.plans[0]?.status).toBe('APPROVED');
   });
 
-  it('does not treat any pair in a realistic proposal set as too similar', () => {
+  it('persists the planrules so automation can file mail without a model call', async () => {
+    const { repository, service } = build();
+    seedMail(repository);
+    const proposed = await service.propose(USER_ID);
+
+    await service.approvePlan(USER_ID, { planId: proposed.plan!.id });
+
+    expect(repository.rules.map((rule) => `${rule.kind}:${rule.value}`).sort()).toEqual([
+      'SENDER_DOMAIN:greenhouse.io',
+      'SENDER_DOMAIN:linkedin.com',
+      'SUBJECT_CONTAINS:not moving forward',
+    ]);
+    expect(new Set(repository.rules.map((rule) => rule.labelName))).toEqual(
+      new Set(['Applications sent', 'Applications rejected']),
+    );
+  });
+
+  it('approves a subset together with the ancestors it needs', async () => {
+    const { repository, service } = build();
+    seedMail(repository);
+    const proposed = await service.propose(USER_ID);
+    const leaf = proposed.plan!.nodes.find((node) => node.name === 'Applications rejected')!;
+
+    await service.approvePlan(USER_ID, { planId: proposed.plan!.id, nodeIds: [leaf.id] });
+
+    expect(repository.labels.map((label) => label.leaf_name)).toEqual([
+      'Job hunt',
+      'Applications sent',
+      'Applications rejected',
+    ]);
+  });
+
+  it('refuses to approve the same plan twice', async () => {
+    const { service, repository } = build();
+    seedMail(repository);
+    const proposed = await service.propose(USER_ID);
+    await service.approvePlan(USER_ID, { planId: proposed.plan!.id });
+
+    await expect(service.approvePlan(USER_ID, { planId: proposed.plan!.id })).rejects.toMatchObject(
+      { code: 'LABEL_PLAN_NOT_PENDING', statusCode: 409 },
+    );
+  });
+
+  it('supersedes an earlier proposal instead of stacking two pending plans', async () => {
+    const { repository, service } = build();
+    seedMail(repository);
+
+    await service.propose(USER_ID);
+    await service.propose(USER_ID);
+
+    expect(repository.plans).toHaveLength(2);
+    expect(repository.plans.filter((plan) => plan.status === 'PENDING')).toHaveLength(1);
+  });
+
+  it('does not treat any pair in the proposed tree as too similar', async () => {
+    const { repository, service } = build();
+    seedMail(repository);
+    const proposed = await service.propose(USER_ID);
+
+    const names = proposed.plan!.nodes.map((node) => node.name);
     const rejected: string[] = [];
-    for (let index = 0; index < REALISTIC_PROPOSALS.length; index += 1) {
-      for (let other = index + 1; other < REALISTIC_PROPOSALS.length; other += 1) {
-        const left = REALISTIC_PROPOSALS[index]!;
-        const right = REALISTIC_PROPOSALS[other]!;
-        if (labelsAreSimilar(left, right)) rejected.push(`${left} <-> ${right}`);
+    for (let index = 0; index < names.length; index += 1) {
+      for (let other = index + 1; other < names.length; other += 1) {
+        if (labelsAreSimilar(names[index]!, names[other]!)) {
+          rejected.push(`${names[index]} <-> ${names[other]}`);
+        }
       }
     }
     expect(rejected).toEqual([]);
-  });
-});
-
-/**
- * Regression cover for the defect that kept user_labels empty: propose returned nothing,
- * so the web confirm button never enabled. Sender candidates must now be scored on their
- * live signals rather than on the retired category taxonomy.
- */
-describe('label proposal discovery', () => {
-  const SENDERS = [
-    { name: 'Chase', email: 'alerts@chase.com', subject: 'Your statement is ready' },
-    { name: 'GitHub', email: 'noreply@github.com', subject: 'New pull request opened' },
-    { name: 'Greenhouse', email: 'no-reply@greenhouse.io', subject: 'Your application arrived' },
-    { name: 'Coursera', email: 'no-reply@coursera.org', subject: 'Your course starts Monday' },
-  ];
-
-  function corpus(category: string | null): DiscoveryMessage[] {
-    const now = Date.parse('2026-08-09T00:00:00.000Z');
-    return SENDERS.flatMap((sender, senderIndex) =>
-      Array.from({ length: 12 }, (_, index) => ({
-        id: `m-${senderIndex}-${index}`,
-        gmailThreadId: `t-${senderIndex}-${index}`,
-        internalDate: new Date(now - index * 36 * 60 * 60 * 1000),
-        subject: `${sender.subject} ${index}`,
-        senderName: sender.name,
-        senderEmail: sender.email,
-        gmailLabels: ['INBOX'],
-        category,
-        correctedCategory: null,
-      })),
-    );
-  }
-
-  const preferences: DiscoveryPreferences = {
-    minMessages: 3,
-    lookbackDays: 90,
-    maxCandidates: 25,
-    allowedCandidateTypes: [...LABEL_CANDIDATE_TYPES],
-    preferOrganizations: true,
-    preferTopics: true,
-  };
-  const options = {
-    minSourceAgreement: 0.7,
-    minimumConfidence: 0.75,
-    existingLabelNames: [] as string[],
-  };
-
-  it('discovers every sender even though propose passes category: null', () => {
-    const result = discoverDeterministicCandidates(corpus(null), preferences, options);
-
-    expect(result.rejectedByRules).toBe(0);
-    expect(result.groups.map((group) => group.suggestedLeafName)).toEqual(
-      expect.arrayContaining(['Chase', 'GitHub', 'Greenhouse', 'Coursera']),
-    );
-  });
-
-  it('scores sender candidates identically whether or not a category is present', () => {
-    // Categories still steer which topic regexes match, but they no longer move a score.
-    const senderScores = (messages: DiscoveryMessage[]) =>
-      Object.fromEntries(
-        discoverDeterministicCandidates(messages, preferences, options)
-          .groups.filter((group) => group.candidateType !== 'TOPIC')
-          .map((group) => [group.suggestedLeafName, group.confidence] as const),
-      );
-
-    expect(senderScores(corpus(null))).toEqual(senderScores(corpus('WORK')));
-  });
-
-  it('keeps existing-label similarity live: the candidate is dropped outright', () => {
-    // finishGroup treats it as a hard rejection, so the -0.18 confidence penalty never
-    // decides anything on this path. Both are left as they are.
-    const namesFor = (existingLabelNames: string[]) =>
-      discoverDeterministicCandidates(corpus(null), preferences, {
-        ...options,
-        existingLabelNames,
-      }).groups.map((group) => group.suggestedLeafName);
-
-    expect(namesFor([])).toContain('GitHub');
-    expect(namesFor(['GitHub'])).not.toContain('GitHub');
-    expect(namesFor(['MailMind/Sources/GitHub'])).not.toContain('GitHub');
-    expect(namesFor(['GitHub'])).toContain('Chase');
-  });
-
-  it('does not match a two-level MailMind path, which normalization never strips', () => {
-    // normalizeLabelForComparison only strips MailMind/<namespace>/, but labelPathFor now
-    // builds MailMind/<leaf>. Gmail labels stored in that shape escape the penalty.
-    expect(labelsAreSimilar('MailMind/GitHub', 'GitHub')).toBe(false);
-    expect(labelsAreSimilar('MailMind/Sources/GitHub', 'GitHub')).toBe(true);
   });
 });
 
@@ -438,34 +498,51 @@ describe('POST /api/labels/confirm over HTTP', () => {
     mocks.authenticate.mockResolvedValue({ user: { id: USER_ID }, session: { id: 'session-1' } });
   });
 
-  it('accepts the payload the web client sends and persists the labels', async () => {
-    const { repository } = build();
-    repository.seedProposals(REALISTIC_PROPOSALS);
+  it('accepts a plan approval and persists the tree', async () => {
+    const { repository, service } = build();
+    seedMail(repository);
+    const proposed = await service.propose(USER_ID);
 
     const response = await request(httpApp())
       .post('/api/labels/confirm')
       .set('Origin', ORIGIN)
-      .send({
-        labels: REALISTIC_PROPOSALS.map((leafName) => ({ leafName, source: 'AI_PROPOSED' })),
-      });
+      .send({ planId: proposed.plan!.id });
 
     expect(response.status).toBe(200);
-    expect(repository.labels).toHaveLength(REALISTIC_PROPOSALS.length);
-    expect(repository.labels.every((label) => label.gmail_label_id !== null)).toBe(true);
+    expect(repository.labels).toHaveLength(3);
+    expect(repository.labels.at(-1)?.gmail_label_id).toEqual(expect.stringMatching(/^Label_/));
   });
 
-  it('reports the failing label name when a name is rejected', async () => {
+  it('accepts manual labels and reports the failing name when one is rejected', async () => {
     const { repository } = build();
-    repository.seedProposals(REALISTIC_PROPOSALS);
 
-    const response = await request(httpApp())
+    const created = await request(httpApp())
+      .post('/api/labels/confirm')
+      .set('Origin', ORIGIN)
+      .send({ labels: [{ leafName: 'Money in', source: 'USER_CREATED' }] });
+    expect(created.status).toBe(200);
+    expect(repository.labels).toHaveLength(1);
+
+    const rejected = await request(httpApp())
       .post('/api/labels/confirm')
       .set('Origin', ORIGIN)
       .send({ labels: [{ leafName: 'Notifications', source: 'AI_PROPOSED' }] });
 
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error.code).toBe('LABEL_NAME_INVALID');
+    expect(rejected.body.error.message).toContain('Notifications');
+    expect(repository.labels).toHaveLength(1);
+  });
+
+  it('rejects a payload that is neither a plan approval nor a label list', async () => {
+    build();
+
+    const response = await request(httpApp())
+      .post('/api/labels/confirm')
+      .set('Origin', ORIGIN)
+      .send({ planId: 'not-a-uuid' });
+
     expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('LABEL_NAME_INVALID');
-    expect(response.body.error.message).toContain('Notifications');
-    expect(repository.labels).toHaveLength(0);
+    expect(response.body.error.code).toBe('LABEL_VALIDATION_FAILED');
   });
 });

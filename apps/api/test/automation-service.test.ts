@@ -263,16 +263,59 @@ describe('AutomationService', () => {
     );
   });
 
-  it('still sends learned-pattern mail through Gemini and checkpoints rate-limit recovery', async () => {
+  it('files mail a routing rule covers without calling Gemini at all', async () => {
     mocks.patternFindMany.mockResolvedValue([
       {
         id: 'pattern-1',
-        sender_domain: 'example.com',
+        rule_kind: 'SENDER_DOMAIN',
+        match_value: 'example.com',
+        rule_source: 'PLANNER',
+        user_label_id: 'label-1',
         label_name: 'Invoices',
-        confidence: 0.95,
+        confidence: 1,
         label_path: 'MailMind/Invoices',
       },
     ]);
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        id: 'message-row-1',
+        gmail_message_id: 'gmail-message-1',
+        subject: 'Project update',
+        sender_email: 'person@example.com',
+        snippet: 'Status',
+        internal_date: new Date(),
+        is_unread: true,
+        is_important: false,
+        has_attachments: false,
+      },
+    ]);
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    expect(mocks.classifier).not.toHaveBeenCalled();
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          label_name: 'Invoices',
+          source: 'LEARNED_PATTERN',
+          reason_codes: ['ROUTING_RULE', 'SENDER_DOMAIN'],
+        }),
+      }),
+    );
+    expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          provider_call_count: 0,
+          pattern_reused_count: 1,
+          messages_labeled_count: 1,
+          input_tokens: 0,
+        }),
+      }),
+    );
+  });
+
+  it('sends mail no rule covers to Gemini and checkpoints rate-limit recovery', async () => {
     mocks.messageFindMany.mockResolvedValue([
       {
         id: 'message-row-1',
@@ -306,9 +349,6 @@ describe('AutomationService', () => {
     });
 
     expect(mocks.classifier).toHaveBeenCalledTimes(1);
-    expect(mocks.classifier.mock.calls[0]?.[0]?.[0]).toMatchObject({
-      learnedPattern: { labelName: 'Invoices', confidence: 0.95 },
-    });
     expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

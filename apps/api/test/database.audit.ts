@@ -11,8 +11,6 @@ const applicationTables = [
   'automation_settings',
   'automation_states',
   'connected_google_accounts',
-  'dynamic_label_candidate_messages',
-  'dynamic_label_candidates',
   'gmail_labels',
   'gmail_message_metadata',
   'gmail_sync_runs',
@@ -20,6 +18,9 @@ const applicationTables = [
   'learned_classification_patterns',
   'oauth_states',
   'sessions',
+  'taxonomy_plan_node_rules',
+  'taxonomy_plan_nodes',
+  'taxonomy_plans',
   'user_labels',
   'users',
 ];
@@ -44,12 +45,6 @@ const requiredIndexes = [
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
-  'dynamic_label_candidate_messages_gmail_message_id_idx',
-  'dynamic_label_candidates_account_hash_unique_idx',
-  'dynamic_label_candidates_account_name_idx',
-  'dynamic_label_candidates_account_status_idx',
-  'dynamic_label_candidates_active_path_unique_idx',
-  'dynamic_label_candidates_merged_into_candidate_id_idx',
   'gmail_labels_account_label_unique_idx',
   'gmail_labels_account_managed_idx',
   'gmail_labels_account_name_unique_idx',
@@ -66,7 +61,8 @@ const requiredIndexes = [
   'gmail_sync_states_lease_expiry_idx',
   'gmail_sync_states_next_retry_idx',
   'gmail_sync_states_status_idx',
-  'learned_patterns_account_sender_unique_idx',
+  'learned_patterns_account_label_idx',
+  'learned_patterns_account_rule_unique_idx',
   'learned_patterns_reuse_idx',
   'oauth_states_expiry_idx',
   'oauth_states_initiating_session_idx',
@@ -78,9 +74,18 @@ const requiredIndexes = [
   'sessions_revoked_at_idx',
   'sessions_token_hash_unique_idx',
   'sessions_user_id_idx',
+  'taxonomy_plan_node_rules_node_idx',
+  'taxonomy_plan_node_rules_unique_idx',
+  'taxonomy_plan_nodes_parent_idx',
+  'taxonomy_plan_nodes_path_unique_idx',
+  'taxonomy_plan_nodes_plan_idx',
+  'taxonomy_plans_account_pending_unique_idx',
+  'taxonomy_plans_account_status_idx',
   'user_labels_account_created_idx',
+  'user_labels_account_depth_idx',
   'user_labels_account_normalized_unique_idx',
   'user_labels_account_path_unique_idx',
+  'user_labels_parent_idx',
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
   'users_status_idx',
@@ -103,13 +108,13 @@ try {
         'automation_settings', 'automation_states', 'automation_runs',
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-        'dynamic_label_candidates', 'dynamic_label_candidate_messages', 'user_labels'
+        'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels'
       )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all seventeen application tables must exist',
+    'all eighteen application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -141,7 +146,7 @@ try {
       'automation_settings', 'automation_states', 'automation_runs',
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-      'dynamic_label_candidates', 'dynamic_label_candidate_messages', 'user_labels'
+      'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -176,12 +181,6 @@ try {
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
-        'dynamic_label_candidate_messages_gmail_message_id_idx',
-        'dynamic_label_candidates_account_hash_unique_idx',
-        'dynamic_label_candidates_account_name_idx',
-        'dynamic_label_candidates_account_status_idx',
-        'dynamic_label_candidates_active_path_unique_idx',
-        'dynamic_label_candidates_merged_into_candidate_id_idx',
         'gmail_labels_account_label_unique_idx',
         'gmail_labels_account_managed_idx',
         'gmail_labels_account_name_unique_idx',
@@ -198,7 +197,8 @@ try {
         'gmail_sync_states_lease_expiry_idx',
         'gmail_sync_states_next_retry_idx',
         'gmail_sync_states_status_idx',
-        'learned_patterns_account_sender_unique_idx',
+        'learned_patterns_account_label_idx',
+  'learned_patterns_account_rule_unique_idx',
         'learned_patterns_reuse_idx',
         'oauth_states_expiry_idx',
         'oauth_states_initiating_session_idx',
@@ -210,9 +210,18 @@ try {
         'sessions_revoked_at_idx',
         'sessions_token_hash_unique_idx',
         'sessions_user_id_idx',
+        'taxonomy_plan_node_rules_node_idx',
+        'taxonomy_plan_node_rules_unique_idx',
+        'taxonomy_plan_nodes_parent_idx',
+        'taxonomy_plan_nodes_path_unique_idx',
+        'taxonomy_plan_nodes_plan_idx',
+        'taxonomy_plans_account_pending_unique_idx',
+        'taxonomy_plans_account_status_idx',
         'user_labels_account_created_idx',
+        'user_labels_account_depth_idx',
         'user_labels_account_normalized_unique_idx',
         'user_labels_account_path_unique_idx',
+        'user_labels_parent_idx',
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
         'users_status_idx'
@@ -238,8 +247,7 @@ try {
         ,'public.automation_states'::regclass
         ,'public.automation_message_actions'::regclass
         ,'public.learned_classification_patterns'::regclass
-        ,'public.dynamic_label_candidates'::regclass
-        ,'public.dynamic_label_candidate_messages'::regclass
+        ,'public.taxonomy_plans'::regclass
         ,'public.user_labels'::regclass
       )
     order by tgname
@@ -252,14 +260,13 @@ try {
         'automation_settings_set_updated_at',
         'automation_states_set_updated_at',
         'connected_google_accounts_set_updated_at',
-        'dynamic_label_candidate_messages_account_guard',
-        'dynamic_label_candidates_merge_guard',
-        'dynamic_label_candidates_set_updated_at',
         'gmail_labels_set_updated_at',
         'gmail_message_metadata_set_updated_at',
         'gmail_sync_states_set_updated_at',
         'learned_patterns_set_updated_at',
+        'taxonomy_plans_set_updated_at',
         'user_labels_set_updated_at',
+        'user_labels_validate_tree',
         'users_set_updated_at',
       ]),
     'all updated_at triggers must exist',
@@ -283,7 +290,8 @@ try {
          and t.typname in (
            'audit_result', 'google_connection_status', 'oauth_purpose', 'user_status',
            'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
-           ,'dynamic_label_candidate_type', 'dynamic_label_candidate_status', 'user_label_source'
+           ,'taxonomy_plan_status', 'taxonomy_node_kind', 'user_label_source'
+           ,'routing_rule_kind', 'routing_rule_source'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
          )) as enum_count,
@@ -312,8 +320,8 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 14n, 'all fourteen enum types must exist');
-  assert(summary.foreign_key_count === 23n, 'all twenty-three foreign keys must exist');
+  assert(summary?.enum_count === 16n, 'all sixteen enum types must exist');
+  assert(summary.foreign_key_count === 25n, 'all twenty-five foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
     summary.migration_count === 11n,

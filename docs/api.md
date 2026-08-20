@@ -283,91 +283,154 @@ Returns `409 GMAIL_INITIAL_SYNC_REQUIRED` without an initial checkpoint or
 
 ## Labels
 
-All endpoints require a session; mutations require a trusted Origin. The approved label set is the
-only vocabulary automation may use, and nothing is created in Gmail until the user confirms.
+All endpoints require a session; mutations require a trusted Origin. The approved folder tree is the
+only vocabulary automation may use, and nothing is created in Gmail until the user confirms a plan.
 
 ### `GET /api/labels`
 
-Returns the approved set plus any pending proposals. Sends `Cache-Control: no-store`.
+Returns the approved folder tree plus the plan awaiting review, if any. Sends `Cache-Control:
+no-store`. Labels are flat with `parentId`/`depth`; `path` is the joined ancestor chain and
+`fullPath` prefixes it with `MailMind/`.
 
 ```json
 {
-  "maxLabels": 25,
+  "maxLabels": 40,
+  "maxDepth": 3,
   "labels": [
     {
       "id": "00000000-0000-4000-8000-000000000010",
-      "leafName": "Invoices",
-      "fullPath": "MailMind/Invoices",
+      "parentId": null,
+      "depth": 1,
+      "leafName": "Job hunt",
+      "fullPath": "MailMind/Job hunt",
+      "path": "Job hunt",
+      "isLeaf": false,
+      "rationale": "Job search mail arrives from many unrelated senders.",
       "source": "AI_PROPOSED",
-      "gmailLabelId": "Label_12",
-      "createdAt": "2026-07-31T09:00:00.000Z"
+      "gmailLabelId": null,
+      "createdAt": "2026-08-20T09:00:00.000Z"
     }
   ],
-  "proposals": [
-    {
-      "id": "00000000-0000-4000-8000-000000000011",
-      "leafName": "Flights",
-      "fullPath": "MailMind/Flights",
-      "confidence": 0.82,
-      "messageCount": 14,
-      "reasonCodes": ["SOURCE_VOLUME"]
-    }
-  ]
+  "plan": null
 }
 ```
 
+Only leaves carry a `gmailLabelId`: Gmail nesting is cosmetic, so `MailMind/Job hunt/Applications
+sent` is one Gmail label whose name contains slashes, and the intermediate rows exist only here.
+
 ### `POST /api/labels/propose`
 
-Runs the deterministic discovery engine over synchronized metadata and stores the result as pending
-proposals, then returns the same shape as `GET /api/labels`. Re-runnable: a new proposal round
-supersedes the previous pending set and never touches approved labels or Gmail.
+Samples up to `TAXONOMY_SAMPLE_SIZE` stored messages, spends one Gemini call to design the tree,
+validates the result, and stores it as the account's pending plan. **Creates nothing in Gmail.**
+Returns the same shape as `GET /api/labels`, with `plan` populated:
 
-Proposals plus existing approved labels are capped at `AUTOMATION_MAX_LABELS`. Errors:
+```json
+{
+  "plan": {
+    "id": "00000000-0000-4000-8000-000000000020",
+    "status": "PENDING",
+    "model": "gemini-flash-lite-latest",
+    "promptVersion": "mailmind-taxonomy-planner-v1",
+    "sampledMessageCount": 500,
+    "analyzedMessageCount": 596,
+    "leafCount": 18,
+    "warnings": [
+      "Dropped \"Job hunt/Offers\": it is a state folder with no subject pattern present in the sample."
+    ],
+    "createdAt": "2026-08-20T09:00:00.000Z",
+    "nodes": [
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "parentId": "00000000-0000-4000-8000-000000000020",
+        "depth": 2,
+        "kind": "TOPIC",
+        "name": "Applications sent",
+        "fullPath": "MailMind/Job hunt/Applications sent",
+        "path": "Job hunt/Applications sent",
+        "rationale": "Confirmations that an application reached a company.",
+        "estimatedMessageCount": 25,
+        "matchedMessageCount": 12,
+        "rolledUpMessageCount": 18,
+        "isLeaf": false,
+        "gmailLabelPath": null,
+        "rules": [{ "kind": "SENDER_DOMAIN", "value": "greenhouse.io", "matchedMessageCount": 6 }]
+      }
+    ]
+  }
+}
+```
 
-| Code                             | Status | Meaning                                                   |
-| -------------------------------- | ------ | --------------------------------------------------------- |
-| `GMAIL_ACCOUNT_NOT_CONNECTED`    | 409    | Gmail is not connected for this user.                     |
-| `LABEL_PROPOSAL_ALREADY_RUNNING` | 409    | A proposal or automation run holds the account lease.     |
-| `LABEL_PROPOSAL_NOT_ENOUGH_MAIL` | 422    | Too little synchronized mail to propose from.             |
-| `LABEL_LIMIT_REACHED`            | 409    | The account already holds `AUTOMATION_MAX_LABELS` labels. |
+`estimatedMessageCount` is the planner's estimate for the whole mailbox; `matchedMessageCount` is
+what this node's own rules actually matched in the sample, and `rolledUpMessageCount` includes its
+subtree. `warnings` lists every node and rule the validator rejected, so the review shows what the
+model asked for and did not get.
+
+A new proposal supersedes the previous pending plan and never touches approved folders or Gmail.
+
+| Code                             | Status | Meaning                                               |
+| -------------------------------- | ------ | ----------------------------------------------------- |
+| `GMAIL_ACCOUNT_NOT_CONNECTED`    | 409    | Gmail is not connected for this user.                 |
+| `LABEL_PROPOSAL_ALREADY_RUNNING` | 409    | A proposal or automation run holds the account lease. |
+| `LABEL_PROPOSAL_NOT_ENOUGH_MAIL` | 422    | Too little synchronized mail to plan from.            |
+| `LABEL_PLAN_EMPTY`               | 422    | No proposed folder survived validation.               |
+| `PROVIDER_INVALID_RESPONSE`      | 502    | The model returned an unusable taxonomy.              |
 
 ### `POST /api/labels/confirm`
 
-Body:
+Either approves a proposed tree:
+
+```json
+{ "planId": "00000000-0000-4000-8000-000000000020" }
+```
+
+Omit `nodeIds` to approve the whole tree, or pass a subset - selecting a node implicitly selects the
+ancestors it needs. Approval writes each node to `user_labels`, creates **only the leaves** in Gmail
+at their full path, and installs the plan's routing rules into `learned_classification_patterns` so
+automation can file matching mail with no model call.
+
+Or creates folders by hand:
 
 ```json
 {
   "labels": [
-    { "leafName": "Invoices", "source": "AI_PROPOSED" },
-    { "leafName": "Flights", "source": "USER_CREATED" }
+    { "leafName": "Money in", "source": "USER_CREATED" },
+    {
+      "leafName": "Applications sent",
+      "parentId": "00000000-0000-4000-8000-000000000010",
+      "source": "USER_CREATED"
+    }
   ]
 }
 ```
 
-Each name is validated with the preserved normalization rules: 2–60 characters, no slashes or
+Each name is validated with the preserved normalization rules: 2-60 characters, no slashes or
 control characters, no reserved Gmail name, and nothing generic. Names too similar to each other or
-to an already approved label are rejected. Accepted labels are persisted, then created in Gmail as
-`MailMind/<leafName>` and their Gmail label id is stored. Returns the same shape as `GET /api/labels`.
+to an already approved folder are rejected. Returns the same shape as `GET /api/labels`.
 
-| Code                      | Status | Meaning                                    |
-| ------------------------- | ------ | ------------------------------------------ |
-| `LABEL_VALIDATION_FAILED` | 400    | The request body shape is invalid.         |
-| `LABEL_NAME_INVALID`      | 400    | A name is generic, malformed, or reserved. |
-| `LABEL_SET_EMPTY`         | 400    | No labels were supplied.                   |
-| `LABEL_DUPLICATE`         | 409    | Two names are too similar to keep both.    |
+| Code                        | Status | Meaning                                               |
+| --------------------------- | ------ | ----------------------------------------------------- |
+| `LABEL_VALIDATION_FAILED`   | 400    | The request body matches neither accepted shape.      |
+| `LABEL_NAME_INVALID`        | 400    | A name is generic, malformed, reserved, or too deep.  |
+| `LABEL_SET_EMPTY`           | 400    | No labels were supplied.                              |
+| `LABEL_DUPLICATE`           | 409    | Two names are too similar to keep both.               |
+| `LABEL_LIMIT_REACHED`       | 409    | Approval would exceed `AUTOMATION_MAX_LABELS` leaves. |
+| `LABEL_PLAN_NOT_FOUND`      | 404    | No such plan for this account.                        |
+| `LABEL_PLAN_NOT_PENDING`    | 409    | That plan was already reviewed.                       |
+| `LABEL_PLAN_NODE_NOT_FOUND` | 404    | A selected node is not part of that plan.             |
 
 ### `PATCH /api/labels/:id`
 
-Body `{ "leafName": "Bills" }`. Renames the label in MailMind and, when it already exists in Gmail,
-renames the Gmail label too. Rejects a name that collides with another approved label (409).
+Body `{ "leafName": "Job search" }`. Renames the folder in MailMind and rewrites the path of every
+folder beneath it. Because a Gmail label's name is its whole path, every descendant that exists in
+Gmail is renamed too. Rejects a name that collides with another approved folder (409).
 
 ### `DELETE /api/labels/:id`
 
-Removes MailMind's record so automation stops using the label. The Gmail label and every message
-already filed under it are left untouched.
+Removes MailMind's record so automation stops using the folder, along with its descendants. The
+Gmail labels and every message already filed under them are left untouched.
 
 ```json
-{ "success": true, "gmailLabelRetained": true }
+{ "success": true, "gmailLabelRetained": true, "removedDescendants": 2 }
 ```
 
 ## Daily automation
@@ -388,7 +451,9 @@ send `Cache-Control: no-store`.
   label, and teaches the sender pattern.
 - `POST /api/automation/review/:id/skip` resolves the item without modifying Gmail.
 
-A run files each message into exactly one approved label. A message that fits none of them is
+A run applies routing rules first: every message a rule matches is filed with no model call, and
+only the remainder is batched to Gemini. A run files each message into exactly one approved folder.
+A message that fits none of them is
 recorded as a skipped action and left in the inbox — automation never invents a label. When
 unprocessed synchronized mail predates automation, runs drain that backlog oldest-first across as
 many runs as the daily budget requires.

@@ -132,27 +132,36 @@ The label set is the contract between the user and automation.
 
 ```mermaid
 flowchart TD
-    Sync[Synchronized metadata] --> Propose[POST /api/labels/propose]
-    Propose --> Engine[Deterministic discovery engine]
-    Engine --> Validate[Normalize, reject generic, drop near-duplicates]
-    Validate --> Pending[(Pending proposals)]
-    Pending --> Edit[User renames, deletes, adds custom labels]
-    Edit --> Confirm[POST /api/labels/confirm]
-    Confirm --> Store[(user_labels)]
-    Store --> Gmail[ensureLabel MailMind/leaf]
+    Sync[Synchronized metadata] --> Sample[Stratified sample, up to 500 messages]
+    Sample --> Planner[One Gemini call: taxonomy planner]
+    Planner --> Validate[Enforce depth 3, 40 leaves, naming, subject evidence]
+    Validate --> Plan[(taxonomy_plans + nodes + rules)]
+    Plan --> Review[User reviews the tree with counts]
+    Review --> Confirm[POST /api/labels/confirm]
+    Confirm --> Store[(user_labels tree)]
+    Confirm --> Rules[(learned_classification_patterns)]
+    Store --> Gmail[ensureLabel for leaves only]
 ```
 
-Proposals are bounded by `AUTOMATION_MAX_LABELS` and take the account's automation lease, so a
-proposal never overlaps an automation run. Nothing reaches Gmail until confirmation. Deleting a
-label removes only MailMind's record — the Gmail label and the mail already under it stay.
+One planning call designs a three-level tree of folders Gmail search cannot already produce: a
+folder per sender is worthless next to `from:`, while an activity spanning many senders is not.
+Model output is untrusted, so depth, the leaf ceiling, the minimum mail per folder, naming, and the
+requirement that a state folder cite a subject pattern present in the sample are enforced in code
+after parsing. Whatever fails is dropped and reported alongside the tree.
+
+Plans are bounded by `AUTOMATION_MAX_LABELS` leaves and take the account's automation lease, so a
+proposal never overlaps an automation run. Nothing reaches Gmail until confirmation, and then only
+leaf paths. Deleting a folder removes only MailMind's record — the Gmail label and the mail
+already under it stay.
 
 ## Daily automation
 
 The scheduler and manual endpoint share one resumable service. Account leases prevent overlap;
-scheduled account/date keys and unique message actions provide idempotency. Learned sender-domain
-patterns are reused only after repeated, consistent successful applications. Remaining messages
-use Gemini in bounded batches. Confident outcomes create or reuse `MailMind/<Category>` and call
-Gmail `messages.modify`; uncertain outcomes enter a review queue.
+scheduled account/date keys and unique message actions provide idempotency. Routing rules run
+first and cost nothing: rules installed by an approved plan are authoritative, while rules learned
+from applied mail are reused only after repeated, consistent successful applications. Only messages
+no rule matches use Gemini, in bounded batches. Confident outcomes reuse an approved leaf path and
+call Gmail `messages.modify`; uncertain outcomes enter a review queue.
 
 Run records store counters, tokens, cached input, estimated micro-USD cost, stop reason, and safe
 error codes. Message actions store the chosen label name, evidence, and retry state. A message that
@@ -170,7 +179,7 @@ The main relational groups are:
 | Identity and security | `users`, `sessions`, `oauth_states`, `audit_logs`                                                                              |
 | Google connection     | `connected_google_accounts`                                                                                                    |
 | Gmail projection      | `gmail_labels`, `gmail_message_metadata`, `gmail_sync_states`, `gmail_sync_runs`                                               |
-| Labels                | `user_labels`, `dynamic_label_candidates`, `dynamic_label_candidate_messages`                                                  |
+| Labels                | `user_labels`, `taxonomy_plans`, `taxonomy_plan_nodes`, `taxonomy_plan_node_rules`                                             |
 | Daily automation      | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns` |
 
 State tables contain one account-scoped lease/checkpoint row. Run tables retain bounded operational

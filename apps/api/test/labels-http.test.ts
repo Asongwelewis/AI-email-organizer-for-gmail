@@ -72,7 +72,7 @@ describe('labels HTTP routes', () => {
 
   it('requires a session for every label route', async () => {
     mocks.authenticate.mockRejectedValue(
-      new AppError('AUTH_REQUIRED', 'Authentication is required.', 401),
+      new AppError('AUTHENTICATION_REQUIRED', 'Authentication is required.', 401),
     );
     const response = await request(app).get('/api/labels');
     expect(response.status).toBe(401);
