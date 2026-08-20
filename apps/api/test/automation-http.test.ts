@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   status: vi.fn(),
   run: vi.fn(),
+  start: vi.fn(),
   reviewQueue: vi.fn(),
   approve: vi.fn(),
   skip: vi.fn(),
@@ -43,7 +44,13 @@ describe('automation HTTP routes', () => {
     });
     mocks.status.mockResolvedValue({ gmailConnected: true, enabled: true, running: false });
     mocks.reviewQueue.mockResolvedValue({ items: [] });
-    mocks.run.mockResolvedValue({ success: true, runId: actionId, status: 'COMPLETED' });
+    mocks.start.mockResolvedValue({
+      runId: actionId,
+      state: 'RUNNING',
+      kind: 'AUTOMATION_FILING',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: false,
+    });
     mocks.approve.mockResolvedValue({ success: true });
     mocks.skip.mockResolvedValue({ success: true });
   });
@@ -76,9 +83,19 @@ describe('automation HTTP routes', () => {
     expect(mocks.approve).toHaveBeenCalledWith('user-id', actionId, 'Invoices');
   });
 
+  // Filing outlives a browser request, so the endpoint accepts and hands back a run id to poll.
+  it('accepts a filing run with 202 and a run id to poll', async () => {
+    const response = await request(app)
+      .post('/api/automation/run')
+      .set('Origin', 'http://localhost:5173');
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({ runId: actionId, state: 'RUNNING' });
+  });
+
+  // Preconditions the caller can act on still answer synchronously rather than in a run record.
   it('refuses to run before any label is approved', async () => {
     const { AppError } = await import('../src/errors/AppError.js');
-    mocks.run.mockRejectedValueOnce(
+    mocks.start.mockRejectedValueOnce(
       new AppError('AUTOMATION_NO_APPROVED_LABELS', 'Confirm labels first.', 409),
     );
     const response = await request(app)

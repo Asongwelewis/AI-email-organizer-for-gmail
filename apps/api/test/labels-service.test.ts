@@ -63,14 +63,31 @@ function label(
 
 const planner: TaxonomyPlanner = { plan: vi.fn() };
 
+/** The activity record is exercised in its own suite; here it only has to not touch a database. */
+function activityStub() {
+  return {
+    start: vi.fn().mockResolvedValue({
+      runId: '00000000-0000-4000-8000-0000000000ff',
+      state: 'RUNNING',
+      kind: 'LABEL_PROPOSAL',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: false,
+    }),
+    finishRun: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function service(gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() }) {
+  const activity = activityStub();
   return {
     instance: new LabelsService(
       mocks as unknown as LabelsRepository,
       gmail as unknown as ConstructorParameters<typeof LabelsService>[1],
       planner,
+      activity as unknown as ConstructorParameters<typeof LabelsService>[3],
     ),
     gmail,
+    activity,
   };
 }
 

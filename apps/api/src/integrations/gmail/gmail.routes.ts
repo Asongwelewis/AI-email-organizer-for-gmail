@@ -1,6 +1,10 @@
 import { Router } from 'express';
 
-import { gmailSyncLimiter, authGeneralLimiter } from '@api/middleware/rateLimiters.js';
+import {
+  activityPollLimiter,
+  gmailSyncLimiter,
+  authGeneralLimiter,
+} from '@api/middleware/rateLimiters.js';
 import { requireTrustedOrigin } from '@api/middleware/trustedOrigin.js';
 import { requireSession } from '@api/sessions/session.middleware.js';
 import { asyncHandler } from '@api/utils/asyncHandler.js';
@@ -19,9 +23,10 @@ gmailRouter.get(
   authGeneralLimiter,
   asyncHandler((req, res) => gmailController.labels(req, res)),
 );
+// Polled every couple of seconds while a backfill runs, unlike the other read routes.
 gmailRouter.get(
   '/sync/status',
-  authGeneralLimiter,
+  activityPollLimiter,
   asyncHandler((req, res) => gmailController.status(req, res)),
 );
 gmailRouter.post(

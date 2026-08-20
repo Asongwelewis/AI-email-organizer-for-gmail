@@ -5,4 +5,6 @@ export const queryKeys = {
   labels: ['labels'] as const,
   automationStatus: ['automation', 'status'] as const,
   automationReview: ['automation', 'review'] as const,
+  activityRuns: ['activity', 'runs'] as const,
+  activityRun: (runId: string) => ['activity', 'runs', runId] as const,
 };

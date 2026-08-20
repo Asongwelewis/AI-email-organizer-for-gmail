@@ -23,11 +23,16 @@ const mocks = vi.hoisted(() => {
     messageUpdate: vi.fn(),
     userLabelFindMany: vi.fn(),
     userLabelFindFirst: vi.fn(),
+    userLabelCount: vi.fn(),
     patternFindMany: vi.fn(),
     patternFindUnique: vi.fn(),
     patternUpsert: vi.fn(),
     patternUpdateMany: vi.fn(),
     classifier: vi.fn(),
+    activityStart: vi.fn(),
+    activityRunDetached: vi.fn(),
+    activityRunToCompletion: vi.fn(),
+    activityFinishRun: vi.fn(),
     transactionStateUpdate,
     transactionRunUpdate,
     transaction: vi.fn(async (callback: (transaction: unknown) => unknown) =>
@@ -42,6 +47,20 @@ const mocks = vi.hoisted(() => {
 vi.mock('../src/audit/audit.service.js', () => ({
   auditService: { record: mocks.auditRecord },
 }));
+vi.mock('../src/features/activity/activity.service.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../src/features/activity/activity.service.js')
+  >('../src/features/activity/activity.service.js');
+  return {
+    ...actual,
+    activityService: {
+      start: mocks.activityStart,
+      runDetached: mocks.activityRunDetached,
+      runToCompletion: mocks.activityRunToCompletion,
+      finishRun: mocks.activityFinishRun,
+    },
+  };
+});
 vi.mock('../src/integrations/gmail/gmail.service.js', () => ({
   gmailSyncService: {
     incrementalSync: mocks.incrementalSync,
@@ -79,6 +98,7 @@ vi.mock('../src/database/prisma.js', () => ({
     user_labels: {
       findMany: mocks.userLabelFindMany,
       findFirst: mocks.userLabelFindFirst,
+      count: mocks.userLabelCount,
     },
     learned_classification_patterns: {
       findMany: mocks.patternFindMany,
@@ -153,6 +173,7 @@ describe('AutomationService', () => {
     mocks.messageUpdate.mockResolvedValue({});
     mocks.messageCount.mockResolvedValue(1);
     mocks.userLabelFindMany.mockResolvedValue([approvedLabel]);
+    mocks.userLabelCount.mockResolvedValue(1);
     mocks.messageFindMany.mockResolvedValue([
       {
         id: 'message-row-1',
@@ -370,5 +391,54 @@ describe('AutomationService', () => {
         }),
       }),
     );
+  });
+
+  // 202 means accepted, not finished: the work is detached and the caller polls the run id.
+  it('accepts a filing run without waiting for it and hands back a run id', async () => {
+    mocks.userLabelFindMany.mockResolvedValue([approvedLabel]);
+    mocks.activityStart.mockResolvedValue({
+      runId: 'activity-run-1',
+      state: 'RUNNING',
+      kind: 'AUTOMATION_FILING',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: false,
+    });
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.start('user-1')).resolves.toMatchObject({
+      runId: 'activity-run-1',
+      state: 'RUNNING',
+    });
+
+    expect(mocks.activityRunDetached).toHaveBeenCalledWith('activity-run-1', expect.any(Function));
+    // Nothing classified inside the request itself.
+    expect(mocks.classifier).not.toHaveBeenCalled();
+  });
+
+  // A precondition the caller can act on still answers synchronously, not through a run record.
+  it('refuses to accept a run when no label is approved', async () => {
+    mocks.userLabelFindMany.mockResolvedValue([]);
+    mocks.userLabelCount.mockResolvedValue(0);
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.start('user-1')).rejects.toMatchObject({
+      code: 'AUTOMATION_NO_APPROVED_LABELS',
+      statusCode: 409,
+    });
+    expect(mocks.activityStart).not.toHaveBeenCalled();
+  });
+
+  it('does not start a second filing run while one is in flight', async () => {
+    mocks.activityStart.mockResolvedValue({
+      runId: 'activity-run-1',
+      state: 'RUNNING',
+      kind: 'AUTOMATION_FILING',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: true,
+    });
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.start('user-1')).resolves.toMatchObject({ alreadyRunning: true });
+    expect(mocks.activityRunDetached).not.toHaveBeenCalled();
   });
 });

@@ -138,6 +138,31 @@ deactivated rather than flip-flopping.
 Proposals take the account's automation lease, so a proposal and an automation run can never
 overlap for the same account.
 
+### Long-running work
+
+`POST /api/gmail/sync/initial` and `POST /api/automation/run` return `202` with a run id. A full
+backfill walks every page of the mailbox and a filing run classifies up to
+`AUTOMATION_MAX_MESSAGES_PER_RUN` messages at `GEMINI_MIN_REQUEST_INTERVAL_MS` apiece — roughly
+twenty minutes of wall clock at the free tier's pacing. No browser holds that, and a timeout used
+to read as failure while the work quietly succeeded.
+
+`activity_runs` is one record per operation across sync, proposal, and filing: kind, state,
+progress counts, stop reason, error code, error message, and timestamps. Durability never depended
+on the request — leases and checkpoints already meant a dropped connection lost no work — so the
+record exists to say _why_ something ended.
+
+- A partial unique index keeps one `RUNNING` run per account per kind, so a double-clicked button
+  joins the run in flight rather than racing it.
+- `expires_at` is the run's heartbeat, pushed out every time work reports progress. A run whose
+  process died is reclaimed by the next start and marked `FAILED` with `RUN_ABANDONED`.
+- `STOPPED` is a first-class ending, not an error: the run did what it could and quit for a reason.
+- Sentry still owns exceptions. The run record owns the endings that are not exceptions.
+- Failures are written from `AppError` messages, which are already user-facing; anything else is
+  recorded as `INTERNAL_SERVER_ERROR` with a generic message, exactly like a 500 response.
+
+Status and activity routes use `activityPollLimiter`, sized per second rather than per window,
+because a client polls them every two seconds for as long as a run lasts.
+
 ### Daily automation
 
 Stage 5 configuration is documented in [Stage 5 daily automation](stage-5-daily-automation.md).
@@ -192,6 +217,7 @@ tokens, session tokens, passwords, database URLs, and the token-encryption key.
 | Authentication        | `src/auth`, `src/sessions`               | Google login, opaque sessions, cookie lifecycle        |
 | Google connection     | `src/integrations/google`                | Separate Gmail consent, encrypted tokens, revocation   |
 | Gmail sync            | `src/integrations/gmail`                 | Labels, initial sync, history-based incremental sync   |
+| Activity              | `src/features/activity`                  | Run records for long work, progress, and stop reasons  |
 | Labels                | `src/features/labels`                    | Plan proposal, approval, rename, delete of the tree    |
 | Taxonomy planner      | `src/features/label-discovery`           | Engine-only: planning, normalization, routing rules    |
 | Gemini transport      | `src/integrations/gemini`                | Shared paced/retried JSON calls and cost accounting    |
@@ -221,6 +247,7 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Ordered migrations are sto
 11. `20260731090000_stage2_user_labels`
 12. `20260809120000_gemini_automation_provider`
 13. `20260820120000_semantic_taxonomy_tree`
+14. `20260820150000_activity_runs`
 
 The schema groups data into identity/session/audit records, connected Google credentials, Gmail
 metadata and sync state, the approved `user_labels` tree, proposed taxonomy plans, and automation

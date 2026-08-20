@@ -14,6 +14,7 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.activity_runs.deleteMany();
   await prisma.user_labels.deleteMany();
   await prisma.automation_message_actions.deleteMany();
   await prisma.learned_classification_patterns.deleteMany();
@@ -667,6 +668,66 @@ databaseTests('PostgreSQL authentication repositories', () => {
 
     await prisma.connected_google_accounts.delete({ where: { id: account.id } });
     expect(await prisma.user_labels.count()).toBe(0);
+  });
+
+  it('keeps one live run per account and kind, and records why a run ended', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'activity@example.com',
+        normalized_email: 'activity@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: { user_id: user.id, google_subject: 'activity-account', email: 'activity@gmail.com' },
+    });
+    const running = {
+      connected_google_account_id: account.id,
+      kind: 'AUTOMATION_FILING' as const,
+      expires_at: new Date(Date.now() + 300_000),
+    };
+    const first = await prisma.activity_runs.create({ data: running });
+
+    // A second live run of the same kind would race the first over the same lease.
+    await expect(prisma.activity_runs.create({ data: running })).rejects.toThrow();
+    // A different kind may run alongside it.
+    await prisma.activity_runs.create({
+      data: { ...running, kind: 'GMAIL_INITIAL_SYNC' },
+    });
+
+    // RUNNING and a finish timestamp cannot both be true.
+    await expect(
+      prisma.activity_runs.update({
+        where: { id: first.id },
+        data: { finished_at: new Date() },
+      }),
+    ).rejects.toThrow();
+    // A failure without a code would be exactly the blind spot this table exists to remove.
+    await expect(
+      prisma.activity_runs.update({
+        where: { id: first.id },
+        data: { state: 'FAILED', finished_at: new Date() },
+      }),
+    ).rejects.toThrow();
+
+    const stopped = await prisma.activity_runs.update({
+      where: { id: first.id },
+      data: {
+        state: 'STOPPED',
+        finished_at: new Date(),
+        stop_reason: 'DAILY_BUDGET_REACHED',
+        error_message: 'This run stopped at the daily Gemini budget.',
+        processed_count: 120,
+        total_count: 250,
+        counts: { messagesLabeled: 118, failed: 2 },
+      },
+    });
+    expect(stopped.stop_reason).toBe('DAILY_BUDGET_REACHED');
+    // The slot is free again once the run ends.
+    await prisma.activity_runs.create({ data: running });
+
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.activity_runs.count()).toBe(0);
   });
 
   it('enforces one durable automation action per message and persists bounded usage', async () => {

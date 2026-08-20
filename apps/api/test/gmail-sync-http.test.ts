@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   status: vi.fn(),
   initialSync: vi.fn(),
+  startInitialSync: vi.fn(),
   incrementalSync: vi.fn(),
   initializeLabels: vi.fn(),
   profile: vi.fn(),
@@ -62,7 +63,13 @@ describe('Gmail synchronization HTTP routes', () => {
         checkpointHistoryId: 'history-id',
       },
     });
-    mocks.initialSync.mockResolvedValue({ success: true, messagesUpserted: 12 });
+    mocks.startInitialSync.mockResolvedValue({
+      runId: '00000000-0000-4000-8000-0000000000aa',
+      state: 'RUNNING',
+      kind: 'GMAIL_INITIAL_SYNC',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: false,
+    });
   });
 
   it('returns a secret-free sync status', async () => {
@@ -87,15 +94,21 @@ describe('Gmail synchronization HTTP routes', () => {
       .set('Cookie', 'mailmind_session=valid');
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('CSRF_ORIGIN_INVALID');
-    expect(mocks.initialSync).not.toHaveBeenCalled();
+    expect(mocks.startInitialSync).not.toHaveBeenCalled();
   });
 
-  it('starts an initial sync for the authenticated user', async () => {
+  // A full backfill outlives any browser request, so the endpoint accepts and hands back a run id.
+  it('accepts an initial sync with 202 and a run id to poll', async () => {
     const response = await request(testApp)
       .post('/api/gmail/sync/initial')
       .set('Origin', 'http://localhost:5173')
       .set('Cookie', 'mailmind_session=valid');
-    expect(response.status).toBe(200);
-    expect(mocks.initialSync).toHaveBeenCalledWith('user-id');
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      runId: '00000000-0000-4000-8000-0000000000aa',
+      state: 'RUNNING',
+      alreadyRunning: false,
+    });
+    expect(mocks.startInitialSync).toHaveBeenCalledWith('user-id');
   });
 });

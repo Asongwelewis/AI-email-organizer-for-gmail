@@ -5,6 +5,11 @@ import { env } from '@api/config/env.js';
 import { logger } from '@api/config/logger.js';
 import { AppError } from '@api/errors/AppError.js';
 import {
+  activityService,
+  describeFailure,
+  type ActivityService,
+} from '@api/features/activity/activity.service.js';
+import {
   automationGmailService,
   type AutomationGmailService,
 } from '@api/features/automation/automation-gmail.service.js';
@@ -54,6 +59,7 @@ export class LabelsService {
     private readonly repository: LabelsRepository = labelsRepository,
     private readonly gmail: AutomationGmailService = automationGmailService,
     private readonly planner: TaxonomyPlanner = geminiTaxonomyPlanner,
+    private readonly activity: ActivityService = activityService,
   ) {}
 
   /** Normalizes and validates a leaf name, rejecting generic and malformed values. */
@@ -88,6 +94,9 @@ export class LabelsService {
   async propose(userId: string) {
     const account = await this.repository.activeAccountForUser(userId);
     const lease = await this.repository.acquireProposalLease(account.id);
+    // One planning call is short enough to answer inline, but its failures are exactly the ones
+    // that went unnoticed before, so it still leaves a run record behind either way.
+    const run = await this.activity.start({ accountId: account.id, kind: 'LABEL_PROPOSAL' });
     try {
       const [records, gmailLabelNames] = await Promise.all([
         this.repository.eligibleMessages(account.id),
@@ -130,7 +139,30 @@ export class LabelsService {
           sampled: plan.sampledMessageCount,
         },
       });
+      const leaves = plan.nodes.filter((node) => node.isLeaf).length;
+      await this.activity.finishRun(run.runId, {
+        state: 'SUCCEEDED',
+        processed: plan.sampledMessageCount,
+        total: plan.analyzedMessageCount,
+        counts: {
+          folders: plan.nodes.length,
+          leaves,
+          sampledMessages: plan.sampledMessageCount,
+          analyzedMessages: plan.analyzedMessageCount,
+          rejectedByValidator: plan.warnings.length,
+        },
+      });
       return this.list(userId);
+    } catch (error) {
+      // The defect this whole record exists for: propose used to answer 200 with an empty list and
+      // no trace of why. Now every ending is written down before the error surfaces.
+      const failure = describeFailure(error);
+      await this.activity.finishRun(run.runId, {
+        state: 'FAILED',
+        errorCode: failure.code,
+        errorMessage: failure.message,
+      });
+      throw error;
     } finally {
       await this.repository.releaseProposalLease(lease);
     }

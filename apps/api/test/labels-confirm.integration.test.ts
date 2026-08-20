@@ -60,6 +60,26 @@ vi.mock('../src/features/labels/labels.repository.js', async () => {
 vi.mock('../src/features/automation/automation-gmail.service.js', () => ({
   automationGmailService: forwardTo(mocks.gmail),
 }));
+// The run record has its own suite; here it must only stay off the database.
+vi.mock('../src/features/activity/activity.service.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../src/features/activity/activity.service.js')
+  >('../src/features/activity/activity.service.js');
+  return {
+    ...actual,
+    activityService: {
+      start: () =>
+        Promise.resolve({
+          runId: '00000000-0000-4000-8000-0000000000ff',
+          state: 'RUNNING',
+          kind: 'LABEL_PROPOSAL',
+          startedAt: '2026-08-20T00:00:00.000Z',
+          alreadyRunning: false,
+        }),
+      finishRun: () => Promise.resolve(),
+    },
+  };
+});
 
 import type { user_label_source, user_labels } from '@prisma/client';
 

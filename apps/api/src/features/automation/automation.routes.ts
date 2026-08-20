@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import {
+  activityPollLimiter,
   classificationMutationLimiter,
   classificationReadLimiter,
 } from '@api/middleware/rateLimiters.js';
@@ -12,9 +13,10 @@ import { automationController } from './automation.controller.js';
 export const automationRouter = Router();
 
 automationRouter.use(requireSession);
+// Status is what a client polls while a run is in flight, so it gets the poll budget.
 automationRouter.get(
   '/status',
-  classificationReadLimiter,
+  activityPollLimiter,
   asyncHandler((request, response) => automationController.status(request, response)),
 );
 automationRouter.get(

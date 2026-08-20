@@ -261,19 +261,24 @@ Creates missing managed Gmail labels and synchronizes label metadata.
 
 ### `POST /api/gmail/sync/initial`
 
-Runs a configuration-bounded initial metadata sync.
+**Accepts** a full initial metadata sync and returns `202`. The backfill walks every page of the
+mailbox, which no browser will hold a request open for, so the client polls
+`GET /api/activity/runs/:id` from here.
 
 ```json
 {
-  "success": true,
-  "messagesExamined": 250,
-  "messagesUpserted": 250,
-  "messagesDeleted": 0,
-  "labelsUpserted": 14,
-  "checkpointHistoryId": "123456",
-  "messageCount": 250
+  "runId": "00000000-0000-4000-8000-000000000030",
+  "state": "RUNNING",
+  "kind": "GMAIL_INITIAL_SYNC",
+  "startedAt": "2026-08-20T02:00:00.000Z",
+  "alreadyRunning": false
 }
 ```
+
+`alreadyRunning: true` means this call joined a backfill already in flight instead of starting a
+second one. Progress arrives on the run record as `processedCount` / `totalCount`, and on
+`GET /api/gmail/sync/status` as the `backfill` block. The sync is resumable either way: leases and
+per-page checkpoints mean a dropped connection or a restarted server loses no work.
 
 ### `POST /api/gmail/sync/incremental`
 
@@ -441,9 +446,14 @@ send `Cache-Control: no-store`.
 - `GET /api/automation/status` returns Gmail connection/reauthorization state, scheduler state,
   last-run counters/errors, today’s token and cost usage, configured limits, pending review count,
   `approvedLabelCount`/`labelsReady`, and `backlogRemaining` for an in-progress backfill.
-- `POST /api/automation/run` performs a manual resumable run and returns `runId` plus
-  `COMPLETED`, `PARTIAL`, or `FAILED` status. Returns `409 AUTOMATION_NO_APPROVED_LABELS` when the
-  account has not confirmed any label yet.
+- `POST /api/automation/run` **accepts** a manual resumable run and returns `202` with
+  `{ runId, state: "RUNNING", kind, startedAt, alreadyRunning }`. The run syncs the mailbox and
+  then classifies in paced Gemini batches, so the client polls `GET /api/activity/runs/:id` rather
+  than holding the request open. `alreadyRunning: true` means this call joined a run already in
+  flight instead of starting a second one. Preconditions the caller can act on are still checked
+  before accepting: `409 AUTOMATION_NO_APPROVED_LABELS` when no label is confirmed,
+  `503 AUTOMATION_DISABLED` or `503 AUTOMATION_NOT_CONFIGURED` when the feature is off. Everything
+  else — a rate limit, the daily budget, a provider outage — ends up on the run record.
 - `GET /api/automation/review` returns uncertain results, each carrying the proposed `labelName`.
   It never includes OAuth or provider credentials.
 - `POST /api/automation/review/:id/approve` accepts `{ "labelName": "Invoices" }`, validated against
@@ -457,6 +467,63 @@ A message that fits none of them is
 recorded as a skipped action and left in the inbox — automation never invents a label. When
 unprocessed synchronized mail predates automation, runs drain that backlog oldest-first across as
 many runs as the daily budget requires.
+
+## Activity runs
+
+Work that outlives a request — a full mailbox backfill, a filing run — is started with `202` and a
+run id, then polled here. Both endpoints require a session and send `Cache-Control: no-store`.
+
+A run's `state` is one of:
+
+| State       | Meaning                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| `RUNNING`   | In flight. Poll again.                                                          |
+| `SUCCEEDED` | Finished everything it set out to do.                                           |
+| `STOPPED`   | Did real work and quit for a reason: `stopReason` and `errorMessage` say which. |
+| `FAILED`    | Ended on an error. `errorCode` and `errorMessage` are always set.               |
+
+`STOPPED` is not a failure. Hitting the daily Gemini budget or a provider rate limit ends a run
+that filed everything it could; the rest resumes on the next run from its checkpoints.
+
+### `GET /api/activity/runs`
+
+`?limit=` accepts 1-100 and defaults to 20. Newest first.
+
+```json
+{
+  "runs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000030",
+      "kind": "AUTOMATION_FILING",
+      "state": "STOPPED",
+      "trigger": "SCHEDULED",
+      "processedCount": 120,
+      "totalCount": 250,
+      "counts": { "messagesLabeled": 118, "reviewRequired": 6, "failed": 2 },
+      "stopReason": "DAILY_BUDGET_REACHED",
+      "errorCode": null,
+      "errorMessage": "This run stopped at the daily Gemini budget. Everything filed so far is saved and the rest continues on the next run.",
+      "featureRunId": "00000000-0000-4000-8000-000000000031",
+      "startedAt": "2026-08-20T02:00:00.000Z",
+      "finishedAt": "2026-08-20T02:04:00.000Z",
+      "durationMs": 240000
+    }
+  ]
+}
+```
+
+`kind` is one of `GMAIL_INITIAL_SYNC`, `GMAIL_INCREMENTAL_SYNC`, `GMAIL_LABEL_SYNC`,
+`LABEL_PROPOSAL`, `AUTOMATION_FILING`. `counts` carries that kind's own counters; `featureRunId`
+points at the feature's detailed record (`gmail_sync_runs` or `automation_runs`).
+
+### `GET /api/activity/runs/:id`
+
+The same object for one run, or `404 ACTIVITY_RUN_NOT_FOUND` when it belongs to another account.
+
+| Code                         | Status | Meaning                           |
+| ---------------------------- | ------ | --------------------------------- |
+| `ACTIVITY_VALIDATION_FAILED` | 400    | The limit or run id is not valid. |
+| `ACTIVITY_RUN_NOT_FOUND`     | 404    | No such run for this account.     |
 
 ## Privacy boundary
 

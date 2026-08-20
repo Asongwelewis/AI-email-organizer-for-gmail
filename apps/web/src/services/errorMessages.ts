@@ -28,6 +28,11 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   LABEL_PLAN_NODE_NOT_FOUND: 'One of the selected folders is not part of that proposal.',
   LABEL_PROPOSAL_ALREADY_RUNNING:
     'Another label or automation run is already active for this Gmail account.',
+  ACTIVITY_RUN_NOT_FOUND: 'That run was not found for this account.',
+  ACTIVITY_RUN_CONFLICT: 'That operation is already running.',
+  ACTIVITY_VALIDATION_FAILED: 'That activity request was not valid.',
+  RUN_ABANDONED:
+    'The server restarted while this run was in progress. No work was lost; run it again to continue.',
   CSRF_ORIGIN_INVALID: 'This request came from an origin MailMind does not trust.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please try again shortly.',
   INTERNAL_SERVER_ERROR: 'Something went wrong on our side. Please try again.',

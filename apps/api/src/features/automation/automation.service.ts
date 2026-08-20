@@ -6,6 +6,12 @@ import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
+import {
+  activityService,
+  type ProgressReporter,
+  type RunOutcome,
+  type StartedRun,
+} from '@api/features/activity/activity.service.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import {
   RULE_PRIORITY,
@@ -86,6 +92,17 @@ function hashMessage(message: gmail_message_metadata): string {
     .digest('hex');
 }
 
+/**
+ * The endings that are not exceptions. A run that hits one of these did real work and then quit
+ * for a reason the user needs to read, which is exactly what the old contract had nowhere to put.
+ */
+const STOP_REASON_MESSAGES: Record<string, string> = {
+  DAILY_BUDGET_REACHED:
+    'This run stopped at the daily Gemini budget. Everything filed so far is saved and the rest continues on the next run.',
+  PROVIDER_RATE_LIMITED:
+    'Gemini rate-limited this run. Everything filed so far is saved and the rest resumes on the next scheduled run.',
+};
+
 function nextDailyRun(hourUtc: number, from = new Date()): Date {
   const next = new Date(from);
   next.setUTCHours(hourUtc, 0, 0, 0);
@@ -124,13 +141,129 @@ export class AutomationService {
     private readonly gmail: AutomationGmailService = automationGmailService,
   ) {}
 
+  /**
+   * Accepts a filing run and answers immediately. A run syncs the mailbox and then classifies up
+   * to AUTOMATION_MAX_MESSAGES_PER_RUN messages at one Gemini request every few seconds, which is
+   * far longer than a browser will wait. Preconditions the caller can act on are still checked
+   * here, so a misconfigured account gets a 4xx instead of a run record it has to go read.
+   */
+  async start(userId: string): Promise<StartedRun> {
+    const account = await this.connectedAccount(userId);
+    await this.assertRunnable(account.id);
+    const started = await activityService.start({
+      accountId: account.id,
+      kind: 'AUTOMATION_FILING',
+      trigger: 'MANUAL',
+    });
+    if (!started.alreadyRunning) {
+      activityService.runDetached(started.runId, (report) =>
+        this.executeForActivity(account.id, userId, 'MANUAL', report),
+      );
+    }
+    return started;
+  }
+
+  /** The scheduler has no HTTP caller, so the run record is the only place a failure can surface. */
+  async runScheduledAccount(accountId: string, userId: string) {
+    const started = await activityService.start({
+      accountId,
+      kind: 'AUTOMATION_FILING',
+      trigger: 'SCHEDULED',
+    });
+    if (started.alreadyRunning) return { success: false, runId: null, status: 'RUNNING' as const };
+    await activityService.runToCompletion(started.runId, (report) =>
+      this.executeForActivity(accountId, userId, 'SCHEDULED', report),
+    );
+    return { success: true, runId: started.runId, status: 'ACCEPTED' as const };
+  }
+
+  /** Kept for callers that want to await a filing run directly, such as tests. */
   async run(userId: string) {
     const account = await this.connectedAccount(userId);
     return this.execute(account.id, userId, 'MANUAL');
   }
 
-  async runScheduledAccount(accountId: string, userId: string) {
-    return this.execute(accountId, userId, 'SCHEDULED');
+  /**
+   * Maps a filing run onto the activity record. A run that stops for a reason — the daily budget,
+   * a rate limit — is `STOPPED`, not a failure: it did what it could and the reason is readable.
+   */
+  private async executeForActivity(
+    accountId: string,
+    userId: string,
+    trigger: automation_trigger,
+    report: ProgressReporter,
+  ): Promise<RunOutcome> {
+    const result = await this.execute(accountId, userId, trigger, report);
+    const counts = result.counters;
+    const seen = counts['messagesSeen'] ?? 0;
+    const stopped = Boolean(result.stoppedReason) || result.status !== 'COMPLETED';
+    return {
+      state: stopped ? 'STOPPED' : 'SUCCEEDED',
+      stopReason: result.stoppedReason ?? (stopped ? result.status : null),
+      errorCode: result.lastErrorCode ?? null,
+      errorMessage: this.stopMessage(result.stoppedReason, result.lastErrorCode),
+      processed: seen,
+      total: seen,
+      counts,
+      featureRunId: result.runId,
+    };
+  }
+
+  private stopMessage(stoppedReason: string | null, errorCode: string | null): string | null {
+    if (stoppedReason) return STOP_REASON_MESSAGES[stoppedReason] ?? stoppedReason;
+    if (errorCode) {
+      return 'Part of this run did not finish. Nothing was lost; it resumes on the next run.';
+    }
+    return null;
+  }
+
+  /** The counters the activity view shows, and the progress a poll reads mid-run. */
+  private progressOf(counters: RunCounters): {
+    processed: number;
+    total: number;
+    counts: Record<string, number>;
+  } {
+    const processed =
+      counters.patternReused +
+      counters.aiClassified +
+      counters.noLabelSkipped +
+      counters.reviewRequired;
+    return {
+      processed: Math.min(processed, counters.messagesSeen),
+      total: counters.messagesSeen,
+      counts: {
+        messagesSeen: counters.messagesSeen,
+        patternReused: counters.patternReused,
+        aiClassified: counters.aiClassified,
+        messagesLabeled: counters.messagesLabeled,
+        reviewRequired: counters.reviewRequired,
+        noLabelSkipped: counters.noLabelSkipped,
+        failed: counters.failed,
+        backlogRemaining: counters.backfillRemaining,
+        providerCalls: counters.providerCalls,
+        estimatedCostMicrousd: counters.costMicrousd,
+      },
+    };
+  }
+
+  /** Preconditions worth a synchronous error rather than a run record nobody is watching. */
+  private async assertRunnable(accountId: string): Promise<void> {
+    if (!env.AUTOMATION_ENABLED) {
+      throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
+    }
+    if (!env.GEMINI_API_KEY) {
+      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
+    }
+    const approved = await prisma.user_labels.count({
+      where: { connected_google_account_id: accountId },
+    });
+    if (approved === 0) {
+      throw new AppError(
+        'AUTOMATION_NO_APPROVED_LABELS',
+        'Propose and confirm labels before automation can file mail.',
+        409,
+      );
+    }
   }
 
   async status(userId: string) {
@@ -341,7 +474,12 @@ export class AutomationService {
     });
   }
 
-  private async execute(accountId: string, userId: string, trigger: automation_trigger) {
+  private async execute(
+    accountId: string,
+    userId: string,
+    trigger: automation_trigger,
+    report?: ProgressReporter,
+  ) {
     if (!env.AUTOMATION_ENABLED) {
       throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
     }
@@ -424,7 +562,17 @@ export class AutomationService {
         const existing = await prisma.automation_runs.findUnique({
           where: { idempotency_key: idempotencyKey },
         });
-        if (existing) return { success: true, runId: existing.id, status: existing.status };
+        if (existing) {
+          // This scheduled slot already ran today; report that run rather than starting a second.
+          return {
+            success: existing.status === 'COMPLETED',
+            runId: existing.id,
+            status: existing.status,
+            stoppedReason: existing.stopped_reason,
+            lastErrorCode: existing.last_error_code,
+            counters: {} as Record<string, number>,
+          };
+        }
       }
       throw error;
     }
@@ -509,6 +657,7 @@ export class AutomationService {
           data: { last_used_at: new Date() },
         });
       }
+      await report?.(this.progressOf(counters));
 
       for (let index = 0; index < undecided.length; index += env.AUTOMATION_BATCH_SIZE) {
         const batch = undecided.slice(index, index + env.AUTOMATION_BATCH_SIZE);
@@ -592,6 +741,7 @@ export class AutomationService {
           );
           break;
         }
+        await report?.(this.progressOf(counters));
       }
 
       const status = counters.failed > 0 || counters.stoppedReason ? 'PARTIAL' : 'COMPLETED';
@@ -610,7 +760,14 @@ export class AutomationService {
           estimatedCostMicrousd: counters.costMicrousd,
         },
       });
-      return { success: status === 'COMPLETED', runId: run.id, status };
+      return {
+        success: status === 'COMPLETED',
+        runId: run.id,
+        status,
+        stoppedReason: counters.stoppedReason,
+        lastErrorCode: counters.lastErrorCode,
+        counters: this.progressOf(counters).counts,
+      };
     } catch (error) {
       counters.lastErrorCode = errorCode(error);
       counters.failed += 1;

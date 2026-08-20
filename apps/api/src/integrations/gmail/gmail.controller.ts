@@ -15,8 +15,12 @@ export class GmailController {
     response.json(await gmailSyncService.initializeLabels(request.auth!.user.id));
   }
 
+  /**
+   * 202: a full backfill walks every page of the mailbox, so the client gets a run id and polls
+   * `GET /api/activity/runs/:id` rather than holding a request that cannot return in time.
+   */
   async initialSync(request: Request, response: Response): Promise<void> {
-    response.json(await gmailSyncService.initialSync(request.auth!.user.id));
+    response.status(202).json(await gmailSyncService.startInitialSync(request.auth!.user.id));
   }
 
   async incrementalSync(request: Request, response: Response): Promise<void> {

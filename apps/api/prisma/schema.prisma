@@ -62,6 +62,7 @@ model connected_google_accounts {
   gmail_sync_runs                 gmail_sync_runs[]
   gmail_sync_state                gmail_sync_states?
   taxonomy_plans                  taxonomy_plans[]
+  activity_runs                   activity_runs[]
   automation_settings             automation_settings?
   automation_state                automation_states?
   automation_runs                 automation_runs[]
@@ -189,6 +190,32 @@ model gmail_sync_runs {
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "gmail_sync_runs_account_started_idx")
   @@index([status])
+}
+
+/// One record per long-running operation, whatever the feature. The HTTP contract for slow work
+/// is 202 plus this row's id; the client polls it instead of holding a request open.
+model activity_runs {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  kind                        activity_run_kind
+  state                       activity_run_state        @default(RUNNING)
+  trigger                     automation_trigger        @default(MANUAL)
+  processed_count             Int                       @default(0)
+  total_count                 Int?
+  counts                      Json                      @default("{}")
+  stop_reason                 String?
+  error_code                  String?
+  error_message               String?
+  feature_run_id              String?                   @db.Uuid
+  expires_at                  DateTime                  @db.Timestamptz(6)
+  started_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  finished_at                 DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@index([connected_google_account_id, started_at(sort: Desc)], map: "activity_runs_account_started_idx")
+  @@index([state, expires_at], map: "activity_runs_state_expiry_idx")
 }
 
 /// One model-designed folder tree awaiting human approval. Nothing here exists in Gmail yet.
@@ -376,6 +403,21 @@ enum gmail_sync_type {
 enum gmail_sync_run_status {
   RUNNING
   COMPLETED
+  FAILED
+}
+
+enum activity_run_kind {
+  GMAIL_INITIAL_SYNC
+  GMAIL_INCREMENTAL_SYNC
+  GMAIL_LABEL_SYNC
+  LABEL_PROPOSAL
+  AUTOMATION_FILING
+}
+
+enum activity_run_state {
+  RUNNING
+  SUCCEEDED
+  STOPPED
   FAILED
 }
 

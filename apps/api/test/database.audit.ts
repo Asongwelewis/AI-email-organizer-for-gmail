@@ -5,6 +5,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const applicationTables = [
+  'activity_runs',
   'audit_logs',
   'automation_message_actions',
   'automation_runs',
@@ -26,6 +27,9 @@ const applicationTables = [
 ];
 
 const requiredIndexes = [
+  'activity_runs_account_kind_running_unique_idx',
+  'activity_runs_account_started_idx',
+  'activity_runs_state_expiry_idx',
   'audit_logs_action_idx',
   'audit_logs_created_at_idx',
   'audit_logs_user_id_idx',
@@ -105,6 +109,8 @@ try {
     where n.nspname = 'public'
       and c.relname in (
         'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+      'activity_runs',
+        'activity_runs',
         'automation_settings', 'automation_states', 'automation_runs',
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
@@ -114,7 +120,7 @@ try {
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all eighteen application tables must exist',
+    'all nineteen application tables must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -143,6 +149,7 @@ try {
     from unnest(array['public', 'anon', 'authenticated']) as roles(role_name)
     cross join unnest(array[
       'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+      'activity_runs',
       'automation_settings', 'automation_states', 'automation_runs',
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
@@ -162,6 +169,9 @@ try {
     from pg_catalog.pg_indexes
     where schemaname = 'public'
       and indexname in (
+        'activity_runs_account_kind_running_unique_idx',
+        'activity_runs_account_started_idx',
+        'activity_runs_state_expiry_idx',
         'audit_logs_action_idx',
         'audit_logs_created_at_idx',
         'audit_logs_user_id_idx',
@@ -239,6 +249,7 @@ try {
     where not tgisinternal
       and tgrelid in (
         'public.users'::regclass,
+        'public.activity_runs'::regclass,
         'public.connected_google_accounts'::regclass,
         'public.gmail_labels'::regclass,
         'public.gmail_message_metadata'::regclass,
@@ -255,6 +266,7 @@ try {
   assert(
     JSON.stringify(triggers.map((trigger) => trigger.trigger_name)) ===
       JSON.stringify([
+        'activity_runs_set_updated_at',
         'automation_actions_account_guard',
         'automation_actions_set_updated_at',
         'automation_settings_set_updated_at',
@@ -292,6 +304,7 @@ try {
            'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
            ,'taxonomy_plan_status', 'taxonomy_node_kind', 'user_label_source'
            ,'routing_rule_kind', 'routing_rule_source'
+           ,'activity_run_kind', 'activity_run_state'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
          )) as enum_count,
@@ -320,8 +333,8 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 16n, 'all sixteen enum types must exist');
-  assert(summary.foreign_key_count === 25n, 'all twenty-five foreign keys must exist');
+  assert(summary?.enum_count === 18n, 'all eighteen enum types must exist');
+  assert(summary.foreign_key_count === 26n, 'all twenty-six foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
     summary.migration_count === 11n,

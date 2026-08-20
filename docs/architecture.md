@@ -180,6 +180,7 @@ The main relational groups are:
 | Google connection     | `connected_google_accounts`                                                                                                    |
 | Gmail projection      | `gmail_labels`, `gmail_message_metadata`, `gmail_sync_states`, `gmail_sync_runs`                                               |
 | Labels                | `user_labels`, `taxonomy_plans`, `taxonomy_plan_nodes`, `taxonomy_plan_node_rules`                                             |
+| Activity              | `activity_runs`                                                                                                                |
 | Daily automation      | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns` |
 
 State tables contain one account-scoped lease/checkpoint row. Run tables retain bounded operational

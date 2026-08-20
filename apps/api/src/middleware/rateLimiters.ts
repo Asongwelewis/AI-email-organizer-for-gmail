@@ -29,4 +29,10 @@ export const classificationMutationLimiter = limiter(
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
 );
 export const labelsReadLimiter = limiter(Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30));
+// Progress polling runs at 2s for as long as a run lasts, so this budget is sized per second
+// rather than per window. At the default ten-minute window a 30-request cap would 429 a client
+// fifteen seconds into a twenty-minute backfill.
+export const activityPollLimiter = limiter(
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60 * 2),
+);
 export const labelsMutationLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));

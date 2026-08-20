@@ -27,8 +27,12 @@ export class AutomationController {
     response.json(await automationService.status(request.auth!.user.id));
   }
 
+  /**
+   * 202: a filing run syncs the mailbox and then classifies in paced Gemini batches, well past any
+   * browser timeout. The client gets a run id and polls `GET /api/activity/runs/:id`.
+   */
   async run(request: Request, response: Response): Promise<void> {
-    response.json(await automationService.run(request.auth!.user.id));
+    response.status(202).json(await automationService.start(request.auth!.user.id));
   }
 
   async review(request: Request, response: Response): Promise<void> {
