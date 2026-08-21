@@ -1,17 +1,18 @@
 /**
- * Designs the domain and intent facet vocabularies from the mail already stored for a connected
- * account and prints them with counts and example subjects.
+ * Grounds the APPROVED domain and intent vocabularies in the mail already stored for a connected
+ * account, runs the full enforcement suite over the result, and prints both vocabularies with
+ * their relative weights and example subjects.
  *
- * Strictly read-only. It reads gmail_message_metadata and the automation decision attached to each
- * message, calls Gemini once, and writes nothing — no database rows, no Gmail labels, no plan.
- * Phase 1 exists to put a vocabulary in front of a human, not to create anything.
+ * The vocabulary itself is a checked-in constant the mailbox owner approved; this script does not
+ * design it. Strictly read-only: it reads gmail_message_metadata and the automation decision
+ * attached to each message, calls Gemini once, and writes nothing.
  *
  *   npm run propose:facets --workspace @mailmind/api
  *   npm run propose:facets --workspace @mailmind/api -- --email you@example.com
  */
 import { prisma } from '../src/database/prisma.js';
 import {
-  geminiFacetVocabularyPlanner,
+  geminiFacetVocabularyGrounder,
   type FacetEvidenceMessage,
   type FacetValue,
 } from '../src/features/label-discovery/facet-vocabulary.js';
@@ -29,18 +30,18 @@ function percent(part: number, whole: number): string {
 }
 
 function printFacet(title: string, values: FacetValue[], population: number): void {
-  const estimated = values.reduce((total, value) => total + value.estimatedMessageCount, 0);
-  write(
-    `${title} — ${values.length} values, ${estimated} estimated messages ` +
-      `(${percent(estimated, population)} of the mailbox)`,
-  );
+  const total = values.reduce((sum, value) => sum + value.estimatedWeight, 0);
+  write(`${title} — ${values.length} approved values (weights are relative, not counts)`);
   write('─'.repeat(78));
   for (const value of values) {
     const grounded =
       value.groundedExampleCount === value.exampleSubjects.length
         ? ''
         : ` [${value.groundedExampleCount}/${value.exampleSubjects.length} examples verified]`;
-    write(`  ${value.name.padEnd(24)} ~${value.estimatedMessageCount} messages${grounded}`);
+    write(
+      `  ${value.name.padEnd(24)} weight ${value.estimatedWeight} ` +
+        `(${percent(value.estimatedWeight, total || population)})${grounded}`,
+    );
     write(`    ${value.definition}`);
     for (const subject of value.exampleSubjects) write(`      · ${subject}`);
     write();
@@ -102,11 +103,11 @@ async function main(): Promise<void> {
   );
   write();
 
-  const proposal = await geminiFacetVocabularyPlanner.propose({ messages });
+  const proposal = await geminiFacetVocabularyGrounder.ground({ messages });
   write(
     `Sampled ${proposal.sample.sampled} messages across ${proposal.sample.senderDomains} sender ` +
       `domains: ${proposal.sample.fromUnfiled} unfiled, ${proposal.sample.fromFiled} filed. ` +
-      `Proposed by ${proposal.model} (${proposal.promptVersion}).`,
+      `Grounded by ${proposal.model} (${proposal.promptVersion}).`,
   );
   write();
 
@@ -114,17 +115,15 @@ async function main(): Promise<void> {
   printFacet('intent', proposal.intent, proposal.population.total);
   printEntities(messages);
 
-  if (proposal.warnings.length > 0) {
-    write('Rejected by the validator:');
-    for (const warning of proposal.warnings) write(`  - ${warning}`);
-    write();
-  }
+  write(`Enforcement suite: ${proposal.findings.length} finding(s).`);
+  for (const finding of proposal.findings) write(`  - ${finding}`);
+  write();
   write(
     `Tokens: ${proposal.usage.inputTokens} in / ${proposal.usage.outputTokens} out ` +
       `(notional ${proposal.estimatedCostMicrousd} micro-USD; the free tier bills nothing).`,
   );
   write();
-  write('Nothing was written. No labels, no rules, no plan — this run only proposes a vocabulary.');
+  write('Nothing was written. No labels, no rules, no plan — this run only grounds a vocabulary.');
 }
 
 main()
