@@ -115,3 +115,47 @@ export interface PrecedenceRule extends RoutingRule {
 export function byRoutingPrecedence(left: PrecedenceRule, right: PrecedenceRule): number {
   return (right.depth ?? 0) - (left.depth ?? 0) || byRuleSpecificity(left, right);
 }
+
+/**
+ * A rule that resolves to facet values rather than to a folder.
+ *
+ * Either facet may be absent: "subject contains 'insufficient funds'" says everything about intent
+ * and nothing about domain, and forcing it to guess a domain would be worse than leaving the axis
+ * to the model.
+ */
+export interface FacetRoutingRule extends RoutingRule {
+  domain: string | null;
+  intent: string | null;
+}
+
+export interface ResolvedFacet<T extends FacetRoutingRule> {
+  value: string;
+  rule: T;
+}
+
+/**
+ * Resolves each facet independently, most specific rule first.
+ *
+ * This is the whole point of routing to facets instead of to a folder. Folder rules compete —
+ * exactly one can win, so a broad "exness.com -> Finance" swallows the narrow "insufficient funds
+ * -> Failed payments" it was supposed to lose to. Facet rules do not compete across axes: the
+ * domain rule and the intent rule both fire, on the same message, and neither has to know the
+ * other exists. A subject rule that names an intent therefore holds for every sender alive,
+ * which is the generalisation a per-folder rule could never express.
+ */
+export function resolveFacetRules<T extends FacetRoutingRule>(
+  rules: T[],
+  message: RoutableMessage,
+): { domain: ResolvedFacet<T> | null; intent: ResolvedFacet<T> | null } {
+  let domain: ResolvedFacet<T> | null = null;
+  let intent: ResolvedFacet<T> | null = null;
+  // Sorted most-specific-first, so the first rule to name a facet is the one that keeps it and
+  // the winner never depends on load order.
+  for (const rule of [...rules].sort(byRuleSpecificity)) {
+    if (domain && intent) break;
+    if (!matchesRule(rule, message)) continue;
+    if (!domain && rule.domain) domain = { value: rule.domain, rule };
+    if (!intent && rule.intent) intent = { value: rule.intent, rule };
+  }
+  return { domain, intent };
+}

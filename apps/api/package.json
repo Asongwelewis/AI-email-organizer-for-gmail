@@ -15,7 +15,8 @@
     "test:database": "vitest run database.integration.test.ts",
     "audit:database": "tsx test/database.audit.ts",
     "plan:taxonomy": "tsx scripts/plan-taxonomy.ts",
-    "propose:facets": "tsx scripts/propose-facets.ts"
+    "propose:facets": "tsx scripts/propose-facets.ts",
+    "classify:facets": "tsx scripts/classify-facets.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

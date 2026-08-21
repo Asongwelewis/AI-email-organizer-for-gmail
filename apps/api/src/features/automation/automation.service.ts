@@ -1014,8 +1014,11 @@ export class AutomationService {
     const byName = new Map(approvedLabels.map((label) => [label.leaf_name, label]));
     return stored
       .flatMap((rule) => {
+        // A facet-only rule carries no label name at all; it belongs to the facet pass, and the
+        // filing path skips it the same way it skips a rule aimed at a folder that no longer exists.
         const label =
-          (rule.user_label_id ? byId.get(rule.user_label_id) : null) ?? byName.get(rule.label_name);
+          (rule.user_label_id ? byId.get(rule.user_label_id) : null) ??
+          (rule.label_name ? byName.get(rule.label_name) : null);
         if (!label) return [];
         return [
           {

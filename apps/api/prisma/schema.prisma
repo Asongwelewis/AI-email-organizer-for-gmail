@@ -68,6 +68,7 @@ model connected_google_accounts {
   automation_runs                 automation_runs[]
   automation_message_actions      automation_message_actions[]
   learned_classification_patterns learned_classification_patterns[]
+  message_facets                  message_facets[]
   user_labels                     user_labels[]
 
   @@unique([user_id, google_subject], map: "connected_google_accounts_user_subject_unique_idx")
@@ -101,33 +102,34 @@ model gmail_labels {
 
 /// Metadata-only Gmail message projection. No bodies, attachments, or raw MIME are stored.
 model gmail_message_metadata {
-  id                            String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connected_google_account_id   String                             @db.Uuid
-  gmail_message_id              String
-  gmail_thread_id               String?
-  history_id                    String?
-  internal_date                 DateTime?                          @db.Timestamptz(6)
-  subject                       String?
-  sender_name                   String?
-  sender_email                  String?
-  recipient_summary             String?
-  snippet                       String?
-  label_ids                     String[]                           @default([])
-  has_attachments               Boolean                            @default(false)
-  size_estimate                 Int?
-  is_unread                     Boolean                            @default(false)
-  is_starred                    Boolean                            @default(false)
-  is_important                  Boolean                            @default(false)
-  is_draft                      Boolean                            @default(false)
-  is_sent                       Boolean                            @default(false)
-  is_trashed                    Boolean                            @default(false)
-  first_seen_at                 DateTime                           @default(now()) @db.Timestamptz(6)
-  last_synced_at                DateTime                           @default(now()) @db.Timestamptz(6)
-  deleted_at                    DateTime?                          @db.Timestamptz(6)
-  created_at                    DateTime                           @default(now()) @db.Timestamptz(6)
-  updated_at                    DateTime                           @default(now()) @db.Timestamptz(6)
-  connected_google_accounts     connected_google_accounts          @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
-  automationAction              automation_message_actions?
+  id                          String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                      @db.Uuid
+  gmail_message_id            String
+  gmail_thread_id             String?
+  history_id                  String?
+  internal_date               DateTime?                   @db.Timestamptz(6)
+  subject                     String?
+  sender_name                 String?
+  sender_email                String?
+  recipient_summary           String?
+  snippet                     String?
+  label_ids                   String[]                    @default([])
+  has_attachments             Boolean                     @default(false)
+  size_estimate               Int?
+  is_unread                   Boolean                     @default(false)
+  is_starred                  Boolean                     @default(false)
+  is_important                Boolean                     @default(false)
+  is_draft                    Boolean                     @default(false)
+  is_sent                     Boolean                     @default(false)
+  is_trashed                  Boolean                     @default(false)
+  first_seen_at               DateTime                    @default(now()) @db.Timestamptz(6)
+  last_synced_at              DateTime                    @default(now()) @db.Timestamptz(6)
+  deleted_at                  DateTime?                   @db.Timestamptz(6)
+  created_at                  DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                    @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts   @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  automationAction            automation_message_actions?
+  facets                      message_facets?
 
   @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
   @@index([connected_google_account_id])
@@ -243,9 +245,9 @@ model taxonomy_plans {
 
 /// A proposed folder. `full_path` is the joined ancestor chain; only leaves are created in Gmail.
 model taxonomy_plan_nodes {
-  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  plan_id                 String                    @db.Uuid
-  parent_id               String?                   @db.Uuid
+  id                      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plan_id                 String                     @db.Uuid
+  parent_id               String?                    @db.Uuid
   depth                   Int
   kind                    taxonomy_node_kind
   name                    String
@@ -253,13 +255,13 @@ model taxonomy_plan_nodes {
   normalized_name         String
   rationale               String
   estimated_message_count Int
-  matched_message_count   Int                       @default(0)
-  is_leaf                 Boolean                   @default(true)
-  position                Int                       @default(0)
-  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
-  plan                    taxonomy_plans            @relation(fields: [plan_id], references: [id], onDelete: Cascade)
-  parent                  taxonomy_plan_nodes?      @relation("taxonomy_plan_node_tree", fields: [parent_id], references: [id], onDelete: Cascade)
-  children                taxonomy_plan_nodes[]     @relation("taxonomy_plan_node_tree")
+  matched_message_count   Int                        @default(0)
+  is_leaf                 Boolean                    @default(true)
+  position                Int                        @default(0)
+  created_at              DateTime                   @default(now()) @db.Timestamptz(6)
+  plan                    taxonomy_plans             @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  parent                  taxonomy_plan_nodes?       @relation("taxonomy_plan_node_tree", fields: [parent_id], references: [id], onDelete: Cascade)
+  children                taxonomy_plan_nodes[]      @relation("taxonomy_plan_node_tree")
   rules                   taxonomy_plan_node_rules[]
 
   @@unique([plan_id, full_path], map: "taxonomy_plan_nodes_path_unique_idx")
@@ -333,24 +335,24 @@ model sessions {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
-  id                              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  google_subject                  String                            @unique(map: "users_google_subject_unique_idx")
-  email                           String
-  normalized_email                String                            @unique(map: "users_normalized_email_unique_idx")
-  email_verified                  Boolean                           @default(false)
-  display_name                    String?
-  avatar_url                      String?
-  status                          user_status                       @default(ACTIVE)
-  last_login_at                   DateTime?                         @db.Timestamptz(6)
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  deleted_at                      DateTime?                         @db.Timestamptz(6)
-  tutorial_completed_at           DateTime?                         @db.Timestamptz(6)
-  audit_logs                      audit_logs[]
-  connected_google_accounts       connected_google_accounts[]
-  oauth_states                    oauth_states[]
-  sessions                        sessions[]
-  automation_message_actions      automation_message_actions[]
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  google_subject             String                       @unique(map: "users_google_subject_unique_idx")
+  email                      String
+  normalized_email           String                       @unique(map: "users_normalized_email_unique_idx")
+  email_verified             Boolean                      @default(false)
+  display_name               String?
+  avatar_url                 String?
+  status                     user_status                  @default(ACTIVE)
+  last_login_at              DateTime?                    @db.Timestamptz(6)
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  deleted_at                 DateTime?                    @db.Timestamptz(6)
+  tutorial_completed_at      DateTime?                    @db.Timestamptz(6)
+  audit_logs                 audit_logs[]
+  connected_google_accounts  connected_google_accounts[]
+  oauth_states               oauth_states[]
+  sessions                   sessions[]
+  automation_message_actions automation_message_actions[]
 
   @@index([created_at(sort: Desc)])
   @@index([status])
@@ -617,8 +619,16 @@ model learned_classification_patterns {
   rule_source                 routing_rule_source       @default(LEARNED)
   user_label_id               String?                   @db.Uuid
   priority                    Int                       @default(100)
-  label_name                  String
-  label_path                  String
+  /// Null only on a facet-only rule: which folder a facet pair becomes is a pivot decision that
+  /// has not been made yet, and a placeholder path would name a folder that does not exist. Every
+  /// pre-existing rule keeps both values, so the filing path is unchanged.
+  label_name                  String?
+  label_path                  String?
+  /// Null on rules written before facets existed; their arrival must not invalidate those.
+  facet_domain                String?
+  facet_intent                String?
+  /// The brand whose mail taught this rule, so a hit on any other one is countably cross-entity.
+  learned_from_entity         String?
   confidence                  Float
   sample_count                Int                       @default(1)
   successful_apply_count      Int                       @default(0)
@@ -628,8 +638,44 @@ model learned_classification_patterns {
   updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
   connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
   user_label                  user_labels?              @relation(fields: [user_label_id], references: [id], onDelete: Cascade)
+  // A partial index over facet-bearing rules is created in SQL; Prisma cannot express its predicate.
 
   @@unique([connected_google_account_id, rule_kind, match_value], map: "learned_patterns_account_rule_unique_idx")
   @@index([connected_google_account_id, active, confidence], map: "learned_patterns_reuse_idx")
   @@index([user_label_id], map: "learned_patterns_account_label_idx")
+}
+
+/// One row per message: the three facets it was assigned, and how each was decided.
+///
+/// This row is also the checkpoint — a resumed classification pass skips every message that has
+/// one — which is why the unique index is on the message rather than on the run.
+model message_facets {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  gmail_message_id            String                    @unique(map: "message_facets_message_unique_idx") @db.Uuid
+  /// Derived from sender_email, so null exactly when the sender carries no usable domain.
+  entity                      String?
+  domain                      String?
+  intent                      String?
+  entity_confidence           Float                     @default(1)
+  domain_confidence           Float?
+  intent_confidence           Float?
+  source                      facet_source
+  prompt_version              String
+  input_hash                  String
+  classified_at               DateTime                  @default(now()) @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  message                     gmail_message_metadata    @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
+
+  @@index([connected_google_account_id, classified_at(sort: Desc)], map: "message_facets_account_classified_idx")
+  @@index([connected_google_account_id, entity, intent], map: "message_facets_account_entity_intent_idx")
+  @@index([connected_google_account_id, domain, intent], map: "message_facets_account_domain_intent_idx")
+}
+
+/// Which mechanism decided a message's domain and intent. Entity is always derived.
+enum facet_source {
+  RULE
+  MODEL
 }

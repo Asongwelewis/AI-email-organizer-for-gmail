@@ -143,6 +143,31 @@ deactivated rather than flip-flopping.
 Proposals take the account's automation lease, so a proposal and an automation run can never
 overlap for the same account.
 
+### Facets
+
+A message carries three orthogonal facets, stored one row per message in `message_facets`:
+
+- `entity` — the sending brand, derived from the sender domain by `entityFor` in
+  `label-discovery/entity.ts`. No model call, so it costs nothing and cannot be wrong about a fact
+  the envelope already states. Null when the sender carries no usable domain.
+- `domain` and `intent` — the two closed vocabularies the mailbox owner approved, held as a
+  checked-in constant in `label-discovery/facets.ts`. The classifier may return only these values;
+  anything else is discarded per axis after parsing.
+
+`facetClassificationService.classifyAccount` assigns them. It takes the same account-scoped
+automation lease as the filing run, so the two can never overlap, and the `message_facets` row is
+itself the checkpoint — a run stopped by a spent quota resumes exactly where it left off and no
+message is ever classified twice. **It makes no Gmail call at all**: turning a facet combination
+into a folder is the pivot's job.
+
+Routing rules resolve facets as well as folders. `facet_domain` and `facet_intent` are nullable, so
+rules written before facets existed keep working, and `label_name`/`label_path` are nullable, so a
+rule that resolves only to a facet does not have to name a folder that does not exist yet. The two
+axes resolve independently — `resolveFacetRules` picks the most specific rule _per facet_ rather
+than one winner — which is what lets `subject contains "insufficient funds" -> intent
+payment-failed` fire for a bank, a broker, and a streaming service alike. `learned_from_entity`
+records which brand taught a rule, so firing on a different one is countable.
+
 ### Long-running work
 
 `POST /api/gmail/sync/initial` and `POST /api/automation/run` return `202` with a run id. A full
