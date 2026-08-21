@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   start: vi.fn(),
   reviewQueue: vi.fn(),
+  gapReport: vi.fn(),
   approve: vi.fn(),
   skip: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock('../src/features/automation/automation.service.js', () => ({
   automationService: mocks,
 }));
 
+import { AppError } from '../src/errors/AppError.js';
 import { automationRouter } from '../src/features/automation/automation.routes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 
@@ -44,6 +46,7 @@ describe('automation HTTP routes', () => {
     });
     mocks.status.mockResolvedValue({ gmailConnected: true, enabled: true, running: false });
     mocks.reviewQueue.mockResolvedValue({ items: [] });
+    mocks.gapReport.mockResolvedValue({ analyzedCount: 0, clusteredCount: 0, clusters: [] });
     mocks.start.mockResolvedValue({
       runId: actionId,
       state: 'RUNNING',
@@ -53,6 +56,18 @@ describe('automation HTTP routes', () => {
     });
     mocks.approve.mockResolvedValue({ success: true });
     mocks.skip.mockResolvedValue({ success: true });
+  });
+
+  it('serves the gap report as a read-only view that requires a session', async () => {
+    mocks.authenticate.mockRejectedValueOnce(
+      new AppError('AUTHENTICATION_REQUIRED', 'Authentication is required.', 401),
+    );
+    expect((await request(app).get('/api/automation/gaps')).status).toBe(401);
+
+    const response = await request(app).get('/api/automation/gaps');
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.body).toMatchObject({ analyzedCount: 0, clusters: [] });
   });
 
   it('returns connection state with explicit no-cache headers', async () => {

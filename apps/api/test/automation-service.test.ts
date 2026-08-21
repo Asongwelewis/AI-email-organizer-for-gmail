@@ -356,6 +356,64 @@ describe('AutomationService', () => {
     );
   });
 
+  it('clusters what it could not file into candidate folders without creating any', async () => {
+    // A no-fit rate is only actionable if you can see what is inside it. Four unrelated billing
+    // senders are invisible one message at a time and obvious once grouped.
+    const declined = [
+      ...['cloudflare.com', 'microsoft.com', 'anthropic.com', 'substack.com'].map(
+        (domain, index) => ({
+          id: `action-${index}`,
+          message: {
+            subject: 'Your invoice is available',
+            sender_email: `billing@${domain}`,
+          },
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, index) => ({
+        id: `action-noise-${index}`,
+        message: {
+          subject: `Unrelated thing ${index}`,
+          sender_email: `x@spread${index}.com`,
+        },
+      })),
+    ];
+    mocks.actionFindMany.mockResolvedValue(declined);
+
+    const report = await new AutomationService(
+      { classify: mocks.classifier },
+      gmailStub(),
+    ).gapReport('user-1');
+
+    expect(mocks.actionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ label_name: 'NONE' }) }),
+    );
+    // The shared subject wording is the cluster, not the four different senders.
+    const invoices = report.clusters.find((cluster) => cluster.value === 'invoice available');
+    expect(invoices).toMatchObject({ kind: 'SUBJECT_CONTAINS', messageCount: 4 });
+    expect(invoices!.sampleSubjects).toContain('Your invoice is available');
+    // Four distinct senders, so no single domain reaches the threshold on its own.
+    expect(report.clusters.some((cluster) => cluster.kind === 'SENDER_DOMAIN')).toBe(false);
+    // Nothing is created: proposing a folder still goes through the labels flow.
+    expect(mocks.actionCreate).not.toHaveBeenCalled();
+    expect(mocks.classifier).not.toHaveBeenCalled();
+  });
+
+  it('leaves noise out of the gap report rather than proposing a folder for it', async () => {
+    mocks.actionFindMany.mockResolvedValue([
+      { id: 'a', message: { subject: 'One off thing', sender_email: 'a@one.com' } },
+      { id: 'b', message: { subject: 'Another matter', sender_email: 'b@two.com' } },
+    ]);
+
+    const report = await new AutomationService(
+      { classify: mocks.classifier },
+      gmailStub(),
+    ).gapReport('user-1');
+
+    expect(report.analyzedCount).toBe(2);
+    expect(report.clusters).toEqual([]);
+    expect(report.clusteredCount).toBe(0);
+  });
+
   it('refuses to run until the account has at least one approved label', async () => {
     mocks.userLabelFindMany.mockResolvedValue([]);
     const service = new AutomationService({ classify: mocks.classifier }, gmailStub());

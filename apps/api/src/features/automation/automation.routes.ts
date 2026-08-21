@@ -20,6 +20,11 @@ automationRouter.get(
   asyncHandler((request, response) => automationController.status(request, response)),
 );
 automationRouter.get(
+  '/gaps',
+  classificationReadLimiter,
+  asyncHandler((request, response) => automationController.gaps(request, response)),
+);
+automationRouter.get(
   '/review',
   classificationReadLimiter,
   asyncHandler((request, response) => automationController.review(request, response)),

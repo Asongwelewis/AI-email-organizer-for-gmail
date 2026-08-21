@@ -48,3 +48,27 @@ export interface AutomationClassifier {
     options: AutomationClassifyOptions,
   ): Promise<AutomationProviderResult>;
 }
+
+/**
+ * A cluster of mail that fitted no approved folder, offered as a candidate leaf.
+ *
+ * Nothing here is created. The gap report describes what automation kept declining so a person can
+ * decide whether it deserves a folder, which is the same human gate every other folder passes.
+ */
+export interface AutomationGapCluster {
+  kind: 'SENDER_DOMAIN' | 'SUBJECT_CONTAINS';
+  /** The rule value that would route this cluster, were it approved. */
+  value: string;
+  messageCount: number;
+  sampleSubjects: string[];
+  /** Derived mechanically from `value`. A starting point for naming, not a decision. */
+  suggestedName: string;
+}
+
+export interface AutomationGapReport {
+  /** Messages recorded as fitting no folder that the report considered. */
+  analyzedCount: number;
+  /** How many of those fall inside a cluster big enough to propose. */
+  clusteredCount: number;
+  clusters: AutomationGapCluster[];
+}

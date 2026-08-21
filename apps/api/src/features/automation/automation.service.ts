@@ -13,6 +13,7 @@ import {
   type StartedRun,
 } from '@api/features/activity/activity.service.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
+import { emailIdentity } from '@api/features/label-discovery/label-normalization.js';
 import {
   RULE_PRIORITY,
   byRoutingPrecedence,
@@ -29,6 +30,8 @@ import {
   NO_LABEL,
   type AutomationClassification,
   type AutomationClassifier,
+  type AutomationGapCluster,
+  type AutomationGapReport,
   type AutomationMessageInput,
   type AutomationUsage,
 } from './automation.types.js';
@@ -138,6 +141,88 @@ function errorCode(error: unknown): string {
 function explanationOf(classification: AutomationClassification): string {
   const explanation = classification.explanation.trim().slice(0, 500);
   return explanation.length > 0 ? explanation : 'No explanation returned.';
+}
+
+/** How many recent no-fit decisions the gap report reads before clustering them. */
+const GAP_REPORT_SCAN_LIMIT = 2000;
+
+/** Below this a cluster is noise, not a folder. Matches the planner's evidence threshold. */
+const GAP_REPORT_MIN_CLUSTER = 3;
+
+/** Words that describe every mailbox and so cannot distinguish one cluster from another. */
+const SUBJECT_STOPWORDS = new Set([
+  'the',
+  'your',
+  'you',
+  'and',
+  'for',
+  'from',
+  'with',
+  'this',
+  'that',
+  'has',
+  'have',
+  'been',
+  'are',
+  'our',
+  'new',
+  'now',
+  'get',
+  're',
+  'fwd',
+]);
+
+/**
+ * The recognisable shape of a subject line, used to group mail that arrives worded the same way.
+ *
+ * Digits, ids and punctuation are what make otherwise identical subjects unique — "Invoice 4821"
+ * and "Invoice 4822" are one pattern — so they are dropped, and the first few remaining words
+ * become the key. That phrase is literally present in the subjects, which is exactly what a
+ * SUBJECT_CONTAINS rule needs.
+ */
+function subjectShape(subject: string): string | null {
+  const words = subject
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length >= 3 && !SUBJECT_STOPWORDS.has(word));
+  const phrase = words.slice(0, 3).join(' ');
+  return phrase.length >= 6 ? phrase : null;
+}
+
+function push(target: Map<string, string[]>, key: string, subject: string): void {
+  const bucket = target.get(key) ?? [];
+  bucket.push(subject);
+  target.set(key, bucket);
+}
+
+function toClusters(
+  grouped: Map<string, string[]>,
+  kind: AutomationGapCluster['kind'],
+): AutomationGapCluster[] {
+  return [...grouped.entries()].map(([value, subjects]) => ({
+    kind,
+    value,
+    messageCount: subjects.length,
+    sampleSubjects: [...new Set(subjects.filter(Boolean))].slice(0, 3),
+    suggestedName: suggestedLeafName(value),
+  }));
+}
+
+/**
+ * A mechanical starting point for a folder name: sentence case, no model involved. The person
+ * approving it renames it to whatever they actually call this mail.
+ */
+function suggestedLeafName(value: string): string {
+  const base = value.includes('@') ? value : value.replace(/\.[a-z.]+$/, '');
+  const words = base
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3);
+  if (words.length === 0) return 'Unsorted';
+  const joined = words.join(' ');
+  return joined.charAt(0).toUpperCase() + joined.slice(1).toLowerCase();
 }
 
 function safeProviderDetails(error: unknown) {
@@ -367,6 +452,64 @@ export class AutomationService {
       approvedLabelCount,
       labelsReady: approvedLabelCount > 0,
       backlogRemaining: backlog,
+    };
+  }
+
+  /**
+   * What automation kept declining, grouped so it can become folders.
+   *
+   * A high no-fit rate is only meaningful if you can see what is in it. This clusters the messages
+   * recorded as fitting nowhere by sending domain and by subject shape, and returns the groups
+   * large enough to justify a folder. It creates nothing and calls no model: every cluster is a
+   * suggestion that still has to go through the same human approval as any other folder.
+   */
+  async gapReport(userId: string, limit = 20): Promise<AutomationGapReport> {
+    const account = await this.connectedAccount(userId);
+    const declined = await prisma.automation_message_actions.findMany({
+      where: {
+        connected_google_account_id: account.id,
+        label_name: NO_LABEL,
+      },
+      include: { message: { select: { subject: true, sender_email: true } } },
+      orderBy: { created_at: 'desc' },
+      take: GAP_REPORT_SCAN_LIMIT,
+    });
+
+    const byDomain = new Map<string, string[]>();
+    const bySubject = new Map<string, string[]>();
+    for (const action of declined) {
+      const subject = action.message.subject?.trim() ?? '';
+      const domain = emailIdentity(action.message.sender_email).registrableDomain;
+      if (domain) push(byDomain, domain, subject);
+      const shape = subjectShape(subject);
+      if (shape) push(bySubject, shape, subject);
+    }
+
+    const clusters: AutomationGapCluster[] = [
+      ...toClusters(byDomain, 'SENDER_DOMAIN'),
+      ...toClusters(bySubject, 'SUBJECT_CONTAINS'),
+    ]
+      .filter((cluster) => cluster.messageCount >= GAP_REPORT_MIN_CLUSTER)
+      .sort((left, right) => right.messageCount - left.messageCount)
+      .slice(0, limit);
+
+    // A message can sit in both a domain cluster and a subject one, so the covered count is over
+    // distinct messages rather than the sum of cluster sizes.
+    const covered = new Set<string>();
+    for (const action of declined) {
+      const subject = action.message.subject?.trim() ?? '';
+      const domain = emailIdentity(action.message.sender_email).registrableDomain;
+      const shape = subjectShape(subject);
+      const inCluster = clusters.some((cluster) =>
+        cluster.kind === 'SENDER_DOMAIN' ? cluster.value === domain : cluster.value === shape,
+      );
+      if (inCluster) covered.add(action.id);
+    }
+
+    return {
+      analyzedCount: declined.length,
+      clusteredCount: covered.size,
+      clusters,
     };
   }
 

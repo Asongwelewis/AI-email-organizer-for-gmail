@@ -305,6 +305,46 @@ describe('sampling', () => {
     expect(sampled.some((item) => item.senderEmail === 'someone@rare.com')).toBe(true);
   });
 
+  it('gives a low-volume sender enough of the sample to support a folder', () => {
+    // A theme can be carried by several small senders — invoices from four unrelated providers.
+    // If each places a single message it can never reach the evidence a leaf requires, so the
+    // sample has to give the tail depth rather than spending it on the loudest domains.
+    const bulk = Array.from({ length: 300 }, (_, index) =>
+      message({ id: `bulk-${index}`, senderEmail: 'news@bulk.com' }),
+    );
+    const billing = ['alpha.com', 'beta.com', 'gamma.com'].flatMap((domain) =>
+      Array.from({ length: 3 }, (_, index) =>
+        message({
+          id: `${domain}-${index}`,
+          senderEmail: `invoice@${domain}`,
+          subject: 'Your invoice is available',
+        }),
+      ),
+    );
+
+    const sampled = sampleMessages([...bulk, ...billing], 20);
+
+    for (const domain of ['alpha.com', 'beta.com', 'gamma.com']) {
+      const kept = sampled.filter((item) => item.senderEmail === `invoice@${domain}`);
+      expect(kept.length).toBeGreaterThanOrEqual(3);
+    }
+    // And the loud domain is capped rather than allowed to crowd the sample out.
+    expect(sampled.filter((item) => item.senderEmail === 'news@bulk.com').length).toBeLessThan(20);
+  });
+
+  it('spends leftover capacity on the highest-volume senders once every domain is capped', () => {
+    const bulk = Array.from({ length: 30 }, (_, index) =>
+      message({ id: `bulk-${index}`, senderEmail: 'news@bulk.com' }),
+    );
+    const rare = [message({ id: 'rare-1', senderEmail: 'someone@rare.com' })];
+
+    const sampled = sampleMessages([...bulk, ...rare], 10);
+
+    expect(sampled).toHaveLength(10);
+    expect(sampled.some((item) => item.senderEmail === 'someone@rare.com')).toBe(true);
+    expect(sampled.filter((item) => item.senderEmail === 'news@bulk.com')).toHaveLength(9);
+  });
+
   it('never returns more than the limit', () => {
     const messages = Array.from({ length: 40 }, (_, index) => message({ id: `m-${index}` }));
     expect(sampleMessages(messages, 12)).toHaveLength(12);

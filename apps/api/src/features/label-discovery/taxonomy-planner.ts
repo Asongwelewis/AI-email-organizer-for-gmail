@@ -192,11 +192,22 @@ const systemPrompt = [
 ].join('\n');
 
 /**
+ * How many messages one sender domain may contribute before the rest of the sample goes to other
+ * senders. A leaf needs `minLeafMessages` of evidence, so a domain that can only ever place one
+ * message can never support a folder of its own or help build a cross-sender one.
+ */
+const MIN_PER_DOMAIN_SAMPLE = TAXONOMY_LIMITS.minLeafMessages;
+
+/**
  * Stratified sample: domains are visited round-robin, newest message first, so a mailbox whose
  * volume is dominated by two newsletters still shows the planner the long tail it needs to spot
  * cross-sender activities.
  */
-export function sampleMessages(messages: PlannerMessage[], limit: number): PlannerMessage[] {
+export function sampleMessages(
+  messages: PlannerMessage[],
+  limit: number,
+  perDomainCap?: number,
+): PlannerMessage[] {
   const byDomain = new Map<string, PlannerMessage[]>();
   for (const message of messages) {
     const domain = emailIdentity(message.senderEmail).registrableDomain || 'unknown';
@@ -207,11 +218,20 @@ export function sampleMessages(messages: PlannerMessage[], limit: number): Plann
   for (const bucket of byDomain.values()) {
     bucket.sort((left, right) => date(right).getTime() - date(left).getTime());
   }
+  const cap = Math.max(
+    MIN_PER_DOMAIN_SAMPLE,
+    perDomainCap ?? Math.ceil(limit / Math.max(1, byDomain.size)),
+  );
+  // Rarest domain first. Every domain is reached in the opening round either way, so this order
+  // only decides who gets a SECOND message once the limit runs out mid-round. Spending that depth
+  // on the long tail is what lets a theme carried by several small senders — invoices arriving
+  // from four unrelated providers — appear often enough to clear the evidence threshold. Ordering
+  // by volume gave the extra slots to the largest senders, whose mail was already well covered.
   const buckets = [...byDomain.entries()]
-    .sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]))
+    .sort((left, right) => left[1].length - right[1].length || left[0].localeCompare(right[0]))
     .map(([, bucket]) => bucket);
   const sample: PlannerMessage[] = [];
-  for (let round = 0; sample.length < limit; round += 1) {
+  for (let round = 0; round < cap && sample.length < limit; round += 1) {
     let took = 0;
     for (const bucket of buckets) {
       if (sample.length >= limit) break;
@@ -221,6 +241,20 @@ export function sampleMessages(messages: PlannerMessage[], limit: number): Plann
       took += 1;
     }
     if (took === 0) break;
+  }
+  // Every domain is at its cap and the sample is still short, so the rest of the budget goes to
+  // the highest-volume senders, which is simply where the remaining mail is.
+  if (sample.length < limit) {
+    const taken = new Set(sample);
+    for (let index = buckets.length - 1; index >= 0 && sample.length < limit; index -= 1) {
+      for (const message of buckets[index]!) {
+        if (sample.length >= limit) break;
+        if (!taken.has(message)) {
+          sample.push(message);
+          taken.add(message);
+        }
+      }
+    }
   }
   return sample;
 }

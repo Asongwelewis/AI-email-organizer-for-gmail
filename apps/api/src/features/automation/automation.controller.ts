@@ -35,6 +35,15 @@ export class AutomationController {
     response.status(202).json(await automationService.start(request.auth!.user.id));
   }
 
+  /**
+   * What automation could not file, grouped into folders worth considering. Read-only: nothing is
+   * created here, and approving any of it goes through the normal labels flow.
+   */
+  async gaps(request: Request, response: Response): Promise<void> {
+    response.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    response.json(await automationService.gapReport(request.auth!.user.id));
+  }
+
   async review(request: Request, response: Response): Promise<void> {
     response.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     response.json(await automationService.reviewQueue(request.auth!.user.id));

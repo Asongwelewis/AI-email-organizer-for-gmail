@@ -454,6 +454,12 @@ send `Cache-Control: no-store`.
   before accepting: `409 AUTOMATION_NO_APPROVED_LABELS` when no label is confirmed,
   `503 AUTOMATION_DISABLED` or `503 AUTOMATION_NOT_CONFIGURED` when the feature is off. Everything
   else — a rate limit, the daily budget, a provider outage — ends up on the run record.
+- `GET /api/automation/gaps` groups the messages recorded as fitting no approved folder, by sending
+  domain and by subject shape, and returns the clusters large enough to justify a folder as
+  `{ analyzedCount, clusteredCount, clusters[] }`. Each cluster carries the `kind`/`value` of the
+  rule that would route it, a `messageCount`, sample subjects, and a mechanically derived
+  `suggestedName`. Read-only, and no model is called: turning a cluster into a folder still goes
+  through `POST /api/labels/confirm` like any other.
 - `GET /api/automation/review` returns uncertain results, each carrying the proposed `labelName`.
   It never includes OAuth or provider credentials.
 - `POST /api/automation/review/:id/approve` accepts `{ "labelName": "Invoices" }`, validated against
