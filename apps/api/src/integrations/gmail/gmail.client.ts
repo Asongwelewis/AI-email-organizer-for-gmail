@@ -6,10 +6,31 @@ import { createGoogleOAuthClient } from '@api/integrations/google/google-oauth.c
 import { classifyGmailError } from './gmail.errors.js';
 import type { GmailClient } from './gmail.types.js';
 
+/**
+ * A Gmail client that can outlive one access token.
+ *
+ * The initial backfill walks every page of a mailbox and routinely runs past the hour a Google
+ * access token lasts. A client given only an access token cannot renew it, so the first request
+ * after expiry returns 401, which reads as a revoked grant and marks the account as needing
+ * reauthentication — while the refresh token was valid the whole time. Passing the refresh token
+ * and the expiry lets google-auth-library renew before that happens.
+ */
 export async function createGmailClient(accountId: string): Promise<GmailClient> {
-  const accessToken = await googleTokenService.getValidAccessTokenForConnectedAccount(accountId);
+  const credentials = await googleTokenService.getGmailClientCredentials(accountId);
   const auth = createGoogleOAuthClient('GMAIL');
-  auth.setCredentials({ access_token: accessToken });
+  auth.setCredentials({
+    access_token: credentials.accessToken,
+    ...(credentials.refreshToken ? { refresh_token: credentials.refreshToken } : {}),
+    ...(credentials.expiryDate ? { expiry_date: credentials.expiryDate } : {}),
+  });
+  // A renewal is worth keeping: without this the token lives only in this process and the next
+  // one refreshes again. Failures are ignored because the in-memory token already works.
+  auth.on('tokens', (tokens) => {
+    if (!tokens.access_token) return;
+    void googleTokenService
+      .storeRefreshedAccessToken(accountId, tokens.access_token, tokens.expiry_date ?? null)
+      .catch(() => undefined);
+  });
   return google.gmail({ version: 'v1', auth });
 }
 

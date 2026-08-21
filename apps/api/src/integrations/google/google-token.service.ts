@@ -38,6 +38,60 @@ export class GoogleTokenService {
     return this.refreshGoogleAccessToken(account);
   }
 
+  /**
+   * The credentials a long-lived API client needs to refresh itself.
+   *
+   * A Google access token lasts an hour, and a full mailbox backfill runs longer than that. A
+   * client holding only the access token cannot renew it, so the request after the hour mark comes
+   * back 401 and the account gets marked as needing reauthentication even though the grant is
+   * fine. Handing the refresh token to the client lets google-auth-library renew in place.
+   */
+  async getGmailClientCredentials(accountId: string): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiryDate: number | null;
+  }> {
+    const accessToken = await this.getValidAccessTokenForConnectedAccount(accountId);
+    const account = await connectedGoogleAccountRepository.findById(accountId);
+    const refresh = account && encryptedFromAccount(account, 'refresh');
+    return {
+      accessToken,
+      refreshToken: refresh ? encryptionService.decrypt(refresh) : null,
+      expiryDate: account?.access_token_expires_at?.getTime() ?? null,
+    };
+  }
+
+  /**
+   * Stores a token the client renewed on its own, so the next process to start does not have to
+   * refresh again. Best effort: the in-memory token already works, and a lost write only costs one
+   * extra refresh later.
+   */
+  async storeRefreshedAccessToken(
+    accountId: string,
+    accessToken: string,
+    expiryDate: number | null,
+  ): Promise<void> {
+    const account = await connectedGoogleAccountRepository.findById(accountId);
+    if (!account) return;
+    const encrypted = encryptionService.encrypt(accessToken);
+    await connectedGoogleAccountRepository.conditionalTokenUpdate(
+      accountId,
+      account.access_token_expires_at,
+      {
+        access_token_ciphertext: encrypted.ciphertext,
+        access_token_iv: encrypted.iv,
+        access_token_auth_tag: encrypted.authTag,
+        encryption_key_version: encrypted.keyVersion,
+        access_token_expires_at: expiryDate
+          ? new Date(expiryDate)
+          : new Date(Date.now() + 55 * 60 * 1000),
+        last_token_refresh_at: new Date(),
+        last_connection_error_code: null,
+        last_connection_error_at: null,
+      },
+    );
+  }
+
   async refreshGoogleAccessToken(account: connected_google_accounts): Promise<string> {
     const refresh = encryptedFromAccount(account, 'refresh');
     if (!refresh) {

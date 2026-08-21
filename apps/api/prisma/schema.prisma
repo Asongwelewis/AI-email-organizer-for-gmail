@@ -582,7 +582,8 @@ model automation_message_actions {
   user_id                     String                           @db.Uuid
   status                      automation_action_status         @default(PENDING)
   label_name                  String
-  label_path                  String
+  /// Null exactly when label_name is the NONE sentinel: nothing was filed, so there is no path.
+  label_path                  String?
   gmail_label_id              String?
   confidence                  Float
   source                      automation_classification_source

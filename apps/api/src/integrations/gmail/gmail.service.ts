@@ -7,6 +7,7 @@ import {
   type ProgressReporter,
   type StartedRun,
 } from '@api/features/activity/activity.service.js';
+import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
 import { createGmailClient, withGmailRetry } from './gmail.client.js';
 import { classifyGmailError, isHistoryExpired } from './gmail.errors.js';
@@ -384,12 +385,25 @@ export class GmailSyncService {
   private async recordFailure(lease: SyncLease, error: unknown): Promise<void> {
     const classified = error instanceof AppError ? error : classifyGmailError(error);
     if (classified.code === 'GMAIL_REAUTH_REQUIRED') {
-      await connectedGoogleAccountRepository.markReauthenticationRequired(
-        lease.accountId,
-        'GMAIL_API_UNAUTHORIZED',
-      );
+      await this.confirmCredentialsOrMarkReauth(lease.accountId);
     }
     await gmailRepository.fail(lease, classified.code);
+  }
+
+  /**
+   * A 401 is not proof the grant is gone: an access token that expired mid-run looks identical to
+   * a revoked one. Disconnecting on the response alone cost a valid connection, so ask Google for
+   * a fresh token instead. `refreshGoogleAccessToken` marks the account itself when the refresh is
+   * genuinely rejected, which makes that call the single authority on a dead grant.
+   */
+  private async confirmCredentialsOrMarkReauth(accountId: string): Promise<void> {
+    const account = await connectedGoogleAccountRepository.findById(accountId);
+    if (!account) return;
+    try {
+      await googleTokenService.refreshGoogleAccessToken(account);
+    } catch {
+      // Already recorded by the refresh path; the sync error code is written by the caller.
+    }
   }
 }
 

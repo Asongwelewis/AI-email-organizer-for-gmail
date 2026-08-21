@@ -780,6 +780,31 @@ databaseTests('PostgreSQL authentication repositories', () => {
     };
     await prisma.automation_message_actions.create({ data: actionData });
     await expect(prisma.automation_message_actions.create({ data: actionData })).rejects.toThrow();
+
+    // "Nothing fits" is the documented outcome for mail that belongs in no approved folder, and
+    // it has to be storable. Writing '' here failed the label_path check, which aborted the batch
+    // and ended the run — invisible to the unit tests because they mock Prisma.
+    const declined = await prisma.gmail_message_metadata.create({
+      data: { connected_google_account_id: account.id, gmail_message_id: 'declined-message' },
+    });
+    const noLabel = {
+      ...actionData,
+      gmail_message_id: declined.id,
+      status: 'SKIPPED' as const,
+      label_name: 'NONE',
+      label_path: null,
+      explanation: 'No approved folder fits.',
+    };
+    await expect(
+      prisma.automation_message_actions.create({ data: noLabel }),
+    ).resolves.toMatchObject({ label_name: 'NONE', label_path: null });
+
+    // The two halves stay consistent: a NONE decision never carries a path, and a filed one always does.
+    await expect(
+      prisma.automation_message_actions.create({
+        data: { ...noLabel, gmail_message_id: declined.id, label_path: 'MailMind/Work' },
+      }),
+    ).rejects.toThrow();
     expect(await prisma.automation_runs.findUnique({ where: { id: run.id } })).toMatchObject({
       input_tokens: 100,
       output_tokens: 20,

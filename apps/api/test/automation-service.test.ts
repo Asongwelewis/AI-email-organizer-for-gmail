@@ -111,6 +111,7 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 
 import { env } from '../src/config/env.js';
+import { AppError } from '../src/errors/AppError.js';
 import { GeminiProviderError } from '../src/features/automation/gemini-automation.provider.js';
 import { AutomationService } from '../src/features/automation/automation.service.js';
 
@@ -149,6 +150,7 @@ function classification(overrides: Record<string, unknown> = {}) {
 describe('AutomationService', () => {
   const originalKey = env.GEMINI_API_KEY;
   const originalEnabled = env.AUTOMATION_ENABLED;
+  const originalBatchSize = env.AUTOMATION_BATCH_SIZE;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -198,6 +200,7 @@ describe('AutomationService', () => {
   afterEach(() => {
     env.GEMINI_API_KEY = originalKey;
     env.AUTOMATION_ENABLED = originalEnabled;
+    env.AUTOMATION_BATCH_SIZE = originalBatchSize;
   });
 
   it('refuses to run until the account has at least one approved label', async () => {
@@ -210,6 +213,61 @@ describe('AutomationService', () => {
     });
     expect(mocks.classifier).not.toHaveBeenCalled();
     expect(mocks.runCreate).not.toHaveBeenCalled();
+  });
+
+  it('never offers a parent folder to the classifier, so Gmail only gets leaf labels', async () => {
+    // Gmail nesting is cosmetic: a parent exists only in the tree and has no Gmail label. The
+    // apply path creates whatever path it is handed, so a parent reaching the classifier would
+    // create a folder in Gmail that is supposed to never exist there.
+    const parent = {
+      ...approvedLabel,
+      id: 'label-parent',
+      leaf_name: 'Finance',
+      full_path: 'MailMind/Finance',
+      normalized_name: 'finance',
+      parent_id: null,
+      gmail_label_id: null,
+    };
+    const leaf = { ...approvedLabel, parent_id: 'label-parent' };
+    mocks.userLabelFindMany.mockResolvedValue([parent, leaf]);
+    mocks.classifier.mockResolvedValue(classification());
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    expect(mocks.classifier.mock.calls[0]?.[1]).toMatchObject({ labelNames: ['Invoices'] });
+  });
+
+  it('leaves a routing rule that points at a parent folder unresolved', async () => {
+    const parent = {
+      ...approvedLabel,
+      id: 'label-parent',
+      leaf_name: 'Finance',
+      full_path: 'MailMind/Finance',
+      gmail_label_id: null,
+    };
+    const leaf = { ...approvedLabel, parent_id: 'label-parent' };
+    mocks.userLabelFindMany.mockResolvedValue([parent, leaf]);
+    mocks.patternFindMany.mockResolvedValue([
+      {
+        id: 'rule-1',
+        rule_kind: 'SENDER_DOMAIN',
+        match_value: 'example.com',
+        rule_source: 'PLANNER',
+        confidence: 1,
+        user_label_id: 'label-parent',
+        label_name: 'Finance',
+      },
+    ]);
+    mocks.classifier.mockResolvedValue(classification());
+    const gmail = gmailStub();
+    const service = new AutomationService({ classify: mocks.classifier }, gmail);
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    // The rule does not file it into the parent; the message reaches the model instead.
+    expect(mocks.classifier).toHaveBeenCalledTimes(1);
+    expect(gmail.ensureLabel).not.toHaveBeenCalledWith('account-1', 'MailMind/Finance');
   });
 
   it('constrains the provider to the approved labels and applies a confident match', async () => {
@@ -233,6 +291,88 @@ describe('AutomationService', () => {
     expect(gmail.applyLabel).toHaveBeenCalledWith('account-1', 'gmail-message-1', 'Label_1');
   });
 
+  it('carries on past one unusable batch instead of abandoning the run', async () => {
+    // A single malformed response used to break the loop, discarding every remaining message that
+    // was still inside the budget. The bad batch is left for the next run; the rest is filed now.
+    const messages = Array.from({ length: 3 }, (_, index) => ({
+      id: `message-row-${index + 1}`,
+      gmail_message_id: `gmail-message-${index + 1}`,
+      subject: `Invoice ${index + 1}`,
+      sender_email: 'billing@example.com',
+      snippet: 'Amount due',
+      internal_date: new Date(),
+      is_unread: true,
+      is_important: false,
+      has_attachments: false,
+    }));
+    mocks.messageFindMany.mockResolvedValue(messages);
+    env.AUTOMATION_BATCH_SIZE = 1;
+    mocks.classifier
+      .mockResolvedValueOnce(classification())
+      .mockRejectedValueOnce(
+        new AppError('PROVIDER_INVALID_RESPONSE', 'Gemini returned an unusable response.', 502),
+      )
+      .mockResolvedValueOnce(classification());
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'PARTIAL' });
+
+    expect(mocks.classifier).toHaveBeenCalledTimes(3);
+    expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ messages_labeled_count: 2, failed_count: 1 }),
+      }),
+    );
+  });
+
+  it('stops once batches fail back to back, which means the provider not the mail', async () => {
+    const messages = Array.from({ length: 5 }, (_, index) => ({
+      id: `message-row-${index + 1}`,
+      gmail_message_id: `gmail-message-${index + 1}`,
+      subject: `Invoice ${index + 1}`,
+      sender_email: 'billing@example.com',
+      snippet: 'Amount due',
+      internal_date: new Date(),
+      is_unread: true,
+      is_important: false,
+      has_attachments: false,
+    }));
+    mocks.messageFindMany.mockResolvedValue(messages);
+    env.AUTOMATION_BATCH_SIZE = 1;
+    mocks.classifier.mockRejectedValue(
+      new AppError('PROVIDER_INVALID_RESPONSE', 'Gemini returned an unusable response.', 502),
+    );
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({
+      status: 'PARTIAL',
+      stoppedReason: 'PROVIDER_UNUSABLE',
+    });
+
+    // Three strikes, not all five: the run gives up rather than spending the budget on a fault.
+    expect(mocks.classifier).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops at the daily budget rather than sending a batch it cannot afford to answer', async () => {
+    // A reserve too small to hold one result per message returns a truncated body, which reads as
+    // a provider fault. The budget has to stop the run before it spends a call on that.
+    mocks.runAggregate.mockResolvedValue({
+      _sum: {
+        input_tokens: 0,
+        // Less than one message's worth of output budget left, so even a batch of one is refused.
+        output_tokens: env.AUTOMATION_MAX_OUTPUT_TOKENS - 50,
+        estimated_cost_microusd: 0,
+      },
+    });
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({
+      status: 'PARTIAL',
+      stoppedReason: 'DAILY_BUDGET_REACHED',
+    });
+    expect(mocks.classifier).not.toHaveBeenCalled();
+  });
+
   it('leaves a no-fit message in the inbox instead of inventing a label', async () => {
     mocks.classifier.mockResolvedValue(
       classification({ labelName: 'NONE', explanation: 'No approved label fits.' }),
@@ -244,7 +384,9 @@ describe('AutomationService', () => {
 
     expect(mocks.actionCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'SKIPPED', label_name: 'NONE', label_path: '' }),
+        // Null, not '': the column's check rejects an empty path, and writing one aborted the
+        // whole batch, so the documented outcome could never actually be recorded.
+        data: expect.objectContaining({ status: 'SKIPPED', label_name: 'NONE', label_path: null }),
       }),
     );
     expect(gmail.ensureLabel).not.toHaveBeenCalled();

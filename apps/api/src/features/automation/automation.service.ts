@@ -101,7 +101,19 @@ const STOP_REASON_MESSAGES: Record<string, string> = {
     'This run stopped at the daily Gemini budget. Everything filed so far is saved and the rest continues on the next run.',
   PROVIDER_RATE_LIMITED:
     'Gemini rate-limited this run. Everything filed so far is saved and the rest resumes on the next scheduled run.',
+  PROVIDER_UNUSABLE:
+    'Gemini returned unusable responses several times in a row, so this run stopped early. Everything filed so far is saved and the rest resumes on the next run.',
 };
+
+/** Batches that fail back to back mean the provider, not the mail, so the run gives up. */
+const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
+
+/**
+ * Output tokens one classification needs, used to decide whether the remaining daily budget can
+ * still answer a whole batch. Measured at roughly 65 across real runs; doubled for headroom, since
+ * underestimating truncates the response and overestimating only stops the run one batch early.
+ */
+const MIN_OUTPUT_TOKENS_PER_MESSAGE = 120;
 
 function nextDailyRun(hourUtc: number, from = new Date()): Date {
   const next = new Date(from);
@@ -116,6 +128,16 @@ function scheduledKey(accountId: string, now: Date, failureCount: number): strin
 
 function errorCode(error: unknown): string {
   return error instanceof AppError ? error.code : 'AUTOMATION_FAILED';
+}
+
+/**
+ * The stored explanation must be 1-500 characters. A model is free to return an empty string, and
+ * an empty one would fail the row's check the same way an empty label path did — losing the whole
+ * batch over a cosmetic field.
+ */
+function explanationOf(classification: AutomationClassification): string {
+  const explanation = classification.explanation.trim().slice(0, 500);
+  return explanation.length > 0 ? explanation : 'No explanation returned.';
 }
 
 function safeProviderDetails(error: unknown) {
@@ -486,10 +508,18 @@ export class AutomationService {
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
-    const approvedLabels = await prisma.user_labels.findMany({
+    const storedLabels = await prisma.user_labels.findMany({
       where: { connected_google_account_id: accountId },
       orderBy: { created_at: 'asc' },
     });
+    // Filing targets leaves only. A parent is a container in the tree and deliberately has no
+    // Gmail label, but the apply path creates whatever path it is handed — so offering a parent
+    // to the classifier, or letting a rule point at one, would create a folder in Gmail that the
+    // design says never exists there. Rules aimed at a parent simply stop resolving, and their
+    // mail goes to the model instead.
+    const approvedLabels = storedLabels.filter(
+      (label) => !storedLabels.some((other) => other.parent_id === label.id),
+    );
     if (approvedLabels.length === 0) {
       throw new AppError(
         'AUTOMATION_NO_APPROVED_LABELS',
@@ -659,6 +689,7 @@ export class AutomationService {
       }
       await report?.(this.progressOf(counters));
 
+      let consecutiveBatchFailures = 0;
       for (let index = 0; index < undecided.length; index += env.AUTOMATION_BATCH_SIZE) {
         const batch = undecided.slice(index, index + env.AUTOMATION_BATCH_SIZE);
         const roughTokens = Math.ceil(
@@ -679,10 +710,15 @@ export class AutomationService {
           cachedInputTokens: 0,
           outputTokens: Math.max(0, outputTokenReserve),
         });
+        // The reserve becomes this batch's maxOutputTokens, so it has to be large enough to hold
+        // one result per message. Sending a batch that cannot be answered in full returns a
+        // truncated body, which surfaces as a provider fault rather than the budget stop it
+        // actually is — the run then looks broken instead of finished for the day.
+        const requiredOutputTokens = batch.length * MIN_OUTPUT_TOKENS_PER_MESSAGE;
         if (
           inputTokensUsed + counters.usage.inputTokens + roughTokens >
             env.AUTOMATION_MAX_INPUT_TOKENS ||
-          remainingOutputTokens < 100 ||
+          remainingOutputTokens < requiredOutputTokens ||
           costUsed + counters.costMicrousd + projectedCost > env.AUTOMATION_MAX_COST_MICRO_USD
         ) {
           counters.stoppedReason = 'DAILY_BUDGET_REACHED';
@@ -739,8 +775,19 @@ export class AutomationService {
             },
             'automation classification batch failed',
           );
-          break;
+          if (counters.stoppedReason) break;
+          // One malformed response is not a reason to abandon the rest of the mailbox. A single
+          // bad batch used to end the run and discard every message still inside the budget, so
+          // the batch is left for the next run and this one carries on. A fault that is not
+          // batch-specific shows up as consecutive failures, and that does stop the run.
+          consecutiveBatchFailures += 1;
+          if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+            counters.stoppedReason = 'PROVIDER_UNUSABLE';
+            break;
+          }
+          continue;
         }
+        consecutiveBatchFailures = 0;
         await report?.(this.progressOf(counters));
       }
 
@@ -905,10 +952,11 @@ export class AutomationService {
           user_id: userId,
           status: 'SKIPPED',
           label_name: NO_LABEL,
-          label_path: '',
+          // No folder was chosen, so there is no path to record.
+          label_path: null,
           confidence: classification.confidence,
           source,
-          explanation: classification.explanation.slice(0, 500),
+          explanation: explanationOf(classification),
           reason_codes: classification.reasonCodes.slice(0, 16),
           input_hash: inputHash,
         },
@@ -929,7 +977,7 @@ export class AutomationService {
         label_path: matched.full_path,
         confidence: classification.confidence,
         source,
-        explanation: classification.explanation.slice(0, 500),
+        explanation: explanationOf(classification),
         reason_codes: classification.reasonCodes.slice(0, 16),
         input_hash: inputHash,
       },
@@ -1012,7 +1060,8 @@ export class AutomationService {
       where: {
         connected_google_account_id: accountId,
         status: { in: ['FAILED', 'PENDING'] },
-        label_path: { not: '' },
+        // A NONE decision has no path and nothing to apply, so it is never retried.
+        label_path: { not: null },
         attempt_count: { lt: env.AUTOMATION_MAX_ACTION_RETRIES },
         OR: [{ next_retry_at: null }, { next_retry_at: { lte: new Date() } }],
       },
@@ -1020,6 +1069,7 @@ export class AutomationService {
       take: env.AUTOMATION_BATCH_SIZE,
     });
     for (const action of actions) {
+      if (!action.label_path) continue;
       await this.renewLease(accountId, token);
       await this.applyAction(
         action.id,
