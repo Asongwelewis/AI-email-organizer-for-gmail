@@ -216,6 +216,146 @@ describe('AutomationService', () => {
     );
   });
 
+  it('lets a sibling subject rule beat a domain rule for the mail it names', async () => {
+    // A domain rule claims everything an organisation sends, so ranking it above a subject phrase
+    // let one broad rule swallow the mail its narrower sibling existed to catch.
+    const failedPayments = {
+      ...approvedLabel,
+      id: 'label-failed',
+      leaf_name: 'Failed payments',
+      full_path: 'MailMind/Finance/Failed payments',
+      depth: 2,
+    };
+    const trading = {
+      ...approvedLabel,
+      id: 'label-trading',
+      leaf_name: 'Trading',
+      full_path: 'MailMind/Finance/Trading',
+      depth: 2,
+    };
+    mocks.userLabelFindMany.mockResolvedValue([failedPayments, trading]);
+    mocks.patternFindMany.mockResolvedValue([
+      {
+        id: 'rule-domain',
+        rule_kind: 'SENDER_DOMAIN',
+        match_value: 'example.com',
+        rule_source: 'PLANNER',
+        confidence: 1,
+        user_label_id: 'label-trading',
+        label_name: 'Trading',
+      },
+      {
+        id: 'rule-subject',
+        rule_kind: 'SUBJECT_CONTAINS',
+        match_value: 'insufficient funds',
+        rule_source: 'PLANNER',
+        confidence: 1,
+        user_label_id: 'label-failed',
+        label_name: 'Failed payments',
+      },
+    ]);
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        id: 'message-row-1',
+        gmail_message_id: 'gmail-message-1',
+        subject: 'Payment with insufficient funds',
+        sender_email: 'billing@example.com',
+        snippet: 'Declined',
+        internal_date: new Date(),
+        is_unread: true,
+        is_important: false,
+        has_attachments: false,
+      },
+    ]);
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await expect(service.run('user-1')).resolves.toMatchObject({ status: 'COMPLETED' });
+
+    expect(mocks.classifier).not.toHaveBeenCalled();
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ label_name: 'Failed payments' }),
+      }),
+    );
+  });
+
+  it('prefers the rule filing into the deeper folder when both match', async () => {
+    const finance = {
+      ...approvedLabel,
+      id: 'label-finance',
+      leaf_name: 'Finance',
+      full_path: 'MailMind/Finance',
+      depth: 1,
+    };
+    const failedPayments = {
+      ...approvedLabel,
+      id: 'label-failed',
+      leaf_name: 'Failed payments',
+      full_path: 'MailMind/Money/Transactions/Failed payments',
+      depth: 3,
+    };
+    mocks.userLabelFindMany.mockResolvedValue([finance, failedPayments]);
+    mocks.patternFindMany.mockResolvedValue([
+      {
+        id: 'rule-shallow',
+        rule_kind: 'SENDER_ADDRESS',
+        match_value: 'billing@example.com',
+        rule_source: 'PLANNER',
+        confidence: 1,
+        user_label_id: 'label-finance',
+        label_name: 'Finance',
+      },
+      {
+        id: 'rule-deep',
+        rule_kind: 'SUBJECT_CONTAINS',
+        match_value: 'insufficient funds',
+        rule_source: 'PLANNER',
+        confidence: 1,
+        user_label_id: 'label-failed',
+        label_name: 'Failed payments',
+      },
+    ]);
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        id: 'message-row-1',
+        gmail_message_id: 'gmail-message-1',
+        subject: 'Payment with insufficient funds',
+        sender_email: 'billing@example.com',
+        snippet: 'Declined',
+        internal_date: new Date(),
+        is_unread: true,
+        is_important: false,
+        has_attachments: false,
+      },
+    ]);
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await service.run('user-1');
+
+    // Depth outranks kind: the deeper folder wins even though an exact address is the narrowest
+    // kind of rule there is.
+    expect(mocks.actionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ label_name: 'Failed payments' }),
+      }),
+    );
+  });
+
+  it('never files spam, which sync stores because it walks the mailbox with includeSpamTrash', async () => {
+    mocks.classifier.mockResolvedValue(classification());
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await service.run('user-1');
+
+    expect(mocks.messageFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: { label_ids: { hasSome: ['SPAM', 'TRASH'] } },
+        }),
+      }),
+    );
+  });
+
   it('refuses to run until the account has at least one approved label', async () => {
     mocks.userLabelFindMany.mockResolvedValue([]);
     const service = new AutomationService({ classify: mocks.classifier }, gmailStub());

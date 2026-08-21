@@ -15,7 +15,7 @@ import {
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import {
   RULE_PRIORITY,
-  byRuleSpecificity,
+  byRoutingPrecedence,
   findMatchingRule,
   type RoutingRuleKind,
 } from '@api/features/label-discovery/routing-rules.js';
@@ -880,11 +880,12 @@ export class AutomationService {
             kind: rule.rule_kind as RoutingRuleKind,
             value: rule.match_value,
             confidence: rule.confidence,
+            depth: label.depth,
             label,
           },
         ];
       })
-      .sort(byRuleSpecificity);
+      .sort(byRoutingPrecedence);
   }
 
   /**
@@ -914,8 +915,13 @@ export class AutomationService {
       is_draft: false,
       is_sent: false,
       is_trashed: false,
+      // Sync walks the mailbox with includeSpamTrash, so spam is stored like anything else, and
+      // is_trashed alone does not exclude it — spam is not trash. Filing it would spend budget
+      // classifying mail the user never chose to receive and inflate the no-fit rate with it.
+      // The planner already excludes both; this makes the executor agree.
+      NOT: { label_ids: { hasSome: ['SPAM', 'TRASH'] } },
       automationAction: null,
-    } as const;
+    };
   }
 
   private backlogCount(accountId: string): Promise<number> {

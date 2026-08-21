@@ -24,13 +24,16 @@ export interface RoutableMessage {
 }
 
 /**
- * More specific rules win. An exact address beats its domain, and both beat a subject phrase,
- * so "notifications@github.com → Code review" is not overridden by a broad subject rule.
+ * More specific rules win. An exact address is the narrowest thing a rule can name, so it stays
+ * first. A subject phrase comes next: it selects particular mail and can hold across senders,
+ * whereas a domain claims everything an organisation ever sends. Ranking the domain above the
+ * phrase let one broad rule swallow the mail its own narrower siblings existed to catch —
+ * "exness.com → Finance" beat "insufficient funds → Failed payments" for every message.
  */
 export const RULE_PRIORITY: Record<RoutingRuleKind, number> = {
   SENDER_ADDRESS: 10,
-  SENDER_DOMAIN: 20,
-  SUBJECT_CONTAINS: 30,
+  SUBJECT_CONTAINS: 20,
+  SENDER_DOMAIN: 30,
 };
 
 const MIN_SUBJECT_PHRASE = 3;
@@ -95,4 +98,20 @@ export function byRuleSpecificity(left: RoutingRule, right: RoutingRule): number
     right.value.length - left.value.length ||
     left.value.localeCompare(right.value)
   );
+}
+
+/** A rule together with how deep in the tree the folder it files into sits. */
+export interface PrecedenceRule extends RoutingRule {
+  depth?: number;
+}
+
+/**
+ * The order the executor resolves rules in, where each one names a folder.
+ *
+ * Depth decides first: a rule filing into "Finance/Transactions/Failed payments" describes its
+ * mail more exactly than one filing into "Finance", whatever kind of rule either happens to be.
+ * Only when two rules land at the same level does the kind break the tie.
+ */
+export function byRoutingPrecedence(left: PrecedenceRule, right: PrecedenceRule): number {
+  return (right.depth ?? 0) - (left.depth ?? 0) || byRuleSpecificity(left, right);
 }
