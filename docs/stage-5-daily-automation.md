@@ -94,14 +94,15 @@ runs share one allowance. Extrapolating to 9,436 unfiled messages — 944 batche
 | --------------------------------- | --------- | ------------- | ---------------- | -------------- |
 | `AUTOMATION_MAX_MESSAGES_PER_RUN` | `250`     | `1000`        | 9,436            | **yes, first** |
 | `AUTOMATION_MAX_OUTPUT_TOKENS`    | `10000`   | `1000000`     | ~613,000         | **yes**        |
-| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000`  | `1000000`     | ~1,208,000       | **yes**        |
+| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000`  | `10000000`    | ~1,208,000       | **yes**        |
 | `AUTOMATION_MAX_COST_MICRO_USD`   | `5000000` | `20000000000` | ~1,900,000       | no             |
 
 So a default run files **250 messages**, not the whole mailbox, and stops `PARTIAL` with
 `DAILY_BUDGET_REACHED`. That is the intended bounded-batch design: the backlog drains across
 successive runs, newest mail first so each run works on the window the planner designed the tree
-from. A mailbox this size still needs several days even with every budget at its ceiling, because
-`AUTOMATION_MAX_INPUT_TOKENS` tops out below what 9,436 messages need in one day.
+from. Input is the budget that binds in practice: every message's metadata is sent whether the model
+ends up filing it or not, at roughly 128 tokens each. Output is spent only on the answer and runs
+about a third of that, so a day's filing is bounded by how much mail can be read, not written.
 
 The output budget is what usually binds, and it is spent on prose: each classification carries an
 explanation and reason codes, so those are capped at one short sentence and three codes. A batch is

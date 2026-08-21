@@ -71,7 +71,7 @@ const environmentSchema = z
     // Caps approved LEAF folders: the vocabulary automation classifies into. The default
     // matches the planner's 40-leaf ceiling so an approved tree always fits.
     AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(40),
-    AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(1000000).default(100000),
+    AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(10_000_000).default(100000),
     AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(1_000_000).default(10000),
     AUTOMATION_MAX_COST_MICRO_USD: z.coerce
       .number()
