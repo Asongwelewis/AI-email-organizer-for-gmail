@@ -102,15 +102,25 @@ const delay = (milliseconds: number) =>
  * Proactive pacing. The free tier's per-minute request cap is low enough that reacting to 429s
  * would waste most of a run, so every request waits its turn behind the previous one. The chain
  * serializes callers, which also keeps concurrent accounts from bursting past the shared quota.
+ *
+ * The interval bounds requests per minute, so it is measured from one request STARTING to the
+ * next starting, and the slot is stamped before the call rather than after it. A request slower
+ * than the interval therefore pays no wait at all: sleeping the interval on top of a slow round
+ * trip would pace on top of latency and throttle a run below the quota it is entitled to.
+ *
+ * This is not the throughput bottleneck. Measured over real runs a ten-message classification
+ * takes roughly 8s inside Gemini against a 4s interval, so the limiter waits zero and the calls
+ * cost about 7 requests per minute against a cap of 15. Going faster needs bigger batches or
+ * more than one request in flight, not a shorter interval.
  */
 let paceChain: Promise<void> = Promise.resolve();
-let lastRequestAtMs = 0;
+let nextAllowedAtMs = 0;
 
 function paceRequest(): Promise<void> {
   const scheduled = paceChain.then(async () => {
-    const waitMs = lastRequestAtMs + env.GEMINI_MIN_REQUEST_INTERVAL_MS - Date.now();
+    const waitMs = nextAllowedAtMs - Date.now();
     if (waitMs > 0) await delay(waitMs);
-    lastRequestAtMs = Date.now();
+    nextAllowedAtMs = Date.now() + env.GEMINI_MIN_REQUEST_INTERVAL_MS;
   });
   paceChain = scheduled.catch(() => undefined);
   return scheduled;
@@ -119,7 +129,7 @@ function paceRequest(): Promise<void> {
 /** Test seam: forget the pacing history so a suite does not inherit the previous test's clock. */
 export function resetGeminiPacing(): void {
   paceChain = Promise.resolve();
-  lastRequestAtMs = 0;
+  nextAllowedAtMs = 0;
 }
 
 function providerError(

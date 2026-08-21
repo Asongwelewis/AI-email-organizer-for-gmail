@@ -303,6 +303,44 @@ describe('GeminiAutomationProvider', () => {
     expect(callTimes[1]! - callTimes[0]!).toBeGreaterThanOrEqual(100);
   });
 
+  it('counts a slow request against the interval instead of adding the wait to it', async () => {
+    // The interval caps requests per minute, so it is measured from one request starting to the
+    // next. Sleeping the full interval *after* a slow round trip would pace on top of the request
+    // time and throttle a run well below the quota it is allowed to use.
+    env.GEMINI_MIN_REQUEST_INTERVAL_MS = 200;
+    resetGeminiPacing();
+    const requestDurationMs = 260;
+    const callTimes: number[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => {
+        callTimes.push(Date.now());
+        await new Promise((resolve) => setTimeout(resolve, requestDurationMs));
+        return geminiResponse({
+          results: [
+            {
+              key: 'm1',
+              labelName: 'Work',
+              confidence: 0.9,
+              explanation: 'Work.',
+              reasonCodes: [],
+            },
+          ],
+        });
+      }),
+    );
+
+    const provider = new GeminiAutomationProvider();
+    await provider.classify([message], { labelNames: ['Work'] });
+    await provider.classify([message], { labelNames: ['Work'] });
+
+    // The request already outran the interval, so the second call waits for nothing. Allowing the
+    // interval again on top would put this at 460ms rather than ~260ms.
+    const spacing = callTimes[1]! - callTimes[0]!;
+    expect(spacing).toBeGreaterThanOrEqual(requestDurationMs);
+    expect(spacing).toBeLessThan(requestDurationMs + env.GEMINI_MIN_REQUEST_INTERVAL_MS);
+  });
+
   it('derives a non-zero notional cost so the run budget can still bound usage', () => {
     // 1M uncached input + 1M output at the recorded paid rates: 300000 + 2500000 micro-USD.
     expect(
