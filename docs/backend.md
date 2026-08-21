@@ -107,6 +107,11 @@ not agree with its parent.
   mail the planner reads; `TAXONOMY_MAX_OUTPUT_TOKENS` bounds the tree it may return.
 - Depth, the 40-leaf ceiling, the 3-message minimum per folder, and the 1-3 word naming rule are
   structural invariants enforced in `taxonomy-planner.ts` after parsing, not configuration.
+- `FACET_LOOKBACK_DAYS`, `FACET_MAX_MESSAGES`, `FACET_SAMPLE_SIZE`, `FACET_SAMPLE_PER_DOMAIN_CAP`, and
+  `FACET_SAMPLE_UNFILED_SHARE` decide the evidence the facet vocabulary is designed from;
+  `FACET_MAX_OUTPUT_TOKENS` bounds the vocabulary it may return. The 8-value domain ceiling, the
+  14-value intent ceiling, the 20-message minimum per value, kebab-case names, and mutual
+  exclusivity are structural invariants enforced in `facet-vocabulary.ts` after parsing.
 
 Names are validated with `validateLeafName`, rejected when `isGenericLabelName` matches, and
 compared with `labelsAreSimilar` so an account cannot hold two near-duplicate folders. Names are

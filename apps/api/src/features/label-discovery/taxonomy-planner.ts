@@ -198,17 +198,30 @@ const systemPrompt = [
  */
 const MIN_PER_DOMAIN_SAMPLE = TAXONOMY_LIMITS.minLeafMessages;
 
+export interface SampleOptions {
+  /** Most messages one sender domain may contribute. Defaults to an even split of the budget. */
+  perDomainCap?: number;
+  /**
+   * When every domain sits at its cap and the budget is still unspent, top the sample up from the
+   * highest-volume senders. On for the taxonomy planner, whose sample should always be full; off
+   * where an explicit cap is the point, because the top-up hands the leftover budget straight back
+   * to the bulk senders the cap exists to hold down.
+   */
+  fillFromLargestSenders?: boolean;
+}
+
 /**
  * Stratified sample: domains are visited round-robin, newest message first, so a mailbox whose
  * volume is dominated by two newsletters still shows the planner the long tail it needs to spot
  * cross-sender activities.
  */
-export function sampleMessages(
-  messages: PlannerMessage[],
+export function sampleMessages<T extends PlannerMessage>(
+  messages: T[],
   limit: number,
-  perDomainCap?: number,
-): PlannerMessage[] {
-  const byDomain = new Map<string, PlannerMessage[]>();
+  options: SampleOptions = {},
+): T[] {
+  const { perDomainCap, fillFromLargestSenders = true } = options;
+  const byDomain = new Map<string, T[]>();
   for (const message of messages) {
     const domain = emailIdentity(message.senderEmail).registrableDomain || 'unknown';
     const bucket = byDomain.get(domain) ?? [];
@@ -218,10 +231,10 @@ export function sampleMessages(
   for (const bucket of byDomain.values()) {
     bucket.sort((left, right) => date(right).getTime() - date(left).getTime());
   }
-  const cap = Math.max(
-    MIN_PER_DOMAIN_SAMPLE,
-    perDomainCap ?? Math.ceil(limit / Math.max(1, byDomain.size)),
-  );
+  // An explicit cap is honoured exactly; the floor only guards the derived default, which a
+  // mailbox with thousands of sender domains would otherwise drive to one message each.
+  const cap =
+    perDomainCap ?? Math.max(MIN_PER_DOMAIN_SAMPLE, Math.ceil(limit / Math.max(1, byDomain.size)));
   // Rarest domain first. Every domain is reached in the opening round either way, so this order
   // only decides who gets a SECOND message once the limit runs out mid-round. Spending that depth
   // on the long tail is what lets a theme carried by several small senders — invoices arriving
@@ -230,7 +243,7 @@ export function sampleMessages(
   const buckets = [...byDomain.entries()]
     .sort((left, right) => left[1].length - right[1].length || left[0].localeCompare(right[0]))
     .map(([, bucket]) => bucket);
-  const sample: PlannerMessage[] = [];
+  const sample: T[] = [];
   for (let round = 0; round < cap && sample.length < limit; round += 1) {
     let took = 0;
     for (const bucket of buckets) {
@@ -244,7 +257,7 @@ export function sampleMessages(
   }
   // Every domain is at its cap and the sample is still short, so the rest of the budget goes to
   // the highest-volume senders, which is simply where the remaining mail is.
-  if (sample.length < limit) {
+  if (fillFromLargestSenders && sample.length < limit) {
     const taken = new Set(sample);
     for (let index = buckets.length - 1; index >= 0 && sample.length < limit; index -= 1) {
       for (const message of buckets[index]!) {

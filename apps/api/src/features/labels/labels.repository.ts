@@ -21,6 +21,30 @@ import {
 
 const PROPOSAL_LEASE_SECONDS = 120;
 
+/**
+ * Mail a planner may learn from: present, not draft/sent/trashed, not spam, and inside the given
+ * lookback window. Shared so the two planners apply the same eligibility rules; only how far back
+ * they look differs, because a folder tree is designed from recent mail while a facet vocabulary
+ * has to cover everything the classifier will be asked about.
+ */
+function eligibleMessageWhere(
+  accountId: string,
+  lookbackDays: number,
+): Prisma.gmail_message_metadataWhereInput {
+  return {
+    connected_google_account_id: accountId,
+    deleted_at: null,
+    is_draft: false,
+    is_sent: false,
+    is_trashed: false,
+    internal_date: {
+      gte: new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000),
+    },
+    sender_email: { not: null },
+    NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
+  };
+}
+
 export interface ProposalLease {
   accountId: string;
   token: string;
@@ -93,18 +117,7 @@ export class LabelsRepository {
   /** The population the planner samples from. Metadata only, as everywhere else. */
   eligibleMessages(accountId: string) {
     return prisma.gmail_message_metadata.findMany({
-      where: {
-        connected_google_account_id: accountId,
-        deleted_at: null,
-        is_draft: false,
-        is_sent: false,
-        is_trashed: false,
-        internal_date: {
-          gte: new Date(Date.now() - env.TAXONOMY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
-        },
-        sender_email: { not: null },
-        NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
-      },
+      where: eligibleMessageWhere(accountId, env.TAXONOMY_LOOKBACK_DAYS),
       select: {
         id: true,
         subject: true,
@@ -114,6 +127,29 @@ export class LabelsRepository {
       },
       orderBy: [{ internal_date: 'desc' }, { id: 'desc' }],
       take: env.TAXONOMY_MAX_MESSAGES,
+    });
+  }
+
+  /**
+   * The same eligible mail, each message paired with the folder the current classifier actually
+   * filed it into. Read-only evidence for facet vocabulary design: a message with no action row,
+   * or one whose decision was NONE, has a null path and is exactly the mail the facets exist to
+   * cover. Its own message ceiling and lookback are separate from the tree planner's, because the
+   * vocabulary is designed from the whole mailbox rather than a recent slice of it.
+   */
+  facetEvidenceMessages(accountId: string) {
+    return prisma.gmail_message_metadata.findMany({
+      where: eligibleMessageWhere(accountId, env.FACET_LOOKBACK_DAYS),
+      select: {
+        id: true,
+        subject: true,
+        sender_name: true,
+        sender_email: true,
+        internal_date: true,
+        automationAction: { select: { label_path: true } },
+      },
+      orderBy: [{ internal_date: 'desc' }, { id: 'desc' }],
+      take: env.FACET_MAX_MESSAGES,
     });
   }
 
