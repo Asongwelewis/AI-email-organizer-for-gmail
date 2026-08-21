@@ -888,14 +888,21 @@ export class AutomationService {
   }
 
   /**
-   * Oldest-first so an existing backlog drains before new mail. A backfill larger than one
-   * run's budget simply continues on the next run; every message is checkpointed by its
-   * automation action row.
+   * Newest-first, to match the window the folders were designed from.
+   *
+   * The planner reads the last TAXONOMY_LOOKBACK_DAYS of mail, so a tree fits recent mail and
+   * describes older mail only by accident. Draining oldest-first spent whole runs on mail from
+   * years the planner never sampled — a mailbox reaching back to 2021 filed almost nothing and
+   * looked like a precision problem rather than a date-range one. Working backwards from today
+   * classifies the mail the tree was built for first, and the run's value shows up immediately.
+   *
+   * A backlog larger than one run's budget still continues on the next run; every message is
+   * checkpointed by its automation action row regardless of the order they are visited in.
    */
   private async unprocessedMessages(accountId: string) {
     return prisma.gmail_message_metadata.findMany({
       where: this.unprocessedWhere(accountId),
-      orderBy: { internal_date: 'asc' },
+      orderBy: { internal_date: 'desc' },
       take: env.AUTOMATION_MAX_MESSAGES_PER_RUN,
     });
   }

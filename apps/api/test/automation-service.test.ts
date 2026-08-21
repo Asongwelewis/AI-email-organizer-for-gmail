@@ -203,6 +203,19 @@ describe('AutomationService', () => {
     env.AUTOMATION_BATCH_SIZE = originalBatchSize;
   });
 
+  it('files newest mail first, matching the window the planner designs from', async () => {
+    // Oldest-first spent entire runs on mail predating TAXONOMY_LOOKBACK_DAYS, which the tree was
+    // never built to describe, so almost nothing matched and the run looked inaccurate.
+    mocks.classifier.mockResolvedValue(classification());
+    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+
+    await service.run('user-1');
+
+    expect(mocks.messageFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { internal_date: 'desc' } }),
+    );
+  });
+
   it('refuses to run until the account has at least one approved label', async () => {
     mocks.userLabelFindMany.mockResolvedValue([]);
     const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
@@ -418,9 +431,6 @@ describe('AutomationService', () => {
 
     await service.run('user-1');
 
-    expect(mocks.messageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { internal_date: 'asc' } }),
-    );
     expect(mocks.transactionRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ backlog_remaining: 409 }) }),
     );
