@@ -72,13 +72,13 @@ const environmentSchema = z
     // matches the planner's 40-leaf ceiling so an approved tree always fits.
     AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(40),
     AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(1000000).default(100000),
-    AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(100000).default(10000),
+    AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(1_000_000).default(10000),
     AUTOMATION_MAX_COST_MICRO_USD: z.coerce
       .number()
       .int()
       .min(1000)
-      .max(2000000000)
-      .default(500000),
+      .max(20_000_000_000)
+      .default(5_000_000),
     AUTOMATION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.8),
     AUTOMATION_PATTERN_MIN_SAMPLES: z.coerce.number().int().min(1).max(100).default(2),
     AUTOMATION_PATTERN_MIN_CONFIDENCE: z.coerce.number().min(0.5).max(1).default(0.9),

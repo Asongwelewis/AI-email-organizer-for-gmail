@@ -85,21 +85,29 @@ to a specific model.
 
 ### What actually bounds a full-mailbox backfill
 
-Measured on `gemini-flash-lite-latest`, a batch of 10 messages costs about **882 input and 388
-output tokens** (~1,235 µUSD notional). Extrapolating to a 3,305-message mailbox — 331 batches:
+Measured over real runs on `gemini-flash-lite-latest` against a 9,525-message mailbox, a batch of
+10 messages costs about **1,280 input and 650 output tokens** (~2,000 µUSD notional). The token
+budgets are **daily and cumulative across every run since 00:00 UTC**, not per run, so successive
+runs share one allowance. Extrapolating to 9,436 unfiled messages — 944 batches:
 
-| Budget                            | Default  | Needed for 3,305 | Binds?         |
-| --------------------------------- | -------- | ---------------- | -------------- |
-| `AUTOMATION_MAX_MESSAGES_PER_RUN` | `250`    | 3,305            | **yes, first** |
-| `AUTOMATION_MAX_OUTPUT_TOKENS`    | `10000`  | ~128,400         | **yes**        |
-| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000` | ~292,000         | yes            |
-| `AUTOMATION_MAX_COST_MICRO_USD`   | `500000` | ~408,800         | no             |
+| Budget                            | Default   | Schema max    | Needed for 9,436 | Binds?         |
+| --------------------------------- | --------- | ------------- | ---------------- | -------------- |
+| `AUTOMATION_MAX_MESSAGES_PER_RUN` | `250`     | `1000`        | 9,436            | **yes, first** |
+| `AUTOMATION_MAX_OUTPUT_TOKENS`    | `10000`   | `1000000`     | ~613,000         | **yes**        |
+| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000`  | `1000000`     | ~1,208,000       | **yes**        |
+| `AUTOMATION_MAX_COST_MICRO_USD`   | `5000000` | `20000000000` | ~1,900,000       | no             |
 
-So a default run files **250 messages in ~25 requests (~100s of pacing)**, not the whole mailbox,
-and stops `PARTIAL` with `DAILY_BUDGET_REACHED`. That is the intended bounded-batch design: the
-backlog drains oldest-first across successive runs. Note the schema maximums cap
-`AUTOMATION_MAX_MESSAGES_PER_RUN` at `1000` and `AUTOMATION_MAX_OUTPUT_TOKENS` at `100000`, so a
-3,305-message mailbox needs **at least four runs** even when every budget is raised to its ceiling.
+So a default run files **250 messages**, not the whole mailbox, and stops `PARTIAL` with
+`DAILY_BUDGET_REACHED`. That is the intended bounded-batch design: the backlog drains across
+successive runs, newest mail first so each run works on the window the planner designed the tree
+from. A mailbox this size still needs several days even with every budget at its ceiling, because
+`AUTOMATION_MAX_INPUT_TOKENS` tops out below what 9,436 messages need in one day.
+
+The output budget is what usually binds, and it is spent on prose: each classification carries an
+explanation and reason codes, so those are capped at one short sentence and three codes. A batch is
+refused unless the remaining output budget can answer it in full — a reserve smaller than one
+result per message returns a truncated body, which reads as a provider fault rather than the
+budget stop it really is.
 
 The controls are the `AUTOMATION_*` and `GEMINI_*` variables in `apps/api/.env.example`. The
 in-process scheduler polls every 15 minutes and catches up after restart. Database leases make it

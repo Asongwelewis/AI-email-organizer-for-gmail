@@ -303,6 +303,34 @@ describe('GeminiAutomationProvider', () => {
     expect(callTimes[1]! - callTimes[0]!).toBeGreaterThanOrEqual(100);
   });
 
+  it('trims an over-long explanation rather than failing the batch over prose', async () => {
+    // Output length is what bounds a day's filing, so the schema asks for one short sentence. A
+    // model that overshoots must not cost the whole batch — the wording is trimmed instead.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        geminiResponse({
+          results: [
+            {
+              key: 'm1',
+              labelName: 'Work',
+              confidence: 0.9,
+              explanation: 'x'.repeat(400),
+              reasonCodes: ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE'],
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await new GeminiAutomationProvider().classify([message], {
+      labelNames: ['Work'],
+    });
+
+    expect(result.classifications[0]!.explanation).toHaveLength(120);
+    expect(result.classifications[0]!.reasonCodes).toEqual(['ONE', 'TWO', 'THREE']);
+  });
+
   it('counts a slow request against the interval instead of adding the wait to it', async () => {
     // The interval caps requests per minute, so it is measured from one request starting to the
     // next. Sleeping the full interval *after* a slow round trip would pace on top of the request
