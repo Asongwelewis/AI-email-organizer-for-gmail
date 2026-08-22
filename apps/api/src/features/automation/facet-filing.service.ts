@@ -58,7 +58,11 @@ const emptyCounters = (): FilingCounters => ({
 
 interface FilingOptions {
   limit?: number;
-  /** Resolve and record every decision, but make no Gmail call at all. */
+  /**
+   * Resolve every decision and count it, but write nothing anywhere — not to Gmail, and not to the
+   * action table either. A dry run that recorded decisions would leave the database claiming mail
+   * was filed that is not labelled in the mailbox, which is a worse lie than doing nothing.
+   */
   dryRun?: boolean;
 }
 
@@ -145,7 +149,7 @@ export class FacetFilingService {
         ...(options.limit ? { take: options.limit } : {}),
       });
 
-      const runId = await this.openRun(accountId);
+      const runId = options.dryRun ? null : await this.openRun(accountId);
       for (const [index, row] of rows.entries()) {
         if (index % 25 === 0) await this.renewLease(accountId, token);
         counters.seen += 1;
@@ -251,7 +255,7 @@ export class FacetFilingService {
           );
         }
       }
-      await this.closeRun(runId, counters);
+      if (runId) await this.closeRun(runId, counters);
       return { ...counters, pivot };
     } finally {
       await prisma.automation_states.updateMany({
@@ -277,7 +281,7 @@ export class FacetFilingService {
   }
 
   private async record(
-    runId: string,
+    runId: string | null,
     accountId: string,
     userId: string,
     messageId: string,
@@ -292,6 +296,8 @@ export class FacetFilingService {
       appliedAt?: Date;
     },
   ): Promise<void> {
+    // No run means a dry run: the decision was counted and nothing is written.
+    if (!runId) return;
     // One action row per message, so re-filing REPLACES the previous decision rather than adding a
     // second one. The pre-pivot snapshot holds the decisions this overwrites.
     const data = {

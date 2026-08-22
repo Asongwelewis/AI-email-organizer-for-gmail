@@ -197,12 +197,19 @@ describe('filing mail into pivot folders', () => {
     );
   });
 
-  it('records every decision but calls Gmail not at all in a dry run', async () => {
-    mocks.facetFindMany.mockResolvedValue(netflixMailbox());
+  it('counts every decision and writes nothing at all in a dry run', async () => {
+    mocks.facetFindMany.mockResolvedValue(
+      netflixMailbox([facetRow({ id: 'orphan', entity: 'tinyvendor', intent: 'invoice-receipt' })]),
+    );
     const result = await service().fileAccount(ACCOUNT, USER, { dryRun: true });
     expect(result.filed).toBe(6);
+    expect(result.none).toBe(1);
     expect(mocks.ensureLabel).not.toHaveBeenCalled();
     expect(mocks.applyExclusiveLabel).not.toHaveBeenCalled();
+    // Not even the decision rows: a dry run must not leave the database claiming mail was filed
+    // that carries no label in the mailbox.
+    expect(mocks.actionUpsert).not.toHaveBeenCalled();
+    expect(mocks.runCreate).not.toHaveBeenCalled();
   });
 
   it('separates decisions that came from rules from those that came from the model', async () => {
