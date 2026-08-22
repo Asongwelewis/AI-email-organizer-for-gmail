@@ -73,6 +73,38 @@ export class AutomationGmailService {
       }),
     );
   }
+
+  /**
+   * Applies one MailMind label and removes every other one in the same call.
+   *
+   * A message carries exactly one MailMind label or none, and re-filing a mailbox breaks that the
+   * moment a message's folder changes: adding the new label without removing the old leaves the
+   * message in two folders at once. One `modify` does both, so there is no window in which the
+   * message wears neither label or both.
+   *
+   * Pass `labelId` as null to remove MailMind's labels and add nothing — the NONE decision, for a
+   * message that was filed under the old tree and belongs nowhere under the new one.
+   */
+  async applyExclusiveLabel(
+    accountId: string,
+    remoteMessageId: string,
+    labelId: string | null,
+    otherMailMindLabelIds: string[],
+  ): Promise<void> {
+    const removeLabelIds = otherMailMindLabelIds.filter((id) => id !== labelId);
+    if (!labelId && removeLabelIds.length === 0) return;
+    const gmail = await createGmailClient(accountId);
+    await withGmailRetry(() =>
+      gmail.users.messages.modify({
+        userId: 'me',
+        id: remoteMessageId,
+        requestBody: {
+          ...(labelId ? { addLabelIds: [labelId] } : {}),
+          ...(removeLabelIds.length > 0 ? { removeLabelIds } : {}),
+        },
+      }),
+    );
+  }
 }
 
 export const automationGmailService = new AutomationGmailService();

@@ -7,6 +7,11 @@
  *
  *   npm run classify:facets --workspace @mailmind/api
  *   npm run classify:facets --workspace @mailmind/api -- --limit 250 --email you@example.com
+ *   npm run classify:facets --workspace @mailmind/api -- --all
+ *
+ * --all keeps going until the mailbox is classified or a run stops itself. Each pass takes and
+ * releases the account lease and gets a fresh token budget, so a spent daily quota ends the loop
+ * cleanly and the next invocation resumes from the message_facets checkpoint.
  */
 import { prisma } from '../src/database/prisma.js';
 import { facetClassificationService } from '../src/features/automation/facet-classification.service.js';
@@ -17,6 +22,7 @@ const valueOf = (flag: string) => {
   return index >= 0 ? args[index + 1] : undefined;
 };
 const email = valueOf('--email');
+const all = args.includes('--all');
 const limitArg = Number(valueOf('--limit'));
 const limit = Number.isFinite(limitArg) && limitArg > 0 ? Math.floor(limitArg) : undefined;
 
@@ -48,6 +54,40 @@ async function main(): Promise<void> {
   const previousMessages = previous._sum.ai_classified_count ?? 0;
 
   const counters = await facetClassificationService.classifyAccount(account.id, { limit });
+  if (all) {
+    // Keep going while each pass is still making progress. A pass that classifies nothing is
+    // either finished or blocked, and either way looping again would only spend quota.
+    let pass = 1;
+    // Progress of the LAST pass, not of the accumulated totals — those only ever grow, so testing
+    // them would loop forever once a single pass had succeeded.
+    let lastProgress = counters.ruleDecided + counters.modelDecided;
+    while (lastProgress > 0 && !counters.stoppedReason) {
+      const next = await facetClassificationService.classifyAccount(account.id, { limit });
+      pass += 1;
+      lastProgress = next.ruleDecided + next.modelDecided;
+      counters.messagesSeen += next.messagesSeen;
+      counters.ruleDecided += next.ruleDecided;
+      counters.modelDecided += next.modelDecided;
+      counters.domainAssigned += next.domainAssigned;
+      counters.intentAssigned += next.intentAssigned;
+      counters.entityAssigned += next.entityAssigned;
+      counters.crossEntityRuleHits += next.crossEntityRuleHits;
+      counters.rulesLearned += next.rulesLearned;
+      counters.failed += next.failed;
+      counters.providerCalls += next.providerCalls;
+      counters.usage.inputTokens += next.usage.inputTokens;
+      counters.usage.cachedInputTokens += next.usage.cachedInputTokens;
+      counters.usage.outputTokens += next.usage.outputTokens;
+      counters.costMicrousd += next.costMicrousd;
+      counters.stoppedReason = next.stoppedReason;
+      counters.lastErrorCode = next.lastErrorCode ?? counters.lastErrorCode;
+      if (next.messagesSeen === 0) break;
+      write(
+        `  pass ${pass}: ${next.messagesSeen} seen, ` +
+          `${counters.ruleDecided + counters.modelDecided} classified so far`,
+      );
+    }
+  }
 
   write(`Account ${account.email}`);
   write(

@@ -19,7 +19,9 @@
     "classify:facets": "tsx scripts/classify-facets.ts",
     "backup:pivot": "tsx scripts/backup-before-pivot.ts",
     "pivot:facets": "tsx scripts/pivot-facets.ts",
-    "unapply:pivot": "tsx scripts/unapply-pivot.ts"
+    "unapply:pivot": "tsx scripts/unapply-pivot.ts",
+    "file:facets": "tsx scripts/file-facets.ts",
+    "report:facets": "tsx scripts/report-facets.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",
