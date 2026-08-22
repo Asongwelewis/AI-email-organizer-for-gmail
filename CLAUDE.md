@@ -84,14 +84,34 @@ contains a slash: applying it does not apply `A`, and `label:A` does not return 
 lives in the database; only a leaf's `full_path` is created in Gmail. Renaming a folder renames
 every Gmail label beneath it.
 
+**Facets are the classification vocabulary; folders are a view of them.** A message carries three
+orthogonal facets in `message_facets`: `entity` (the sending brand, derived from the sender domain
+in code — never asked of a model), plus `domain` and `intent` from two closed vocabularies the user
+approved, held as a checked-in constant in `features/label-discovery/facets.ts`. The classifier may
+return only those values. A single tree could express one ordering of these at a time, which is why
+most of a real mailbox had no leaf to go in; facets are assigned independently and pivoted into
+folders afterwards.
+
+**One pivot is materialised; the rest are computed on read.** `facet_pivot_settings` holds an
+ordered `canonical_pivot` (default `["entity", "intent"]`) and `min_messages`. `buildPivot` is a
+pure function of the facet rows, so the tree can be built and reviewed before any remote call. Only
+that ordering becomes `user_labels` rows and Gmail labels — a message carries one MailMind label
+and no more. Any other ordering is answered from `message_facets` without touching Gmail.
+`user_labels.facet_key` is a folder's identity, so re-applying a pivot keeps an existing row and its
+`gmail_label_id`. Folder names are unique among **siblings**, not per account: a pivot repeats its
+lower levels by construction.
+
 **Rules before AI.** `learned_classification_patterns` holds routing rules — `SENDER_DOMAIN`,
 `SENDER_ADDRESS`, or `SUBJECT_CONTAINS`, never regular expressions — installed when a plan is
 approved and learned from mail that was actually filed. Automation applies matching rules with no
 model call and sends only the remainder to Gemini.
 
-**Gmail mutation is confined to two paths.** `src/features/automation` applies labels via
-`messages.modify`; the labels feature creates/renames leaf paths on confirm and rename.
-Deleting a label never unlabels mail. Nothing else may mutate Gmail.
+**Gmail mutation is confined to three paths.** `src/features/automation` applies labels via
+`messages.modify` — the legacy leaf-path filer and `facet-filing.service`, whose apply is
+_exclusive_ so a re-filed message never wears two MailMind labels; the labels feature and
+`pivot.service` create/rename leaf paths on confirm, rename, and pivot apply. Deleting a label never
+unlabels mail, so a pivot never deletes folders — it reports the ones that no longer match and
+leaves them alone. Nothing else may mutate Gmail.
 
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one

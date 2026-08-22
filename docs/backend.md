@@ -198,6 +198,28 @@ that match no current combination are reported and left alone, because deleting 
 not unlabel the mail beneath it. `scripts/unapply-pivot.ts` reverses a pivot against a snapshot from
 `scripts/backup-before-pivot.ts`.
 
+### Filing through the pivot
+
+`facetFilingService.fileAccount` projects `message_facets` through the canonical pivot onto Gmail.
+It spends **no tokens and makes no model call** — the classification is already stored — so
+re-filing after a pivot or threshold change costs one Gmail call per message and not a single
+re-classification.
+
+The apply is **exclusive**: `applyExclusiveLabel` adds the new label and removes every other
+MailMind label in the same `messages.modify`, because "exactly one MailMind label or none" is only
+true if there is no window in which a message wears both. A message that now fits no folder has its
+old label stripped and stays in the inbox, recorded as `NONE`.
+
+A decision's confidence is the **weakest facet the folder actually rests on**, counting only the
+facets the message was placed by: a message that landed at depth 1 under `["entity", "intent"]` was
+placed by its entity alone, so an uncertain intent is not grounds to hold it for review. Below
+`AUTOMATION_CONFIDENCE_THRESHOLD` the decision is recorded as `REVIEW_REQUIRED` and Gmail is not
+called at all.
+
+One `automation_message_actions` row per message, upserted, so re-filing replaces the previous
+decision rather than accumulating a second one — which is also what makes `unapply-pivot.ts` able to
+reverse exactly what was applied.
+
 ### Long-running work
 
 `POST /api/gmail/sync/initial` and `POST /api/automation/run` return `202` with a run id. A full
