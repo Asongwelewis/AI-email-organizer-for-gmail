@@ -168,6 +168,36 @@ than one winner — which is what lets `subject contains "insufficient funds" ->
 payment-failed` fire for a bank, a broker, and a streaming service alike. `learned_from_entity`
 records which brand taught a rule, so firing on a different one is countable.
 
+### Pivoting facets into folders
+
+Facets are orthogonal, so a folder tree is a _view_ of them rather than the thing itself. The same
+mail is `Netflix > Payment failed` under `["entity", "intent"]` and `Finance > Payment failed >
+Netflix` under `["domain", "intent", "entity"]`; switching between them recomputes nothing about the
+mail, only the ordering.
+
+`facet_pivot_settings` holds one account's `canonical_pivot` (ordered, default
+`["entity", "intent"]`) and `min_messages` (default 5). **Exactly one ordering is materialised**,
+because a message carries one MailMind label and no more. `pivotService.view()` computes any other
+ordering from `message_facets` on read and never calls Gmail.
+
+`buildPivot` in `label-discovery/pivot.ts` is a pure function of the facet rows, so the tree that
+would be written can be built, printed, and reviewed without a remote call. A combination whose
+subtree holds fewer than `min_messages` messages does not become a folder and its mail files one
+level up; with no level up it stays in the inbox and is counted. A folder that has children cannot
+also hold mail — only leaves exist in Gmail — so that mail stays in the inbox too, rather than
+being pushed into an invented "Other" folder.
+
+`user_labels.facet_key` (`"entity=netflix|intent=payment-failed"`) is a folder's identity; the path
+is only how it is spelled. Re-applying a pivot matches on it, so **an existing folder keeps its row
+and its `gmail_label_id`** instead of being recreated. Folder names are unique among **siblings**
+rather than across the account, because a pivot repeats its lower levels by construction; Gmail's
+own requirement is full-path uniqueness, which `user_labels_account_path_unique_idx` enforces.
+
+Apply only ever _creates_ leaf labels. It never deletes a label and never unlabels mail: folders
+that match no current combination are reported and left alone, because deleting a Gmail label does
+not unlabel the mail beneath it. `scripts/unapply-pivot.ts` reverses a pivot against a snapshot from
+`scripts/backup-before-pivot.ts`.
+
 ### Long-running work
 
 `POST /api/gmail/sync/initial` and `POST /api/automation/run` return `202` with a run id. A full

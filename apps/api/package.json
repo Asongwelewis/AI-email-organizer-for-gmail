@@ -16,7 +16,10 @@
     "audit:database": "tsx test/database.audit.ts",
     "plan:taxonomy": "tsx scripts/plan-taxonomy.ts",
     "propose:facets": "tsx scripts/propose-facets.ts",
-    "classify:facets": "tsx scripts/classify-facets.ts"
+    "classify:facets": "tsx scripts/classify-facets.ts",
+    "backup:pivot": "tsx scripts/backup-before-pivot.ts",
+    "pivot:facets": "tsx scripts/pivot-facets.ts",
+    "unapply:pivot": "tsx scripts/unapply-pivot.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

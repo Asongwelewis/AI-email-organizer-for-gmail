@@ -179,14 +179,22 @@ export class LabelsRepository {
     });
   }
 
+  /**
+   * Looks a folder up by its leaf name.
+   *
+   * Names are unique among SIBLINGS rather than across the account, because a pivot repeats its
+   * lower levels by construction — Netflix > Payment failed and Coursera > Payment failed are two
+   * folders with one name. A bare name is therefore no longer an identifier, and this resolves the
+   * shallowest match deterministically instead of assuming there is only one. Callers that need an
+   * exact folder should address it by `full_path` or `facet_key`.
+   */
   approvedLabelByLeaf(accountId: string, leafName: string) {
-    return prisma.user_labels.findUnique({
+    return prisma.user_labels.findFirst({
       where: {
-        connected_google_account_id_normalized_name: {
-          connected_google_account_id: accountId,
-          normalized_name: normalizeLabelForComparison(leafName),
-        },
+        connected_google_account_id: accountId,
+        normalized_name: normalizeLabelForComparison(leafName),
       },
+      orderBy: [{ depth: 'asc' }, { full_path: 'asc' }],
     });
   }
 

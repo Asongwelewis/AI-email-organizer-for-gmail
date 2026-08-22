@@ -84,3 +84,31 @@ export function entityFor(senderEmail: string | null): string | null {
   }
   return slug;
 }
+
+/**
+ * Brands whose own capitalisation is not what capitalising the slug produces.
+ *
+ * `entityFor` lowercases a domain, so the folder name would otherwise read "Linkedin", "Github",
+ * "Openai". These become real folders in someone's mailbox, and a folder named after a company
+ * should be spelled the way the company spells it.
+ */
+const ENTITY_DISPLAY_NAMES: Record<string, string> = {
+  aws: 'AWS',
+  ea: 'EA',
+  ebay: 'eBay',
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  ibm: 'IBM',
+  linkedin: 'LinkedIn',
+  mtn: 'MTN',
+  openai: 'OpenAI',
+  paypal: 'PayPal',
+  postgresql: 'PostgreSQL',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+};
+
+/** How an entity is spelled in a folder name, or null to fall back to the generic rule. */
+export function entityDisplayName(entity: string): string | null {
+  return ENTITY_DISPLAY_NAMES[entity] ?? null;
+}

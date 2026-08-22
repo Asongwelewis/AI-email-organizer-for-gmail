@@ -67,6 +67,7 @@ model connected_google_accounts {
   automation_state                automation_states?
   automation_runs                 automation_runs[]
   automation_message_actions      automation_message_actions[]
+  facet_pivot_settings            facet_pivot_settings?
   learned_classification_patterns learned_classification_patterns[]
   message_facets                  message_facets[]
   user_labels                     user_labels[]
@@ -481,6 +482,10 @@ model user_labels {
   leaf_name                   String
   full_path                   String
   normalized_name             String
+  /// The facet combination this folder holds, as "entity=netflix|intent=payment-failed". The
+  /// folder's identity; the path is only how it is spelled. Null on folders the tree planner
+  /// created before facets existed.
+  facet_key                   String?
   rationale                   String?
   source                      user_label_source
   gmail_label_id              String?
@@ -492,7 +497,8 @@ model user_labels {
   routing_rules               learned_classification_patterns[]
 
   @@unique([connected_google_account_id, full_path], map: "user_labels_account_path_unique_idx")
-  @@unique([connected_google_account_id, normalized_name], map: "user_labels_account_normalized_unique_idx")
+  // Names are unique among siblings, and facet keys unique per account; both indexes carry
+  // predicates or expressions Prisma cannot express, so they are created in SQL.
   @@index([connected_google_account_id, created_at(sort: Desc)], map: "user_labels_account_created_idx")
   @@index([connected_google_account_id, depth], map: "user_labels_account_depth_idx")
   @@index([parent_id], map: "user_labels_parent_idx")
@@ -672,6 +678,19 @@ model message_facets {
   @@index([connected_google_account_id, classified_at(sort: Desc)], map: "message_facets_account_classified_idx")
   @@index([connected_google_account_id, entity, intent], map: "message_facets_account_entity_intent_idx")
   @@index([connected_google_account_id, domain, intent], map: "message_facets_account_domain_intent_idx")
+}
+
+/// The account's canonical facet ordering: which pivot is materialised into folders and Gmail.
+/// Every other ordering is computed on read and never leaves the database.
+model facet_pivot_settings {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @unique @db.Uuid
+  /// Ordered: the first facet is the top level of the tree.
+  canonical_pivot             String[]                  @default(["entity", "intent"])
+  min_messages                Int                       @default(5)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
 }
 
 /// Which mechanism decided a message's domain and intent. Entity is always derived.
