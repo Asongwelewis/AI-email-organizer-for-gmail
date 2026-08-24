@@ -356,8 +356,8 @@ try {
   assert(summary.foreign_key_count === 29n, 'all twenty-nine foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 17n,
-    'exactly seventeen intended Prisma migrations must be applied',
+    summary.migration_count === 18n,
+    'exactly eighteen intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
