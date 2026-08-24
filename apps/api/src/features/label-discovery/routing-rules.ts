@@ -117,6 +117,110 @@ export function byRoutingPrecedence(left: PrecedenceRule, right: PrecedenceRule)
 }
 
 /**
+ * Function words that describe every mailbox. A phrase made only of these matches half the inbox,
+ * so a candidate has to be built entirely from words outside this set.
+ */
+const PHRASE_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'been',
+  'but',
+  'by',
+  'for',
+  'from',
+  'get',
+  'had',
+  'has',
+  'have',
+  'in',
+  'is',
+  'it',
+  'its',
+  'me',
+  'my',
+  'new',
+  'no',
+  'not',
+  'now',
+  'of',
+  'on',
+  'or',
+  'our',
+  're',
+  'fwd',
+  'so',
+  'that',
+  'the',
+  'this',
+  'to',
+  'up',
+  'us',
+  'was',
+  'we',
+  'were',
+  'will',
+  'with',
+  'you',
+  'your',
+]);
+
+const HAS_DIGIT = /\d/;
+
+/**
+ * The longest run of distinctive, CONTIGUOUS words in a subject, or null when there is none.
+ *
+ * Contiguity is the whole point. A SUBJECT_CONTAINS rule is a literal substring test against the
+ * same normalisation `matchesRule` applies, so a phrase assembled from non-adjacent words is a
+ * rule that can never match anything — not even the message it was learned from. Digits are
+ * excluded because they are what make otherwise identical subjects unique: "Invoice 4821" would
+ * produce a rule matching exactly one message forever.
+ */
+export function stableSubjectPhrase(subject: string | null): string | null {
+  const tokens = (subject ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+  const distinctive = (token: string) =>
+    token.length >= 3 && !HAS_DIGIT.test(token) && !PHRASE_STOPWORDS.has(token.replace(/\W/g, ''));
+
+  // A window may CONTAIN a function word as long as it does not start or end with one: the
+  // distinctive words in "Your invoice is available" are not adjacent, and demanding adjacency
+  // there yields no phrase at all rather than the perfectly good "invoice is available".
+  for (const width of [3, 2]) {
+    let best: string | null = null;
+    let bestScore = 0;
+    for (let start = 0; start + width <= tokens.length; start += 1) {
+      const window = tokens.slice(start, start + width);
+      const first = window[0]!;
+      const last = window[window.length - 1]!;
+      // Digits are what make otherwise identical subjects unique: "Invoice 4821" would produce a
+      // rule matching exactly one message forever.
+      if (window.some((token) => HAS_DIGIT.test(token))) continue;
+      if (!distinctive(first) || !distinctive(last)) continue;
+      const score = window.filter(distinctive).length;
+      if (score < 2) continue;
+      const phrase = normalizeRuleValue('SUBJECT_CONTAINS', window.join(' '));
+      if (!phrase) continue;
+      // Most distinctive words wins, so "insufficient funds declined" beats "payment with
+      // insufficient" rather than merely coming later in the subject.
+      if (score > bestScore) {
+        best = phrase;
+        bestScore = score;
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/**
  * A rule that resolves to facet values rather than to a folder.
  *
  * Either facet may be absent: "subject contains 'insufficient funds'" says everything about intent

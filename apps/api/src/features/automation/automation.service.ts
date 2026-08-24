@@ -18,8 +18,10 @@ import {
   RULE_PRIORITY,
   byRoutingPrecedence,
   findMatchingRule,
+  stableSubjectPhrase,
   type RoutingRuleKind,
 } from '@api/features/label-discovery/routing-rules.js';
+import { LABEL_ROOT } from '@api/features/label-discovery/taxonomy-planner.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import {
   GeminiProviderError,
@@ -149,47 +151,17 @@ const GAP_REPORT_SCAN_LIMIT = 2000;
 /** Below this a cluster is noise, not a folder. Matches the planner's evidence threshold. */
 const GAP_REPORT_MIN_CLUSTER = 3;
 
-/** Words that describe every mailbox and so cannot distinguish one cluster from another. */
-const SUBJECT_STOPWORDS = new Set([
-  'the',
-  'your',
-  'you',
-  'and',
-  'for',
-  'from',
-  'with',
-  'this',
-  'that',
-  'has',
-  'have',
-  'been',
-  'are',
-  'our',
-  'new',
-  'now',
-  'get',
-  're',
-  'fwd',
-]);
-
 /**
  * The recognisable shape of a subject line, used to group mail that arrives worded the same way.
  *
- * Digits, ids and punctuation are what make otherwise identical subjects unique — "Invoice 4821"
- * and "Invoice 4822" are one pattern — so they are dropped, and the first few remaining words
- * become the key. That phrase is literally present in the subjects, which is exactly what a
- * SUBJECT_CONTAINS rule needs.
+ * This has to be a phrase that is LITERALLY present in the subject, because a cluster is offered
+ * as a SUBJECT_CONTAINS rule and that rule is a substring test. The previous implementation built
+ * its phrase from the first three non-stopword words wherever they fell, so "Update on your
+ * Zipline application" produced "update zipline application" — a rule that matched nothing at all,
+ * not even the message it came from. `stableSubjectPhrase` takes a contiguous run instead, which
+ * is the same phrase the facet learner stores, so a cluster the report proposes is a rule that
+ * actually fires.
  */
-function subjectShape(subject: string): string | null {
-  const words = subject
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, ' ')
-    .split(/\s+/)
-    .filter((word) => word.length >= 3 && !SUBJECT_STOPWORDS.has(word));
-  const phrase = words.slice(0, 3).join(' ');
-  return phrase.length >= 6 ? phrase : null;
-}
-
 function push(target: Map<string, string[]>, key: string, subject: string): void {
   const bucket = target.get(key) ?? [];
   bucket.push(subject);
@@ -481,7 +453,7 @@ export class AutomationService {
       const subject = action.message.subject?.trim() ?? '';
       const domain = emailIdentity(action.message.sender_email).registrableDomain;
       if (domain) push(byDomain, domain, subject);
-      const shape = subjectShape(subject);
+      const shape = stableSubjectPhrase(subject);
       if (shape) push(bySubject, shape, subject);
     }
 
@@ -499,7 +471,7 @@ export class AutomationService {
     for (const action of declined) {
       const subject = action.message.subject?.trim() ?? '';
       const domain = emailIdentity(action.message.sender_email).registrableDomain;
-      const shape = subjectShape(subject);
+      const shape = stableSubjectPhrase(subject);
       const inCluster = clusters.some((cluster) =>
         cluster.kind === 'SENDER_DOMAIN' ? cluster.value === domain : cluster.value === shape,
       );
@@ -555,10 +527,17 @@ export class AutomationService {
     const approved = await this.approvedLabel(action.connected_google_account_id, labelName);
     const labelPath = approved.full_path;
     const label = await this.gmail.ensureLabel(action.connected_google_account_id, labelPath);
-    await this.gmail.applyLabel(
+    // Exclusive, like every other filing path: a reviewer approving a folder for a message that
+    // already wears one must move it, not add a second MailMind label to it.
+    const stale = await this.currentMailMindLabelIds(
+      action.connected_google_account_id,
+      action.message.label_ids,
+    );
+    await this.gmail.applyExclusiveLabel(
       action.connected_google_account_id,
       action.message.gmail_message_id,
       label.id,
+      stale,
     );
     await prisma.automation_message_actions.update({
       where: { id: action.id },
@@ -577,7 +556,14 @@ export class AutomationService {
     });
     await prisma.gmail_message_metadata.update({
       where: { id: action.gmail_message_id },
-      data: { label_ids: [...new Set([...action.message.label_ids, label.id])] },
+      data: {
+        label_ids: [
+          ...new Set([
+            ...action.message.label_ids.filter((id) => id === label.id || !stale.includes(id)),
+            label.id,
+          ]),
+        ],
+      },
     });
     if (!approved.gmail_label_id) {
       await prisma.user_labels.update({
@@ -1074,10 +1060,33 @@ export class AutomationService {
     return prisma.gmail_message_metadata.count({ where: this.unprocessedWhere(accountId) });
   }
 
-  private async approvedLabel(accountId: string, labelName: string): Promise<user_labels> {
-    const label = await prisma.user_labels.findFirst({
-      where: { connected_google_account_id: accountId, leaf_name: labelName },
+  /**
+   * Resolves the folder a reviewer chose, by full path or by leaf name.
+   *
+   * A leaf name stopped identifying one folder when the pivot arrived: a pivot repeats its lower
+   * levels by construction, so "Payment failed" exists under every brand that has one. Picking the
+   * first match would file the message into an arbitrary brand's folder, so an ambiguous name is
+   * refused and the caller is told to send the full path instead.
+   */
+  private async approvedLabel(accountId: string, selector: string): Promise<user_labels> {
+    const byPath = await prisma.user_labels.findFirst({
+      where: { connected_google_account_id: accountId, full_path: selector },
     });
+    if (byPath) return byPath;
+
+    const matches = await prisma.user_labels.findMany({
+      where: { connected_google_account_id: accountId, leaf_name: selector },
+      orderBy: [{ depth: 'asc' }, { full_path: 'asc' }],
+      take: 2,
+    });
+    if (matches.length > 1) {
+      throw new AppError(
+        'AUTOMATION_VALIDATION_FAILED',
+        'Several folders share that name. Send the full path instead.',
+        400,
+      );
+    }
+    const label = matches[0];
     if (!label) {
       throw new AppError(
         'AUTOMATION_LABEL_NOT_APPROVED',
@@ -1086,6 +1095,28 @@ export class AutomationService {
       );
     }
     return label;
+  }
+
+  /**
+   * The MailMind labels a message is currently wearing, out of the ids it carries.
+   *
+   * A message holds one MailMind label or none, so re-filing has to know what to take off before
+   * it puts something on. Non-MailMind labels are never touched: they are the user's own.
+   */
+  private async currentMailMindLabelIds(
+    accountId: string,
+    messageLabelIds: string[],
+  ): Promise<string[]> {
+    if (messageLabelIds.length === 0) return [];
+    const labels = await prisma.gmail_labels.findMany({
+      where: {
+        connected_google_account_id: accountId,
+        gmail_label_id: { in: messageLabelIds },
+        name: { startsWith: `${LABEL_ROOT}/` },
+      },
+      select: { gmail_label_id: true },
+    });
+    return labels.map((label) => label.gmail_label_id);
   }
 
   private async persistAndApply(
@@ -1259,7 +1290,10 @@ export class AutomationService {
     const existing = await prisma.learned_classification_patterns.findUnique({
       where: { connected_google_account_id_rule_kind_match_value: key },
     });
-    if (existing && existing.label_name !== label.leaf_name) {
+    // A facet-only rule carries no label at all, so it cannot disagree about one. Reading its null
+    // label name as a contradiction would deactivate the rules the facet pass had just learned —
+    // the two rule systems share this table and must not undo each other's work.
+    if (existing?.label_name != null && existing.label_name !== label.leaf_name) {
       // A planner rule is the user's decision; never let observed mail overwrite or disable it.
       if (existing.rule_source === 'PLANNER') return;
       await prisma.learned_classification_patterns.update({
@@ -1285,6 +1319,9 @@ export class AutomationService {
         successful_apply_count: { increment: 1 },
         confidence: Math.max(existing?.confidence ?? 0, confidence),
         user_label_id: label.id,
+        // Both halves, always. Writing only the path onto a facet-only rule would leave the row
+        // with a path and no name, which learned_patterns_label_pair_check rejects outright.
+        label_name: label.leaf_name,
         label_path: label.full_path,
         last_used_at: new Date(),
       },

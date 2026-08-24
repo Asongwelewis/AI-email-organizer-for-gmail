@@ -34,9 +34,9 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 
 const { entityFor } = await import('../src/features/label-discovery/entity.js');
-const { resolveFacetRules, matchesRule } =
+const { resolveFacetRules, matchesRule, stableSubjectPhrase } =
   await import('../src/features/label-discovery/routing-rules.js');
-const { FacetClassificationService, stableSubjectPhrase } =
+const { FacetClassificationService } =
   await import('../src/features/automation/facet-classification.service.js');
 
 const ACCOUNT = '11111111-1111-4111-8111-111111111111';
@@ -192,6 +192,17 @@ describe('subject phrases learned as rules', () => {
     expect(stableSubjectPhrase('Invoice 4821 payment receipt available')).toBe(
       'payment receipt available',
     );
+  });
+
+  it('keeps a function word inside the phrase rather than giving up on it', () => {
+    // The distinctive words here are not adjacent. Demanding adjacency produced nothing, which is
+    // what left the gap report unable to propose a rule for four unrelated invoice senders.
+    const subject = 'Your invoice is available';
+    const phrase = stableSubjectPhrase(subject);
+    expect(phrase).toBe('invoice is available');
+    expect(
+      matchesRule({ kind: 'SUBJECT_CONTAINS', value: phrase! }, { subject, senderEmail: null }),
+    ).toBe(true);
   });
 
   it('returns null when a subject has nothing distinctive to learn from', () => {

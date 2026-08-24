@@ -1,5 +1,6 @@
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
+import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
 import {
   ALTERNATE_PIVOT,
   DEFAULT_PIVOT,
@@ -219,7 +220,9 @@ export class PivotService {
           depth: change.depth,
           leaf_name: leafName,
           full_path: node.fullPath,
-          normalized_name: leafName.toLowerCase(),
+          // The same normal form every other writer uses. Two spellings of "normalised" under one
+          // uniqueness index would let near-duplicate siblings both insert.
+          normalized_name: normalizeLabelForComparison(leafName),
           facet_key: change.facetKey,
           source: 'AI_PROPOSED',
         },

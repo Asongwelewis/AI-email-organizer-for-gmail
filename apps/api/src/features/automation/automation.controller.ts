@@ -5,8 +5,15 @@ import { AppError } from '@api/errors/AppError.js';
 import { automationService } from './automation.service.js';
 
 const uuid = z.string().uuid();
-// The label must be one the account approved; the service checks it against user_labels.
-const approvalSchema = z.object({ labelName: z.string().min(1).max(60) }).strict();
+/**
+ * The folder must be one the account approved; the service checks it against user_labels.
+ *
+ * Either a full path ("MailMind/LinkedIn/Payment failed") or a bare leaf name. The path is
+ * preferred and is the only form that always identifies one folder: a pivot repeats its lower
+ * levels, so a bare name can be ambiguous and the service refuses it when it is. The bound is the
+ * full_path limit rather than the leaf-name one so a path fits.
+ */
+const approvalSchema = z.object({ labelName: z.string().min(1).max(225) }).strict();
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);

@@ -387,8 +387,9 @@ describe('AutomationService', () => {
     expect(mocks.actionFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ label_name: 'NONE' }) }),
     );
-    // The shared subject wording is the cluster, not the four different senders.
-    const invoices = report.clusters.find((cluster) => cluster.value === 'invoice available');
+    // The shared subject wording is the cluster, not the four different senders. The value is a
+    // phrase that literally occurs in the subject, so the rule it proposes actually fires.
+    const invoices = report.clusters.find((cluster) => cluster.value === 'invoice is available');
     expect(invoices).toMatchObject({ kind: 'SUBJECT_CONTAINS', messageCount: 4 });
     expect(invoices!.sampleSubjects).toContain('Your invoice is available');
     // Four distinct senders, so no single domain reaches the threshold on its own.

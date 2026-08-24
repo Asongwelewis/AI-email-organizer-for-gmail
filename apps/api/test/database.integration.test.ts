@@ -15,6 +15,10 @@ const databaseTests =
 
 async function cleanDatabase() {
   await prisma.activity_runs.deleteMany();
+  // Explicit, though both would also go by cascade: a table nobody names is a table nobody
+  // notices leaking state between tests.
+  await prisma.message_facets.deleteMany();
+  await prisma.facet_pivot_settings.deleteMany();
   await prisma.user_labels.deleteMany();
   await prisma.automation_message_actions.deleteMany();
   await prisma.learned_classification_patterns.deleteMany();

@@ -9,6 +9,7 @@ import { entityFor } from '@api/features/label-discovery/entity.js';
 import {
   normalizeRuleValue,
   resolveFacetRules,
+  stableSubjectPhrase,
   type FacetRoutingRule,
 } from '@api/features/label-discovery/routing-rules.js';
 import {
@@ -76,91 +77,6 @@ const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
  * most of the old output budget went.
  */
 const MIN_OUTPUT_TOKENS_PER_MESSAGE = 40;
-
-/**
- * Function words that describe every mailbox. A learned subject phrase made only of these matches
- * half the inbox, so a candidate phrase has to be made entirely of words outside this set.
- */
-const PHRASE_STOPWORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'been',
-  'but',
-  'by',
-  'for',
-  'from',
-  'get',
-  'had',
-  'has',
-  'have',
-  'in',
-  'is',
-  'it',
-  'its',
-  'me',
-  'my',
-  'new',
-  'no',
-  'not',
-  'now',
-  'of',
-  'on',
-  'or',
-  'our',
-  're',
-  'fwd',
-  'so',
-  'that',
-  'the',
-  'this',
-  'to',
-  'up',
-  'us',
-  'was',
-  'we',
-  'were',
-  'will',
-  'with',
-  'you',
-  'your',
-]);
-
-const HAS_DIGIT = /\d/;
-
-/**
- * The longest run of distinctive, contiguous words in a subject, or null when there is none.
- *
- * Contiguity is not cosmetic: a SUBJECT_CONTAINS rule is a literal substring test against the same
- * normalisation applied here, so a phrase assembled from non-adjacent words would be stored as a
- * rule that can never match anything — including the message it was learned from. Digits are
- * excluded because they are what make otherwise identical subjects unique: "Invoice 4821" would
- * learn a rule matching exactly one message forever.
- */
-export function stableSubjectPhrase(subject: string | null): string | null {
-  const tokens = (subject ?? '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
-  const usable = (token: string) =>
-    token.length >= 3 && !HAS_DIGIT.test(token) && !PHRASE_STOPWORDS.has(token.replace(/\W/g, ''));
-  // Three words before two: a longer phrase says more and fires less often by accident.
-  for (const width of [3, 2]) {
-    for (let start = 0; start + width <= tokens.length; start += 1) {
-      const window = tokens.slice(start, start + width);
-      if (!window.every(usable)) continue;
-      const phrase = normalizeRuleValue('SUBJECT_CONTAINS', window.join(' '));
-      if (phrase) return phrase;
-    }
-  }
-  return null;
-}
 
 function hashMessage(message: gmail_message_metadata): string {
   return createHash('sha256')

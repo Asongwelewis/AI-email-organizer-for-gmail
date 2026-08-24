@@ -12,11 +12,13 @@ const applicationTables = [
   'automation_settings',
   'automation_states',
   'connected_google_accounts',
+  'facet_pivot_settings',
   'gmail_labels',
   'gmail_message_metadata',
   'gmail_sync_runs',
   'gmail_sync_states',
   'learned_classification_patterns',
+  'message_facets',
   'oauth_states',
   'sessions',
   'taxonomy_plan_node_rules',
@@ -67,7 +69,12 @@ const requiredIndexes = [
   'gmail_sync_states_status_idx',
   'learned_patterns_account_label_idx',
   'learned_patterns_account_rule_unique_idx',
+  'learned_patterns_facet_idx',
   'learned_patterns_reuse_idx',
+  'message_facets_account_classified_idx',
+  'message_facets_account_domain_intent_idx',
+  'message_facets_account_entity_intent_idx',
+  'message_facets_message_unique_idx',
   'oauth_states_expiry_idx',
   'oauth_states_initiating_session_idx',
   'oauth_states_initiating_user_idx',
@@ -87,8 +94,9 @@ const requiredIndexes = [
   'taxonomy_plans_account_status_idx',
   'user_labels_account_created_idx',
   'user_labels_account_depth_idx',
-  'user_labels_account_normalized_unique_idx',
+  'user_labels_account_facet_key_unique_idx',
   'user_labels_account_path_unique_idx',
+  'user_labels_account_sibling_name_unique_idx',
   'user_labels_parent_idx',
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
@@ -109,18 +117,18 @@ try {
     where n.nspname = 'public'
       and c.relname in (
         'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
-      'activity_runs',
         'activity_runs',
         'automation_settings', 'automation_states', 'automation_runs',
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-        'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels'
+        'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
+        'message_facets', 'facet_pivot_settings'
       )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all nineteen application tables must exist',
+    'every application table must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -208,8 +216,13 @@ try {
         'gmail_sync_states_next_retry_idx',
         'gmail_sync_states_status_idx',
         'learned_patterns_account_label_idx',
-  'learned_patterns_account_rule_unique_idx',
+        'learned_patterns_account_rule_unique_idx',
+        'learned_patterns_facet_idx',
         'learned_patterns_reuse_idx',
+        'message_facets_account_classified_idx',
+        'message_facets_account_domain_intent_idx',
+        'message_facets_account_entity_intent_idx',
+        'message_facets_message_unique_idx',
         'oauth_states_expiry_idx',
         'oauth_states_initiating_session_idx',
         'oauth_states_initiating_user_idx',
@@ -229,8 +242,9 @@ try {
         'taxonomy_plans_account_status_idx',
         'user_labels_account_created_idx',
         'user_labels_account_depth_idx',
-        'user_labels_account_normalized_unique_idx',
+        'user_labels_account_facet_key_unique_idx',
         'user_labels_account_path_unique_idx',
+        'user_labels_account_sibling_name_unique_idx',
         'user_labels_parent_idx',
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
@@ -307,6 +321,7 @@ try {
            ,'activity_run_kind', 'activity_run_state'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
+           ,'facet_source'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
@@ -333,12 +348,16 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
-  assert(summary?.enum_count === 18n, 'all eighteen enum types must exist');
-  assert(summary.foreign_key_count === 26n, 'all twenty-six foreign keys must exist');
+  // Exact counts, so a migration that quietly adds or drops something structural is caught rather
+  // than absorbed. The cost is that every schema change must update them here — which is the point,
+  // but it also means a stale number reads as a real failure: these three had drifted several
+  // migrations behind before the facet work began.
+  assert(summary?.enum_count === 19n, 'all nineteen enum types must exist');
+  assert(summary.foreign_key_count === 29n, 'all twenty-nine foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 11n,
-    'exactly eleven intended Prisma migrations must be applied',
+    summary.migration_count === 17n,
+    'exactly seventeen intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
