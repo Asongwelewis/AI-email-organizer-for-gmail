@@ -435,6 +435,49 @@ describe('the facet classification pass', () => {
     expect(mocks.patternUpsert).not.toHaveBeenCalled();
   });
 
+  it('blames the database, not the provider, when the database is what failed', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'Some distinctive subject line', sender: 'a@example.com' }),
+    ]);
+    const dead = Object.assign(new Error('Can`t reach database server'), {
+      name: 'PrismaClientKnownRequestError',
+    });
+    mocks.facetUpsert.mockRejectedValue(dead);
+    const counters = await service([
+      {
+        key: 'm1',
+        domain: 'finance',
+        domainConfidence: 0.9,
+        intent: 'newsletter',
+        intentConfidence: 0.9,
+      },
+    ]).classifyAccount(ACCOUNT);
+    // One batch, not three: retrying against a dead database spends model quota to learn nothing.
+    expect(counters.stoppedReason).toBe('DATABASE_UNAVAILABLE');
+    expect(mocks.classify).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed lease release without losing the failure that caused it', async () => {
+    mocks.messageFindMany.mockResolvedValue([]);
+    mocks.stateUpdateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockRejectedValueOnce(
+        Object.assign(new Error('gone'), { name: 'PrismaClientKnownRequestError' }),
+      );
+    // The lease expires on its own, so a release that fails must not become the run's outcome.
+    await expect(service([]).classifyAccount(ACCOUNT)).resolves.toMatchObject({ messagesSeen: 0 });
+  });
+
+  it('re-classifies mail assigned under a vocabulary that has since changed', async () => {
+    mocks.messageFindMany.mockResolvedValue([]);
+    await service([]).classifyAccount(ACCOUNT);
+    const where = mocks.messageFindMany.mock.calls[0]![0].where;
+    expect(where.OR).toEqual([
+      { facets: null },
+      { facets: { prompt_version: { not: expect.any(String) } } },
+    ]);
+  });
+
   it('refuses to run while the account is already leased', async () => {
     mocks.stateUpdateMany.mockResolvedValueOnce({ count: 0 });
     await expect(service([]).classifyAccount(ACCOUNT)).rejects.toMatchObject({

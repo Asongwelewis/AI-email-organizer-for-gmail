@@ -133,7 +133,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const result = await pivotService.apply(account.id);
+  const result = await pivotService.apply(account.id, account.user_id);
   write(
     `Applied: ${result.rowsCreated} folder row(s) created, ${result.rowsKept} reused; ` +
       `${result.gmailLabelsCreated} Gmail label(s) created, ` +

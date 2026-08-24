@@ -6,6 +6,7 @@ import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { entityFor } from '@api/features/label-discovery/entity.js';
+import { captureApiException } from '@api/observability/sentry.js';
 import {
   normalizeRuleValue,
   resolveFacetRules,
@@ -93,6 +94,22 @@ function hashMessage(message: gmail_message_metadata): string {
 
 function errorCode(error: unknown): string {
   return error instanceof AppError ? error.code : 'INTERNAL_SERVER_ERROR';
+}
+
+/**
+ * Whether a failure came from the database rather than from the model.
+ *
+ * The distinction decides both what the run REPORTS and whether it should keep going. A batch that
+ * fails because Postgres went away is not evidence about Gemini, and retrying two more batches
+ * against a dead database spends model quota to learn nothing — a real run stopped here and blamed
+ * `PROVIDER_UNUSABLE` for a `P1001`.
+ *
+ * Matched on Prisma's own error names rather than on `instanceof`, so a client constructed
+ * elsewhere in the process still classifies correctly.
+ */
+function isDatabaseFailure(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && name.startsWith('PrismaClient');
 }
 
 interface StoredFacetRule extends FacetRoutingRule {
@@ -258,9 +275,17 @@ export class FacetClassificationService {
         } catch (error) {
           counters.failed += batch.length;
           counters.lastErrorCode = errorCode(error);
-          if (error instanceof GeminiProviderError && error.code === 'PROVIDER_RATE_LIMITED') {
+          if (isDatabaseFailure(error)) {
+            // Nothing can be checkpointed while the database is unreachable, so continuing would
+            // spend model quota on work that cannot be recorded. Stop, and say so accurately.
+            counters.stoppedReason = 'DATABASE_UNAVAILABLE';
+          } else if (
+            error instanceof GeminiProviderError &&
+            error.code === 'PROVIDER_RATE_LIMITED'
+          ) {
             counters.stoppedReason = 'PROVIDER_RATE_LIMITED';
           }
+          captureApiException(error, { operation: 'facet_classification_batch' });
           logger.error(
             { ...safeErrorDetails(error), accountId },
             'facet classification batch failed',
@@ -277,10 +302,20 @@ export class FacetClassificationService {
       }
       return counters;
     } finally {
-      await prisma.automation_states.updateMany({
-        where: { connected_google_account_id: accountId, lease_token: token },
-        data: { lease_token: null, lease_expires_at: null },
-      });
+      // Releasing the lease is a courtesy, not a correctness requirement — it expires on its own,
+      // which is why a crashed run never wedges an account. Letting this throw would replace the
+      // real failure with a second one about the same dead connection, so it only ever logs.
+      try {
+        await prisma.automation_states.updateMany({
+          where: { connected_google_account_id: accountId, lease_token: token },
+          data: { lease_token: null, lease_expires_at: null },
+        });
+      } catch (error) {
+        logger.warn(
+          { ...safeErrorDetails(error), accountId },
+          'facet classification could not release its lease; it will expire on its own',
+        );
+      }
     }
   }
 
@@ -488,7 +523,14 @@ export class FacetClassificationService {
         is_trashed: false,
         sender_email: { not: null },
         NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
-        facets: null,
+        // Never classified, or classified under a vocabulary that has since changed. Recording
+        // prompt_version was pointless while nothing acted on it: bumping the vocabulary left
+        // every existing message describing itself in terms that no longer existed. Re-running
+        // now picks those up, and `persist` upserts, so a re-classification replaces in place.
+        OR: [
+          { facets: null },
+          { facets: { prompt_version: { not: FACET_CLASSIFIER_PROMPT_VERSION } } },
+        ],
       },
       orderBy: { internal_date: 'desc' },
       take: limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN,

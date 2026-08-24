@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { automation_action_status } from '@prisma/client';
 
 import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
+import { auditService } from '@api/audit/audit.service.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import {
@@ -12,6 +13,7 @@ import {
   type PivotResult,
 } from '@api/features/label-discovery/pivot.js';
 import { pivotService, type PivotService } from '@api/features/labels/pivot.service.js';
+import { captureApiException } from '@api/observability/sentry.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import { NO_LABEL } from './automation.types.js';
 
@@ -82,6 +84,36 @@ export function filingConfidence(
   const used = order.slice(0, depth);
   const values = used.map((facet) => confidences[facet] ?? 0);
   return values.length === 0 ? 0 : Math.min(...values);
+}
+
+/** One filing decision, as it is both hashed and stored. */
+interface RecordedDecision {
+  status: automation_action_status;
+  labelName: string;
+  labelPath: string | null;
+  confidence: number;
+  source: 'RULE' | 'MODEL';
+  explanation: string;
+  gmailLabelId?: string;
+  appliedAt?: Date;
+}
+
+/**
+ * Identifies a filing decision by its inputs: which message, into which folder, at what confidence,
+ * decided by what. Two runs that would file a message identically produce the same hash.
+ */
+function filingInputHash(messageId: string, decision: RecordedDecision): string {
+  return createHash('sha256')
+    .update(
+      [
+        messageId,
+        decision.labelPath ?? NO_LABEL,
+        decision.status,
+        decision.source,
+        decision.confidence.toFixed(4),
+      ].join('|'),
+    )
+    .digest('hex');
 }
 
 export class FacetFilingService {
@@ -249,6 +281,7 @@ export class FacetFilingService {
           counters.filed += 1;
         } catch (error) {
           counters.failed += 1;
+          captureApiException(error, { operation: 'facet_filing_message' });
           logger.warn(
             { ...safeErrorDetails(error), accountId },
             'facet filing failed for one message',
@@ -256,12 +289,36 @@ export class FacetFilingService {
         }
       }
       if (runId) await this.closeRun(runId, counters);
+      // Filing is the one facet path that changes someone's mailbox, so it leaves an audit trail
+      // like every other Gmail mutation. A dry run says so, rather than looking like a real one.
+      await auditService.record({
+        action: options.dryRun ? 'automation.facets.filed.dryRun' : 'automation.facets.filed',
+        result: counters.failed > 0 ? 'FAILURE' : 'SUCCESS',
+        userId,
+        metadata: {
+          seen: counters.seen,
+          filed: counters.filed,
+          none: counters.none,
+          reviewRequired: counters.reviewRequired,
+          failed: counters.failed,
+          staleLabelsRemoved: counters.staleLabelsRemoved,
+          pivot: pivot.order.join('>'),
+        },
+      });
       return { ...counters, pivot };
     } finally {
-      await prisma.automation_states.updateMany({
-        where: { connected_google_account_id: accountId, lease_token: token },
-        data: { lease_token: null, lease_expires_at: null },
-      });
+      // The lease expires on its own; failing to release it must not replace the real error.
+      try {
+        await prisma.automation_states.updateMany({
+          where: { connected_google_account_id: accountId, lease_token: token },
+          data: { lease_token: null, lease_expires_at: null },
+        });
+      } catch (error) {
+        logger.warn(
+          { ...safeErrorDetails(error), accountId },
+          'facet filing could not release its lease; it will expire on its own',
+        );
+      }
     }
   }
 
@@ -285,16 +342,7 @@ export class FacetFilingService {
     accountId: string,
     userId: string,
     messageId: string,
-    decision: {
-      status: automation_action_status;
-      labelName: string;
-      labelPath: string | null;
-      confidence: number;
-      source: 'RULE' | 'MODEL';
-      explanation: string;
-      gmailLabelId?: string;
-      appliedAt?: Date;
-    },
+    decision: RecordedDecision,
   ): Promise<void> {
     // No run means a dry run: the decision was counted and nothing is written.
     if (!runId) return;
@@ -311,7 +359,11 @@ export class FacetFilingService {
       source: decision.source === 'RULE' ? ('LEARNED_PATTERN' as const) : ('AI' as const),
       explanation: decision.explanation,
       reason_codes: ['FACET_PIVOT', decision.source],
-      input_hash: `facet:${messageId}`,
+      // A hash of what the decision actually rests on, which is the column's whole purpose: the
+      // same message under a different facet assignment or a different folder is a different
+      // decision, and a re-file has to be able to tell. The old value was the message id with a
+      // prefix, which never changed and so could never detect anything.
+      input_hash: filingInputHash(messageId, decision),
       gmail_label_id: decision.gmailLabelId ?? null,
       applied_at: decision.appliedAt ?? null,
       last_error_code: null,

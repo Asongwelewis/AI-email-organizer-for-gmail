@@ -1,3 +1,4 @@
+import { auditService } from '@api/audit/audit.service.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
@@ -182,7 +183,7 @@ export class PivotService {
    * are reported, never deleted — deleting a Gmail label does not unlabel the mail under it, so
    * removing folders is a decision for a person, not a side effect of re-running a pivot.
    */
-  async apply(accountId: string): Promise<PivotApplyResult> {
+  async apply(accountId: string, userId: string): Promise<PivotApplyResult> {
     const plan = await this.plan(accountId);
     let rowsCreated = 0;
     let rowsKept = 0;
@@ -246,6 +247,22 @@ export class PivotService {
       });
     }
 
+    // Creating folders in someone's mailbox is a Gmail mutation like any other, and every other
+    // one leaves a trail. Deletions never appear here because the pivot never deletes.
+    await auditService.record({
+      action: 'labels.pivot.applied',
+      result: 'SUCCESS',
+      userId,
+      metadata: {
+        pivot: plan.order.join('>'),
+        minMessages: plan.minMessages,
+        rowsCreated,
+        rowsKept,
+        gmailLabelsCreated,
+        gmailLabelsReused,
+        orphanedLeftAlone: plan.orphaned.length,
+      },
+    });
     return { ...plan, rowsCreated, rowsKept, gmailLabelsCreated, gmailLabelsReused };
   }
 

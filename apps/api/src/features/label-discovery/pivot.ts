@@ -1,4 +1,5 @@
 import { entityDisplayName } from './entity.js';
+import { FACET_NAMES, type FacetName } from './facets.js';
 import { validateLeafName } from './label-normalization.js';
 import { LABEL_ROOT } from './taxonomy-planner.js';
 
@@ -14,9 +15,13 @@ import { LABEL_ROOT } from './taxonomy-planner.js';
  * written to Gmail can be built, printed, and reviewed without a single remote call.
  */
 
-export const PIVOT_FACETS = ['entity', 'domain', 'intent'] as const;
+/**
+ * The facets a pivot may order. Defined once, in `facets.ts`, so the vocabulary module and the
+ * pivot cannot drift into disagreeing about which axes a message has.
+ */
+export const PIVOT_FACETS = FACET_NAMES;
 
-export type PivotFacet = (typeof PIVOT_FACETS)[number];
+export type PivotFacet = FacetName;
 
 /** Netflix > Payment failed. The default, and the ordering materialised into Gmail. */
 export const DEFAULT_PIVOT: PivotFacet[] = ['entity', 'intent'];

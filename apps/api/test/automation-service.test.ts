@@ -27,7 +27,11 @@ const mocks = vi.hoisted(() => {
     patternFindMany: vi.fn(),
     patternFindUnique: vi.fn(),
     patternUpsert: vi.fn(),
+    patternUpdate: vi.fn(),
     patternUpdateMany: vi.fn(),
+    actionFindFirst: vi.fn(),
+    userLabelUpdate: vi.fn(),
+    gmailLabelFindMany: vi.fn(),
     classifier: vi.fn(),
     activityStart: vi.fn(),
     activityRunDetached: vi.fn(),
@@ -86,10 +90,12 @@ vi.mock('../src/database/prisma.js', () => ({
     },
     automation_message_actions: {
       findMany: mocks.actionFindMany,
+      findFirst: mocks.actionFindFirst,
       create: mocks.actionCreate,
       update: mocks.actionUpdate,
       findUniqueOrThrow: mocks.actionFindUniqueOrThrow,
     },
+    gmail_labels: { findMany: mocks.gmailLabelFindMany },
     gmail_message_metadata: {
       findMany: mocks.messageFindMany,
       count: mocks.messageCount,
@@ -99,11 +105,13 @@ vi.mock('../src/database/prisma.js', () => ({
       findMany: mocks.userLabelFindMany,
       findFirst: mocks.userLabelFindFirst,
       count: mocks.userLabelCount,
+      update: mocks.userLabelUpdate,
     },
     learned_classification_patterns: {
       findMany: mocks.patternFindMany,
       findUnique: mocks.patternFindUnique,
       upsert: mocks.patternUpsert,
+      update: mocks.patternUpdate,
       updateMany: mocks.patternUpdateMany,
     },
     $transaction: mocks.transaction,
@@ -128,6 +136,7 @@ const approvedLabel = {
 const gmailStub = () => ({
   ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_1', created: false }),
   applyLabel: vi.fn().mockResolvedValue(undefined),
+  applyExclusiveLabel: vi.fn().mockResolvedValue(undefined),
   renameLabel: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -791,5 +800,67 @@ describe('AutomationService', () => {
 
     await expect(service.start('user-1')).resolves.toMatchObject({ alreadyRunning: true });
     expect(mocks.activityRunDetached).not.toHaveBeenCalled();
+  });
+});
+
+describe('AutomationService review approvals', () => {
+  const reviewable = {
+    id: 'action-1',
+    connected_google_account_id: 'account-1',
+    gmail_message_id: 'row-1',
+    status: 'REVIEW_REQUIRED',
+    message: {
+      gmail_message_id: 'gmail-1',
+      // Already filed under the previous tree, plus one label of the user's own.
+      label_ids: ['Label_old', 'Label_personal'],
+      sender_email: 'billing@netflix.com',
+      subject: 'Payment failed',
+    },
+  };
+
+  function service() {
+    const gmail = gmailStub();
+    mocks.actionFindFirst.mockResolvedValue(reviewable);
+    mocks.gmailLabelFindMany.mockResolvedValue([{ gmail_label_id: 'Label_old' }]);
+    mocks.actionUpdate.mockResolvedValue({});
+    mocks.messageUpdate.mockResolvedValue({});
+    mocks.patternFindUnique.mockResolvedValue(null);
+    mocks.patternUpsert.mockResolvedValue({});
+    return { gmail, service: new AutomationService({ classify: mocks.classifier }, gmail) };
+  }
+
+  it('moves the message rather than adding a second MailMind label', async () => {
+    const { gmail, service: automation } = service();
+    mocks.userLabelFindFirst.mockResolvedValue({
+      ...approvedLabel,
+      full_path: 'MailMind/Invoices',
+    });
+
+    await automation.approve('user-1', 'action-1', 'MailMind/Invoices');
+
+    expect(gmail.applyLabel).not.toHaveBeenCalled();
+    // The old MailMind label comes off in the same call the new one goes on; the user's own
+    // label is not MailMind's to touch.
+    expect(gmail.applyExclusiveLabel).toHaveBeenCalledWith('account-1', 'gmail-1', 'Label_1', [
+      'Label_old',
+    ]);
+    expect(mocks.messageUpdate.mock.calls[0]![0].data.label_ids).toEqual([
+      'Label_personal',
+      'Label_1',
+    ]);
+  });
+
+  it('refuses a bare folder name that several folders share', async () => {
+    const { service: automation } = service();
+    mocks.userLabelFindFirst.mockResolvedValue(null);
+    mocks.userLabelFindMany.mockResolvedValue([
+      { ...approvedLabel, full_path: 'MailMind/Netflix/Payment failed' },
+      { ...approvedLabel, full_path: 'MailMind/Coursera/Payment failed' },
+    ]);
+
+    // A pivot repeats its lower levels, so the name alone cannot say which folder is meant.
+    await expect(automation.approve('user-1', 'action-1', 'Payment failed')).rejects.toMatchObject({
+      code: 'AUTOMATION_VALIDATION_FAILED',
+    });
   });
 });

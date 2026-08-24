@@ -53,7 +53,10 @@ async function main(): Promise<void> {
   });
   const previousMessages = previous._sum.ai_classified_count ?? 0;
 
-  const counters = await facetClassificationService.classifyAccount(account.id, { limit });
+  const counters = await facetClassificationService.classifyAccount(
+    account.id,
+    limit === undefined ? {} : { limit },
+  );
   if (all) {
     // Keep going while each pass is still making progress. A pass that classifies nothing is
     // either finished or blocked, and either way looping again would only spend quota.
@@ -62,7 +65,10 @@ async function main(): Promise<void> {
     // them would loop forever once a single pass had succeeded.
     let lastProgress = counters.ruleDecided + counters.modelDecided;
     while (lastProgress > 0 && !counters.stoppedReason) {
-      const next = await facetClassificationService.classifyAccount(account.id, { limit });
+      const next = await facetClassificationService.classifyAccount(
+        account.id,
+        limit === undefined ? {} : { limit },
+      );
       pass += 1;
       lastProgress = next.ruleDecided + next.modelDecided;
       counters.messagesSeen += next.messagesSeen;
