@@ -14,7 +14,10 @@
  * cleanly and the next invocation resumes from the message_facets checkpoint.
  */
 import { prisma } from '../src/database/prisma.js';
-import { facetClassificationService } from '../src/features/automation/facet-classification.service.js';
+import {
+  facetClassificationService,
+  isDatabaseFailure,
+} from '../src/features/automation/facet-classification.service.js';
 
 const args = process.argv.slice(2);
 const valueOf = (flag: string) => {
@@ -29,6 +32,32 @@ const limit = Number.isFinite(limitArg) && limitArg > 0 ? Math.floor(limitArg) :
 const write = (line = '') => process.stdout.write(`${line}\n`);
 const per1000 = (tokens: number, messages: number) =>
   messages === 0 ? 0 : Math.round((tokens / messages) * 1000);
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * How many consecutive dropped connections to ride out before giving up.
+ *
+ * Supabase's pooler closes a long-lived connection roughly every thousand messages, which killed
+ * two full-mailbox runs outright. A pass is already resumable — a message_facets row is the
+ * checkpoint — so a dropped connection costs nothing but the reconnect. Stopping after a few in a
+ * row still tells a flaky pooler apart from a database that is genuinely down.
+ */
+const MAX_CONNECTION_RETRIES = 5;
+
+/** One pass, retried through a dropped connection on a fresh client. */
+async function passWithReconnect(accountId: string, options: { limit?: number }) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await facetClassificationService.classifyAccount(accountId, options);
+    } catch (error) {
+      if (!isDatabaseFailure(error) || attempt >= MAX_CONNECTION_RETRIES) throw error;
+      write(`  connection lost, reconnecting (attempt ${attempt + 1})`);
+      await prisma.$disconnect();
+      await delay(2000 * (attempt + 1));
+    }
+  }
+}
 
 async function main(): Promise<void> {
   const account = await prisma.connected_google_accounts.findFirst({
@@ -53,10 +82,7 @@ async function main(): Promise<void> {
   });
   const previousMessages = previous._sum.ai_classified_count ?? 0;
 
-  const counters = await facetClassificationService.classifyAccount(
-    account.id,
-    limit === undefined ? {} : { limit },
-  );
+  const counters = await passWithReconnect(account.id, limit === undefined ? {} : { limit });
   if (all) {
     // Keep going while each pass is still making progress. A pass that classifies nothing is
     // either finished or blocked, and either way looping again would only spend quota.
@@ -65,10 +91,7 @@ async function main(): Promise<void> {
     // them would loop forever once a single pass had succeeded.
     let lastProgress = counters.ruleDecided + counters.modelDecided;
     while (lastProgress > 0 && !counters.stoppedReason) {
-      const next = await facetClassificationService.classifyAccount(
-        account.id,
-        limit === undefined ? {} : { limit },
-      );
+      const next = await passWithReconnect(account.id, limit === undefined ? {} : { limit });
       pass += 1;
       lastProgress = next.ruleDecided + next.modelDecided;
       counters.messagesSeen += next.messagesSeen;
@@ -85,7 +108,9 @@ async function main(): Promise<void> {
       counters.usage.cachedInputTokens += next.usage.cachedInputTokens;
       counters.usage.outputTokens += next.usage.outputTokens;
       counters.costMicrousd += next.costMicrousd;
-      counters.stoppedReason = next.stoppedReason;
+      // A pass the pooler interrupted is retried, not treated as the end of the mailbox.
+      counters.stoppedReason =
+        next.stoppedReason === 'DATABASE_UNAVAILABLE' ? null : next.stoppedReason;
       counters.lastErrorCode = next.lastErrorCode ?? counters.lastErrorCode;
       if (next.messagesSeen === 0) break;
       write(

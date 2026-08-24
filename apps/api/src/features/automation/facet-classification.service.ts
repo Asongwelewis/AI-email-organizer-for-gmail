@@ -107,7 +107,7 @@ function errorCode(error: unknown): string {
  * Matched on Prisma's own error names rather than on `instanceof`, so a client constructed
  * elsewhere in the process still classifies correctly.
  */
-function isDatabaseFailure(error: unknown): boolean {
+export function isDatabaseFailure(error: unknown): boolean {
   const name = (error as { name?: unknown } | null)?.name;
   return typeof name === 'string' && name.startsWith('PrismaClient');
 }
