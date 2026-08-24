@@ -441,6 +441,7 @@ describe('the facet classification pass', () => {
     ]);
     const dead = Object.assign(new Error('Can`t reach database server'), {
       name: 'PrismaClientKnownRequestError',
+      code: 'P1017',
     });
     mocks.facetUpsert.mockRejectedValue(dead);
     const counters = await service([
@@ -459,11 +460,12 @@ describe('the facet classification pass', () => {
 
   it('reports a failed lease release without losing the failure that caused it', async () => {
     mocks.messageFindMany.mockResolvedValue([]);
-    mocks.stateUpdateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockRejectedValueOnce(
-        Object.assign(new Error('gone'), { name: 'PrismaClientKnownRequestError' }),
-      );
+    mocks.stateUpdateMany.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(
+      Object.assign(new Error('gone'), {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P1017',
+      }),
+    );
     // The lease expires on its own, so a release that fails must not become the run's outcome.
     await expect(service([]).classifyAccount(ACCOUNT)).resolves.toMatchObject({ messagesSeen: 0 });
   });
@@ -476,6 +478,31 @@ describe('the facet classification pass', () => {
       { facets: null },
       { facets: { prompt_version: { not: expect.any(String) } } },
     ]);
+  });
+
+  it('keeps the rest of a batch when one message cannot be written', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'First subject line here', sender: 'a@1xbet.com' }),
+      message({ id: 'b', subject: 'Second subject line here', sender: 'b@example.com' }),
+    ]);
+    // A check-constraint violation is permanent and belongs to one row, not to the batch.
+    const violation = Object.assign(new Error('violates check constraint'), {
+      name: 'PrismaClientUnknownRequestError',
+    });
+    mocks.facetUpsert.mockRejectedValueOnce(violation).mockResolvedValue({});
+    const decide = (key: string) => ({
+      key,
+      domain: 'finance',
+      domainConfidence: 0.9,
+      intent: 'newsletter',
+      intentConfidence: 0.9,
+    });
+    const counters = await service([decide('m1'), decide('m2')]).classifyAccount(ACCOUNT);
+
+    // The model answered for both and those tokens are spent; the good one is still recorded.
+    expect(counters.failed).toBe(1);
+    expect(counters.modelDecided).toBe(1);
+    expect(counters.stoppedReason).toBeNull();
   });
 
   it('refuses to run while the account is already leased', async () => {

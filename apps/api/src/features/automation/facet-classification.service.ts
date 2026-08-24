@@ -97,19 +97,36 @@ function errorCode(error: unknown): string {
 }
 
 /**
- * Whether a failure came from the database rather than from the model.
- *
- * The distinction decides both what the run REPORTS and whether it should keep going. A batch that
- * fails because Postgres went away is not evidence about Gemini, and retrying two more batches
- * against a dead database spends model quota to learn nothing — a real run stopped here and blamed
- * `PROVIDER_UNUSABLE` for a `P1001`.
- *
- * Matched on Prisma's own error names rather than on `instanceof`, so a client constructed
- * elsewhere in the process still classifies correctly.
+ * Prisma error codes worth retrying: the connection went away, the pool timed out, a transaction
+ * was aborted. Every one is about REACHING the database, not about what was asked of it.
  */
-export function isDatabaseFailure(error: unknown): boolean {
+const TRANSIENT_DATABASE_CODES = new Set([
+  'P1001', // can't reach the database server
+  'P1002', // server reached but timed out
+  'P1008', // operation timed out
+  'P1011', // TLS error
+  'P1017', // server has closed the connection
+  'P2024', // timed out fetching a connection from the pool
+  'P2028', // transaction API error
+  'P2034', // write conflict or deadlock, safe to retry
+]);
+
+/**
+ * Whether a failure is a TRANSIENT database problem — one that retrying might get past.
+ *
+ * The distinction decides both what a run reports and whether it tries again, so getting it wrong
+ * is expensive in both directions. Matching every `PrismaClient*` error was far too broad: a
+ * check-constraint violation is a permanent fact about the data, and treating it as a dropped
+ * connection made the runner retry the same doomed message forever while its lease kept renewing.
+ * The run looked alive, said DATABASE_UNAVAILABLE, and classified nothing for half an hour.
+ */
+export function isTransientDatabaseFailure(error: unknown): boolean {
   const name = (error as { name?: unknown } | null)?.name;
-  return typeof name === 'string' && name.startsWith('PrismaClient');
+  if (name === 'PrismaClientInitializationError' || name === 'PrismaClientRustPanicError') {
+    return true;
+  }
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && TRANSIENT_DATABASE_CODES.has(code);
 }
 
 interface StoredFacetRule extends FacetRoutingRule {
@@ -262,20 +279,34 @@ export class FacetClassificationService {
             const domain = entry.known.domain ?? decision.domain;
             const intent = entry.known.intent ?? decision.intent;
             const entity = entityFor(entry.message.sender_email);
-            counters.modelDecided += 1;
-            await this.persist(accountId, entry.message, entity, 'MODEL', {
-              domain,
-              domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
-              intent,
-              intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
-            });
-            this.countAssignments(counters, entity, domain, intent);
-            counters.rulesLearned += await this.learn(accountId, entry.message, decision, entity);
+            // Each message is written on its own. The model answered for all of them and those
+            // tokens are already spent, so letting one unwritable row discard the twenty-four
+            // beside it throws away work that was paid for and correct.
+            try {
+              await this.persist(accountId, entry.message, entity, 'MODEL', {
+                domain,
+                domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
+                intent,
+                intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
+              });
+              counters.modelDecided += 1;
+              this.countAssignments(counters, entity, domain, intent);
+              counters.rulesLearned += await this.learn(accountId, entry.message, decision, entity);
+            } catch (error) {
+              // A transient fault is the whole batch's problem, and the outer handler owns it.
+              if (isTransientDatabaseFailure(error)) throw error;
+              counters.failed += 1;
+              captureApiException(error, { operation: 'facet_classification_persist' });
+              logger.warn(
+                { ...safeErrorDetails(error), accountId },
+                'facet classification could not record one message',
+              );
+            }
           }
         } catch (error) {
           counters.failed += batch.length;
           counters.lastErrorCode = errorCode(error);
-          if (isDatabaseFailure(error)) {
+          if (isTransientDatabaseFailure(error)) {
             // Nothing can be checkpointed while the database is unreachable, so continuing would
             // spend model quota on work that cannot be recorded. Stop, and say so accurately.
             counters.stoppedReason = 'DATABASE_UNAVAILABLE';

@@ -16,7 +16,7 @@
 import { prisma } from '../src/database/prisma.js';
 import {
   facetClassificationService,
-  isDatabaseFailure,
+  isTransientDatabaseFailure,
 } from '../src/features/automation/facet-classification.service.js';
 
 const args = process.argv.slice(2);
@@ -51,7 +51,7 @@ async function passWithReconnect(accountId: string, options: { limit?: number })
     try {
       return await facetClassificationService.classifyAccount(accountId, options);
     } catch (error) {
-      if (!isDatabaseFailure(error) || attempt >= MAX_CONNECTION_RETRIES) throw error;
+      if (!isTransientDatabaseFailure(error) || attempt >= MAX_CONNECTION_RETRIES) throw error;
       write(`  connection lost, reconnecting (attempt ${attempt + 1})`);
       await prisma.$disconnect();
       await delay(2000 * (attempt + 1));
