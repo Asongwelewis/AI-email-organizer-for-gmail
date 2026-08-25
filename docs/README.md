@@ -12,6 +12,12 @@ This directory documents the current MailMind AI MVP implementation.
   production build.
 - [API reference](api.md) — HTTP conventions and the implemented endpoint contracts.
 
+## Review
+
+- [Codebase review, August 2026](review-2026-08.md) — full-stack audit at `eb329eb`: what is built,
+  what is wrong, what is missing, and the ordered work left before this can be used daily and
+  eventually shared.
+
 ## Stage-specific design notes
 
 - [Stage 2 setup and security](stage-2-setup.md)

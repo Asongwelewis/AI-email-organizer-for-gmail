@@ -63,8 +63,10 @@ export default defineConfig(({ mode }) => {
           scope: '/',
           display: 'standalone',
           orientation: 'portrait',
-          theme_color: '#f3ecdf',
-          background_color: '#f3ecdf',
+          // The dark window ground from theme.css. A manifest colour is fixed at install time, so
+          // it follows the app's default theme rather than the viewer's current one.
+          theme_color: '#1c1c1e',
+          background_color: '#1c1c1e',
           icons: [
             { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
             { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },

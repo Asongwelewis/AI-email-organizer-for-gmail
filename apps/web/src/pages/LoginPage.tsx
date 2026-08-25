@@ -7,6 +7,7 @@ import loginImage from '@web/assets/mailmind-secure-sort.png';
 import { BrandMark } from '@web/components/BrandMark';
 import { MagneticButton } from '@web/components/MagneticButton';
 import { RouteLoader } from '@web/components/RouteLoader';
+import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
 
 const safeLoginErrors: Record<string, string> = {
@@ -30,7 +31,12 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-panel">
-        <BrandMark />
+        {/* The panel is taller than most viewports, so the control belongs at the top with the
+            wordmark rather than in the footer where nobody scrolls to find it. */}
+        <div className="login-panel__top">
+          <BrandMark />
+          <ThemeToggle variant="compact" />
+        </div>
         <motion.div
           className="login-panel__content"
           initial={{ opacity: 0, y: 24 }}

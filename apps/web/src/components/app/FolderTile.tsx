@@ -22,10 +22,10 @@ export function FolderTile({ name, path, count, childCount, onOpen }: FolderTile
       className="folder-tile"
       onClick={onOpen}
       style={{
-        // Tint and ink share a hue: the label reads as part of the tile, not printed on top of it.
-        ['--tile-surface' as string]: color.surface,
-        ['--tile-ink' as string]: color.ink,
-        ['--tile-line' as string]: color.line,
+        // One hue, and the theme decides the rest. Tint, icon, and label are built from it in
+        // theme.css, so the label reads as part of the tile in both themes rather than printed
+        // on top of it in one and lost in the other.
+        ['--tile-hue' as string]: String(color.hue),
       }}
     >
       <span className="folder-tile__top">

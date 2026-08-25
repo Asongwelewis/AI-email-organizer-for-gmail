@@ -2,14 +2,16 @@
  * A folder's colour is derived from its path, never from its position in a list. Sorting,
  * filtering, or adding a folder must not repaint the grid: a folder the eye has learned to find by
  * colour has to keep that colour between renders and between sessions.
+ *
+ * Only the HUE is decided here. Lightness and saturation belong to the theme — a tint that reads
+ * as a soft pastel on white is a glare on graphite, and baking both themes into this function
+ * would mean the hash had to know which one is showing. It does not: `FolderTile` sets one
+ * `--tile-hue`, and `theme.css` builds the surface, ink, and hairline from it per theme. So a
+ * folder keeps its identity across renders, across sessions, AND across a theme switch.
  */
 export interface FolderColor {
-  /** Soft tint behind the tile. */
-  surface: string;
-  /** Same hue, dark enough for icon and label text to read on the tint. */
-  ink: string;
-  /** Hairline in the same hue, for the tile border. */
-  line: string;
+  /** Degrees on the colour wheel. Stable for a given path, forever. */
+  hue: number;
 }
 
 /** FNV-1a. Small, stable, and dependency-free; the exact function matters less than that it never changes. */
@@ -29,10 +31,5 @@ function hash(value: string): number {
 const HUES = [8, 24, 42, 96, 152, 176, 198, 218, 244, 268, 292, 322] as const;
 
 export function folderColor(path: string): FolderColor {
-  const hue = HUES[hash(path.toLowerCase()) % HUES.length] ?? HUES[0];
-  return {
-    surface: `hsl(${hue} 46% 94%)`,
-    ink: `hsl(${hue} 58% 26%)`,
-    line: `hsl(${hue} 34% 84%)`,
-  };
+  return { hue: HUES[hash(path.toLowerCase()) % HUES.length] ?? HUES[0] };
 }

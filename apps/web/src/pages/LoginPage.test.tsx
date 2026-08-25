@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ThemeProvider } from '@web/context/ThemeContext';
 import { LoginPage } from './LoginPage';
 
 const authState = vi.hoisted(() => ({
@@ -16,12 +17,14 @@ vi.mock('@web/context/useAuth', () => ({ useAuth: () => authState }));
 
 function renderLogin(entry = '/login') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/sorted" element={<div>Sorted destination</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/sorted" element={<div>Sorted destination</div>} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 

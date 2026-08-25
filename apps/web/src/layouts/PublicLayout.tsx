@@ -3,6 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { BrandMark } from '@web/components/BrandMark';
+import { ThemeToggle } from '@web/components/ThemeToggle';
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
         <nav aria-label="Public navigation">
           <a href="#principles">Principles</a>
           <a href="#how-it-works">How it works</a>
+          <ThemeToggle variant="compact" />
           <Link className="header-login" to="/login">
             Sign in <ArrowUpRight aria-hidden="true" />
           </Link>

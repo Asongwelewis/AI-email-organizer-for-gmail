@@ -154,7 +154,14 @@ export function ApprovePage() {
                       onChange={() => toggle(node)}
                       aria-label={`Keep ${node.path}`}
                     />
-                    <span className="plan-node__name" style={{ color: color.ink }}>
+                    {/* Same hue the folder will wear once approved, resolved by the theme. */}
+                    <span
+                      className="plan-node__name"
+                      style={{
+                        ['--tile-hue' as string]: String(color.hue),
+                        color: 'var(--tile-ink)',
+                      }}
+                    >
                       {node.name}
                     </span>
                     <span className="plan-node__count">

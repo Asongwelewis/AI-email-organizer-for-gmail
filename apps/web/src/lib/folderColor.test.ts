@@ -30,14 +30,28 @@ describe('folderColor', () => {
       'Learning',
       'Money in',
     ];
-    const hues = new Set(paths.map((path) => folderColor(path).surface));
+    const hues = new Set(paths.map((path) => folderColor(path).hue));
     expect(hues.size).toBeGreaterThan(3);
   });
 
-  it('keeps tint and ink on the same hue so a label reads as part of its tile', () => {
-    const { surface, ink, line } = folderColor('Job hunt');
-    const hueOf = (value: string) => Number(/hsl\((\d+)/.exec(value)?.[1]);
-    expect(hueOf(ink)).toBe(hueOf(surface));
-    expect(hueOf(line)).toBe(hueOf(surface));
+  /**
+   * Only the hue is decided here. Lightness and saturation belong to the theme, which is what lets
+   * one folder keep its identity in light and dark without the hash knowing which is showing —
+   * so what this has to guarantee is a usable hue and nothing else.
+   */
+  it('returns a bare hue in degrees, so the theme can choose the lightness', () => {
+    const { hue } = folderColor('Job hunt');
+    expect(Number.isInteger(hue)).toBe(true);
+    expect(hue).toBeGreaterThanOrEqual(0);
+    expect(hue).toBeLessThan(360);
+  });
+
+  it('never returns a hue outside the wheel, for any path', () => {
+    const paths = Array.from({ length: 200 }, (_, index) => `MailMind/Folder ${index}`);
+    for (const path of paths) {
+      const { hue } = folderColor(path);
+      expect(hue).toBeGreaterThanOrEqual(0);
+      expect(hue).toBeLessThan(360);
+    }
   });
 });

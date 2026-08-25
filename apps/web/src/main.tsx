@@ -5,6 +5,8 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from './App';
+// theme.css first: it defines every colour token the other two consume.
+import '@web/styles/theme.css';
 import '@web/styles/index.css';
 import '@web/styles/app.css';
 

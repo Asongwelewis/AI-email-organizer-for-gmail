@@ -81,19 +81,19 @@ feature hooks add polling only while a Gmail sync or automation run is active.
 
 ### Directory guide
 
-| Location         | Responsibility                                                    |
-| ---------------- | ----------------------------------------------------------------- |
-| `src/router`     | Public and protected route definitions                            |
-| `src/pages`      | Route-level screens                                               |
-| `src/layouts`    | Public layout and authenticated application shell                 |
-| `src/components` | Shared visual, navigation, dialog, and route-guard components     |
-| `src/context`    | Authentication and Gmail connection orchestration                 |
-| `src/services`   | Axios client and user-facing API error translation                |
-| `src/queries`    | TanStack Query keys, reads, mutations, invalidation, and polling  |
-| `src/types`      | API response and feature taxonomy types                           |
-| `src/lib`        | Folder colour hashing, Gmail deep links, and display formatting   |
-| `src/styles`     | `index.css` for the public pages, `app.css` for the three screens |
-| `src/test`       | Vitest and Testing Library setup                                  |
+| Location         | Responsibility                                                      |
+| ---------------- | ------------------------------------------------------------------- |
+| `src/router`     | Public and protected route definitions                              |
+| `src/pages`      | Route-level screens                                                 |
+| `src/layouts`    | Public layout and authenticated application shell                   |
+| `src/components` | Shared visual, navigation, dialog, and route-guard components       |
+| `src/context`    | Authentication, Gmail connection orchestration, and the theme       |
+| `src/services`   | Axios client and user-facing API error translation                  |
+| `src/queries`    | TanStack Query keys, reads, mutations, invalidation, and polling    |
+| `src/types`      | API response and feature taxonomy types                             |
+| `src/lib`        | Folder colour hashing, Gmail deep links, and display formatting     |
+| `src/styles`     | `theme.css` palette tokens, `index.css` public pages, `app.css` app |
+| `src/test`       | Vitest and Testing Library setup                                    |
 
 ## Routes
 
@@ -123,14 +123,48 @@ screens where a decision gets made. All of them render inside `ProtectedRoute` a
 `/dashboard/*` and `/settings/*` redirect to `/sorted`, `/labels` to `/approve`, and `/automation`
 to `/activity`. Unknown routes redirect to `/`.
 
+## Theme
+
+The interface is macOS-shaped: layered graphite that is never pure black, translucent chrome over
+the content behind it, an inner top highlight that makes a panel read as milled rather than
+printed, and one system blue spent only on focus, selection, and the single primary action per
+screen. Radii sit on Apple's 6/10/14/18 scale.
+
+`src/styles/theme.css` is the only file that defines a colour. It carries three states, because a
+theme has three and not two:
+
+| Selector                                                                  | Meaning                                         |
+| ------------------------------------------------------------------------- | ----------------------------------------------- |
+| `:root`                                                                   | the complete **light** palette, unconditionally |
+| `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }` | dark, when no explicit choice was made          |
+| `:root[data-theme='dark']`                                                | dark again, so an explicit choice beats the OS  |
+
+Every token is defined once on bare `:root`; the dark blocks only ever redefine. A colour whose
+only definition lives inside a media query disappears when the query stops matching.
+
+`ThemeProvider` owns the preference — `dark` (the default), `light`, or `system` — persists it to
+`localStorage` inside `try/catch`, and stamps `data-theme` on the document element. **`system`
+removes the attribute rather than stamping a value**: that is the contract the CSS is written
+against, and stamping one would work once and then stop following the OS. An inline script in
+`index.html` applies the same rule before first paint so a dark-on-a-light-machine load has no
+white flash; it duplicates the storage key and the default deliberately, and has to be changed
+alongside `src/context/useTheme.ts`.
+
+`folderColor` returns a **hue and nothing else**. Saturation and lightness are the theme's business,
+so `FolderTile` sets one `--tile-hue` and the `hsl()` is composed on the tile itself — a custom
+property is substituted against the element that declares it, so composing the colour on `:root`
+would resolve the hue against `:root`, where it is never set, and paint every folder the same
+fallback blue. The result is that a folder keeps the hue the eye learned across renders, sessions,
+and a theme switch, while staying readable in both.
+
+The system font stack carries UI text and every numeral — on a Mac that resolves to San Francisco,
+which is the point — with Manrope as the fallback elsewhere and DM Mono for timestamps and codes.
+Fraunces is the wordmark alone.
+
 `AppShell` is one layout with one breakpoint at 768px: a bottom tab bar and a two-column tile grid
 below it, a left nav rail and a four-column grid inside a max-width column above it. A phone layout
-stretched across a desktop is the failure mode this avoids.
-
-The signed-in app is deliberately plain — no gradients, no shadows, no decorative motion. Depth
-comes from hairlines and tint. Fraunces sets the app name and every numeral, Manrope sets UI text,
-DM Mono sets timestamps and codes, at weights 400 and 500 only. The editorial treatment stays on
-the landing and sign-in pages, where the atmosphere component still runs.
+stretched across a desktop is the failure mode this avoids. The editorial atmosphere still runs on
+the landing and sign-in pages; it does not follow you through the door.
 
 ## Authentication state
 
@@ -200,7 +234,9 @@ such as the daily Gemini budget. The list polls every two seconds only while a r
 
 `vite-plugin-pwa` generates the manifest and service worker.
 
-- Standalone display, `#f3ecdf` theme and background, icons at 192, 512, and 512 maskable. The
+- Standalone display, `#1c1c1e` theme and background — the dark window ground, because a manifest
+  colour is fixed at install time and follows the app's default theme rather than the viewer's
+  current one. Icons at 192, 512, and 512 maskable. The
   icons are generated by `apps/web/scripts/generate-pwa-icons.mjs` so the mark stays reviewable as
   code rather than as opaque binaries.
 - The service worker precaches the app shell only — JavaScript, CSS, HTML, and the icons. The

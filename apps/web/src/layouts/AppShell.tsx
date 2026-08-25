@@ -2,6 +2,7 @@ import { CheckCheck, History, LayoutGrid, LogOut } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
+import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
 
 /**
@@ -38,6 +39,7 @@ export function AppShell() {
           ))}
         </ul>
         <div className="shell__account">
+          <ThemeToggle variant="compact" className="shell__theme" />
           <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} />
           <span className="shell__email">{user.email}</span>
           <button
@@ -53,6 +55,11 @@ export function AppShell() {
 
       <main className="shell__main">
         <div className="shell__column">
+          {/* Below the rail's breakpoint the account row is hidden, so the control needs a home
+              inside the content column rather than only in the desktop sidebar. */}
+          <div className="shell__toolbar">
+            <ThemeToggle variant="compact" />
+          </div>
           <Outlet />
         </div>
       </main>

@@ -3,11 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f3ecdf" />
+    <!--
+      Two media-scoped tags cover the OS preference before any script runs; the third is the one
+      ThemeProvider rewrites when an explicit choice overrides the OS. Order matters: the unscoped
+      tag must come last so it wins once it is set.
+    -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ececee" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
+    <meta name="theme-color" content="#1c1c1e" />
+    <script>
+      /*
+       * Stamp the theme before the first paint.
+       *
+       * Without this the document paints once at the OS preference and then corrects itself when
+       * React mounts — a white flash on every load for anyone who chose dark on a light machine.
+       *
+       * Mirrors ThemeProvider deliberately, because it cannot import from it. The storage key and
+       * the default are duplicated from `src/context/useTheme.ts`; if either changes there, this
+       * has to change with it. `system` removes the attribute rather than stamping a value, which
+       * is the same contract theme.css is written against.
+       */
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('mailmind_theme');
+          var choice =
+            stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'dark';
+          if (choice === 'system') document.documentElement.removeAttribute('data-theme');
+          else document.documentElement.setAttribute('data-theme', choice);
+        } catch (error) {
+          /* Storage can throw outright in a private window. Dark is the default either way. */
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Manrope is the non-Apple fallback for the system UI stack, DM Mono carries codes and
+      timestamps, and Fraunces is now the wordmark alone — so it is loaded at one weight.
+    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&family=Manrope:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <title>MailMind AI</title>
