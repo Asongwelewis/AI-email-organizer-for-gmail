@@ -143,10 +143,6 @@
     --ink-on-invert: #f5f5f7;
     --ink-on-invert-soft: rgb(235 235 245 / 0.66);
     --line-on-invert: rgb(255 255 255 / 0.14);
-    --surface-invert: #111113;
-    --ink-on-invert: #f5f5f7;
-    --ink-on-invert-soft: rgb(235 235 245 / 0.66);
-    --line-on-invert: rgb(255 255 255 / 0.14);
 
     --ink: #f5f5f7;
     --ink-secondary: rgb(235 235 245 / 0.64);
@@ -204,6 +200,12 @@
   --surface-chrome: rgb(28 28 30 / 0.72);
   --surface-chrome-opaque: #1c1c1e;
   --surface-scrim: rgb(0 0 0 / 0.55);
+  /* The band has to go darker than the page it sits on, and the page is #1c1c1e here. Left at
+     its light value of #1d1d1f it is one hex digit from the background and simply disappears. */
+  --surface-invert: #111113;
+  --ink-on-invert: #f5f5f7;
+  --ink-on-invert-soft: rgb(235 235 245 / 0.66);
+  --line-on-invert: rgb(255 255 255 / 0.14);
 
   --ink: #f5f5f7;
   --ink-secondary: rgb(235 235 245 / 0.64);

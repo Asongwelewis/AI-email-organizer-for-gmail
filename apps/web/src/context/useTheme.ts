@@ -22,6 +22,16 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'dark';
  */
 export const THEME_STORAGE_KEY = 'mailmind_theme';
 
+/**
+ * The window grounds, duplicated from `theme.css` because `<meta name="theme-color">` takes a
+ * colour and not a custom property. The browser paints these behind the page on mobile and in an
+ * installed window, so a mismatch here shows up as a band above the content.
+ */
+export const THEME_COLOR: Record<ResolvedTheme, string> = {
+  dark: '#1c1c1e',
+  light: '#ececee',
+};
+
 export function isThemePreference(value: unknown): value is ThemePreference {
   return value === 'dark' || value === 'light' || value === 'system';
 }

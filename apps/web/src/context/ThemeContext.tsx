@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 
 import {
   DEFAULT_THEME_PREFERENCE,
+  THEME_COLOR,
   THEME_STORAGE_KEY,
   ThemeContext,
   isThemePreference,
@@ -10,16 +11,6 @@ import {
 } from './useTheme';
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
-
-/**
- * The window grounds, duplicated from `theme.css` because `<meta name="theme-color">` takes a
- * colour and not a custom property. The browser paints these behind the page on mobile and in an
- * installed window, so a mismatch here shows up as a band above the content.
- */
-const THEME_COLOR: Record<ResolvedTheme, string> = {
-  dark: '#1c1c1e',
-  light: '#ececee',
-};
 
 /**
  * Every storage access is wrapped. A private window, cleared site data, or a browser configured to
