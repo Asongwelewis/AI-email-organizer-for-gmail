@@ -139,7 +139,7 @@ watch:
 
 | Guarantee                                                                  | Why it matters overnight                                                      |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `AUTOMATION_ENABLED=false` starts no timer at all                          | It is the only mitigation while two filing engines still exist                |
+| `AUTOMATION_ENABLED=false` starts no timer at all                          | The kill switch for unattended filing                                         |
 | Boot ticks immediately, then on `AUTOMATION_POLL_INTERVAL_MINUTES`         | A deploy must not cost a whole interval of catch-up                           |
 | A tick that overlaps a run in flight is skipped                            | Ticks are 15 minutes apart; a backfill is longer                              |
 | One account's failure does not stop the others, and reaches Sentry         | No response is open, so the log and the run row are the only trace            |
@@ -156,7 +156,7 @@ watch:
 | Only mail with no action row is read, newest first                         | A run interrupted mid-flight resumes instead of re-classifying and re-billing |
 
 What these cannot establish is that three consecutive nights actually ran: that needs elapsed time
-on a real mailbox, and it must wait until one filing engine remains.
+on a real mailbox. One filing engine now remains, so that wait is over — see card 05.
 
 ## Verification
 

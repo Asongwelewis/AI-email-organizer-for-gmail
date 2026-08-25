@@ -1,5 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
-import type { automation_trigger, gmail_message_metadata, user_labels } from '@prisma/client';
+import type { automation_trigger, user_labels } from '@prisma/client';
 
 import { auditService } from '@api/audit/audit.service.js';
 import { env } from '@api/config/env.js';
@@ -14,87 +13,34 @@ import {
 } from '@api/features/activity/activity.service.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import { emailIdentity } from '@api/features/label-discovery/label-normalization.js';
-import {
-  RULE_PRIORITY,
-  byRoutingPrecedence,
-  findMatchingRule,
-  stableSubjectPhrase,
-  type RoutingRuleKind,
-} from '@api/features/label-discovery/routing-rules.js';
+import { stableSubjectPhrase } from '@api/features/label-discovery/routing-rules.js';
 import { LABEL_ROOT } from '@api/features/label-discovery/taxonomy-planner.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import {
-  GeminiProviderError,
-  estimatedCostMicroUsd,
-  geminiAutomationProvider,
-} from './gemini-automation.provider.js';
+  facetClassificationService,
+  type FacetClassificationService,
+  type FacetRunCounters,
+} from './facet-classification.service.js';
+import {
+  facetFilingService,
+  type FacetFilingService,
+  type FilingCounters,
+} from './facet-filing.service.js';
 import {
   NO_LABEL,
-  type AutomationClassification,
-  type AutomationClassifier,
   type AutomationGapCluster,
   type AutomationGapReport,
-  type AutomationMessageInput,
-  type AutomationUsage,
 } from './automation.types.js';
 
-type RunCounters = {
-  messagesSeen: number;
-  patternReused: number;
-  aiClassified: number;
-  reviewRequired: number;
-  noLabelSkipped: number;
-  backfillRemaining: number;
-  labelsCreated: number;
-  labelsReused: number;
-  messagesLabeled: number;
-  failed: number;
-  providerCalls: number;
-  usage: AutomationUsage;
-  costMicrousd: number;
+/** What one run reports back to the activity record, and to a caller that awaited it. */
+interface RunOutcomeSummary {
+  success: boolean;
+  /** The facet services own their own run rows, so there is no single id to hand back. */
+  runId: string | null;
+  status: 'COMPLETED' | 'PARTIAL' | 'FAILED';
   stoppedReason: string | null;
   lastErrorCode: string | null;
-  lastProviderStatus: number | null;
-  lastProviderCode: string | null;
-  lastProviderRequestId: string | null;
-};
-
-const emptyCounters = (): RunCounters => ({
-  messagesSeen: 0,
-  patternReused: 0,
-  aiClassified: 0,
-  reviewRequired: 0,
-  noLabelSkipped: 0,
-  backfillRemaining: 0,
-  labelsCreated: 0,
-  labelsReused: 0,
-  messagesLabeled: 0,
-  failed: 0,
-  providerCalls: 0,
-  usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
-  costMicrousd: 0,
-  stoppedReason: null,
-  lastErrorCode: null,
-  lastProviderStatus: null,
-  lastProviderCode: null,
-  lastProviderRequestId: null,
-});
-
-function senderDomain(message: Pick<gmail_message_metadata, 'sender_email'>): string {
-  return message.sender_email?.split('@').at(-1)?.trim().toLowerCase() || 'unknown.invalid';
-}
-
-function hashMessage(message: gmail_message_metadata): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify([
-        message.subject,
-        message.sender_email,
-        message.snippet,
-        message.internal_date?.toISOString(),
-      ]),
-    )
-    .digest('hex');
+  counters: Record<string, number>;
 }
 
 /**
@@ -110,16 +56,6 @@ const STOP_REASON_MESSAGES: Record<string, string> = {
     'Gemini returned unusable responses several times in a row, so this run stopped early. Everything filed so far is saved and the rest resumes on the next run.',
 };
 
-/** Batches that fail back to back mean the provider, not the mail, so the run gives up. */
-const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
-
-/**
- * Output tokens one classification needs, used to decide whether the remaining daily budget can
- * still answer a whole batch. Measured at roughly 65 across real runs; doubled for headroom, since
- * underestimating truncates the response and overestimating only stops the run one batch early.
- */
-const MIN_OUTPUT_TOKENS_PER_MESSAGE = 120;
-
 function nextDailyRun(hourUtc: number, from = new Date()): Date {
   const next = new Date(from);
   next.setUTCHours(hourUtc, 0, 0, 0);
@@ -127,22 +63,8 @@ function nextDailyRun(hourUtc: number, from = new Date()): Date {
   return next;
 }
 
-function scheduledKey(accountId: string, now: Date, failureCount: number): string {
-  return `${accountId}:scheduled:${now.toISOString().slice(0, 10)}:attempt:${failureCount}`;
-}
-
 function errorCode(error: unknown): string {
   return error instanceof AppError ? error.code : 'AUTOMATION_FAILED';
-}
-
-/**
- * The stored explanation must be 1-500 characters. A model is free to return an empty string, and
- * an empty one would fail the row's check the same way an empty label path did — losing the whole
- * batch over a cosmetic field.
- */
-function explanationOf(classification: AutomationClassification): string {
-  const explanation = classification.explanation.trim().slice(0, 500);
-  return explanation.length > 0 ? explanation : 'No explanation returned.';
 }
 
 /** How many recent no-fit decisions the gap report reads before clustering them. */
@@ -197,27 +119,11 @@ function suggestedLeafName(value: string): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1).toLowerCase();
 }
 
-function safeProviderDetails(error: unknown) {
-  return error instanceof GeminiProviderError
-    ? {
-        providerStatus: error.providerStatus,
-        providerCode: error.providerCode,
-        providerRequestId: error.requestId,
-        retryable: error.retryable,
-      }
-    : {};
-}
-
-// Notional only: the free tier bills nothing. The provider derives this from Gemini's published
-// paid rates so AUTOMATION_MAX_COST_MICRO_USD still bounds a runaway run.
-function estimatedCost(usage: AutomationUsage): number {
-  return estimatedCostMicroUsd(usage);
-}
-
 export class AutomationService {
   constructor(
-    private readonly classifier: AutomationClassifier = geminiAutomationProvider,
     private readonly gmail: AutomationGmailService = automationGmailService,
+    private readonly classification: FacetClassificationService = facetClassificationService,
+    private readonly filing: FacetFilingService = facetFilingService,
   ) {}
 
   /**
@@ -294,35 +200,6 @@ export class AutomationService {
       return 'Part of this run did not finish. Nothing was lost; it resumes on the next run.';
     }
     return null;
-  }
-
-  /** The counters the activity view shows, and the progress a poll reads mid-run. */
-  private progressOf(counters: RunCounters): {
-    processed: number;
-    total: number;
-    counts: Record<string, number>;
-  } {
-    const processed =
-      counters.patternReused +
-      counters.aiClassified +
-      counters.noLabelSkipped +
-      counters.reviewRequired;
-    return {
-      processed: Math.min(processed, counters.messagesSeen),
-      total: counters.messagesSeen,
-      counts: {
-        messagesSeen: counters.messagesSeen,
-        patternReused: counters.patternReused,
-        aiClassified: counters.aiClassified,
-        messagesLabeled: counters.messagesLabeled,
-        reviewRequired: counters.reviewRequired,
-        noLabelSkipped: counters.noLabelSkipped,
-        failed: counters.failed,
-        backlogRemaining: counters.backfillRemaining,
-        providerCalls: counters.providerCalls,
-        estimatedCostMicrousd: counters.costMicrousd,
-      },
-    };
   }
 
   /** Preconditions worth a synchronous error rather than a run record nobody is watching. */
@@ -571,12 +448,6 @@ export class AutomationService {
         data: { gmail_label_id: label.id },
       });
     }
-    await this.learn(
-      action.connected_google_account_id,
-      senderDomain(action.message),
-      { ...approved, gmail_label_id: label.id },
-      1,
-    );
     await auditService.record({
       action: 'automation.review.approved',
       result: 'SUCCESS',
@@ -625,338 +496,82 @@ export class AutomationService {
     });
   }
 
+  /**
+   * One run, end to end: refresh the mailbox, classify what is new into facets, then project every
+   * classification onto Gmail through the canonical pivot.
+   *
+   * This is the whole of card 12. There used to be a second, complete filing engine here — a
+   * Gemini call per batch that chose a leaf of the approved tree, applied through an ADDITIVE
+   * `messages.modify`. It was the engine the scheduler ran unattended every fifteen minutes, and
+   * it was actively mis-filing: a Coursera course email sat in `Finance/Transactions/Failed
+   * payments`, a folder only the retired planner could have spelled. Two engines writing the same
+   * table and the same labels could always undo each other; now there is one.
+   *
+   * Neither facet service is called while this holds a lease, because each takes the same
+   * account-scoped lease itself. That is also why the schedule is stamped afterwards rather than
+   * on the way out of a lease this no longer owns.
+   */
   private async execute(
     accountId: string,
     userId: string,
     trigger: automation_trigger,
     report?: ProgressReporter,
-  ) {
+  ): Promise<RunOutcomeSummary> {
     if (!env.AUTOMATION_ENABLED) {
       throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
     }
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
-    const storedLabels = await prisma.user_labels.findMany({
-      where: { connected_google_account_id: accountId },
-      orderBy: { created_at: 'asc' },
-    });
-    // Filing targets leaves only. A parent is a container in the tree and deliberately has no
-    // Gmail label, but the apply path creates whatever path it is handed — so offering a parent
-    // to the classifier, or letting a rule point at one, would create a folder in Gmail that the
-    // design says never exists there. Rules aimed at a parent simply stop resolving, and their
-    // mail goes to the model instead.
-    const approvedLabels = storedLabels.filter(
-      (label) => !storedLabels.some((other) => other.parent_id === label.id),
-    );
-    if (approvedLabels.length === 0) {
-      throw new AppError(
-        'AUTOMATION_NO_APPROVED_LABELS',
-        'Propose and confirm labels before automation can file mail.',
-        409,
-      );
-    }
-    const now = new Date();
-    const token = randomUUID();
-    const [, initialState] = await Promise.all([
-      prisma.automation_settings.upsert({
-        where: { connected_google_account_id: accountId },
-        create: {
-          connected_google_account_id: accountId,
-          schedule_hour_utc: env.AUTOMATION_SCHEDULE_HOUR_UTC,
-          confidence_threshold: env.AUTOMATION_CONFIDENCE_THRESHOLD,
-        },
-        update: {},
-      }),
-      prisma.automation_states.upsert({
-        where: { connected_google_account_id: accountId },
-        create: {
-          connected_google_account_id: accountId,
-          next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
-        },
-        update: {},
-      }),
-    ]);
-    const idempotencyKey =
-      trigger === 'SCHEDULED'
-        ? scheduledKey(accountId, now, initialState.failure_count)
-        : `${accountId}:manual:${randomUUID()}`;
-    const acquired = await prisma.automation_states.updateMany({
-      where: {
-        connected_google_account_id: accountId,
-        OR: [{ lease_expires_at: null }, { lease_expires_at: { lt: now } }],
-      },
-      data: {
-        lease_token: token,
-        lease_expires_at: new Date(now.getTime() + env.AUTOMATION_LEASE_SECONDS * 1000),
-        last_run_started_at: now,
-        last_error_code: null,
-        retry_at: null,
-      },
-    });
-    if (acquired.count !== 1) {
-      throw new AppError('AUTOMATION_ALREADY_RUNNING', 'Mail automation is already running.', 409);
-    }
-
-    await prisma.automation_runs.updateMany({
-      where: { connected_google_account_id: accountId, status: 'RUNNING' },
-      data: {
-        status: 'PARTIAL',
-        completed_at: now,
-        last_error_code: 'STALE_AUTOMATION_LEASE_RECOVERED',
-      },
-    });
-    let run;
-    try {
-      run = await prisma.automation_runs.create({
-        data: {
-          connected_google_account_id: accountId,
-          idempotency_key: idempotencyKey,
-          trigger,
-        },
-      });
-    } catch (error) {
-      await this.releaseLease(accountId, token, false, null);
-      if (trigger === 'SCHEDULED') {
-        const existing = await prisma.automation_runs.findUnique({
-          where: { idempotency_key: idempotencyKey },
-        });
-        if (existing) {
-          // This scheduled slot already ran today; report that run rather than starting a second.
-          return {
-            success: existing.status === 'COMPLETED',
-            runId: existing.id,
-            status: existing.status,
-            stoppedReason: existing.stopped_reason,
-            lastErrorCode: existing.last_error_code,
-            counters: {} as Record<string, number>,
-          };
-        }
-      }
-      throw error;
-    }
-    const runAttached = await prisma.automation_states.updateMany({
-      where: { connected_google_account_id: accountId, lease_token: token },
-      data: { active_run_id: run.id },
-    });
-    if (runAttached.count !== 1) {
-      throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease was replaced.', 409);
-    }
-    const counters = emptyCounters();
     await auditService.record({
       action: 'automation.run.started',
       result: 'INFO',
       userId,
-      metadata: { runId: run.id, trigger },
+      metadata: { trigger },
     });
 
     try {
-      await this.renewLease(accountId, token);
       await this.refreshMailbox(userId);
-      await this.renewLease(accountId, token);
-      await this.retryFailedActions(accountId, token, counters);
-      await this.renewLease(accountId, token);
-      const dailyUsage = await prisma.automation_runs.aggregate({
-        where: {
-          connected_google_account_id: accountId,
-          id: { not: run.id },
-          started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
-        },
-        _sum: {
-          input_tokens: true,
-          output_tokens: true,
-          estimated_cost_microusd: true,
-        },
+      const classified = await this.classification.classifyAccount(accountId);
+      await report?.({
+        processed: classified.ruleDecided + classified.modelDecided,
+        total: classified.messagesSeen,
       });
-      const inputTokensUsed = dailyUsage._sum.input_tokens ?? 0;
-      const outputTokensUsed = dailyUsage._sum.output_tokens ?? 0;
-      const costUsed = dailyUsage._sum.estimated_cost_microusd ?? 0;
-      const messages = await this.unprocessedMessages(accountId);
-      counters.messagesSeen = messages.length;
-      counters.backfillRemaining = Math.max(
-        0,
-        (await this.backlogCount(accountId)) - messages.length,
-      );
 
-      // Rules before AI. Every message a routing rule covers is filed here, with no model call
-      // and no token budget spent; only what is left over reaches Gemini.
-      const rules = await this.routingRules(accountId, approvedLabels);
-      const undecided: gmail_message_metadata[] = [];
-      for (const [index, message] of messages.entries()) {
-        if (index % env.AUTOMATION_BATCH_SIZE === 0) await this.renewLease(accountId, token);
-        const rule = findMatchingRule(rules, {
-          subject: message.subject,
-          senderEmail: message.sender_email,
-        });
-        if (!rule) {
-          undecided.push(message);
-          continue;
-        }
-        counters.patternReused += 1;
-        await this.persistAndApply(
-          run.id,
-          userId,
-          accountId,
-          message,
-          {
-            key: message.id,
-            labelName: rule.label.leaf_name,
-            confidence: rule.confidence,
-            explanation: `Routing rule ${rule.kind} "${rule.value}".`,
-            reasonCodes: ['ROUTING_RULE', rule.kind],
-          },
-          approvedLabels,
-          counters,
-          'LEARNED_PATTERN',
-        );
-      }
-      if (rules.length > 0) {
-        await prisma.learned_classification_patterns.updateMany({
-          where: { id: { in: rules.map((rule) => rule.id) } },
-          data: { last_used_at: new Date() },
-        });
-      }
-      await report?.(this.progressOf(counters));
+      // Filing runs even when classification stopped early. It spends no tokens and makes no model
+      // call, so mail that IS classified belongs in its folder tonight rather than tomorrow.
+      const filed = await this.filing.fileAccount(accountId, userId);
 
-      let consecutiveBatchFailures = 0;
-      for (let index = 0; index < undecided.length; index += env.AUTOMATION_BATCH_SIZE) {
-        const batch = undecided.slice(index, index + env.AUTOMATION_BATCH_SIZE);
-        const roughTokens = Math.ceil(
-          batch.reduce(
-            (total, message) =>
-              total +
-              (message.subject?.length ?? 0) +
-              (message.sender_email?.length ?? 0) +
-              (message.snippet?.length ?? 0),
-            0,
-          ) / 4,
-        );
-        const remainingOutputTokens =
-          env.AUTOMATION_MAX_OUTPUT_TOKENS - outputTokensUsed - counters.usage.outputTokens;
-        const outputTokenReserve = Math.min(2000, remainingOutputTokens);
-        const projectedCost = estimatedCost({
-          inputTokens: roughTokens,
-          cachedInputTokens: 0,
-          outputTokens: Math.max(0, outputTokenReserve),
-        });
-        // The reserve becomes this batch's maxOutputTokens, so it has to be large enough to hold
-        // one result per message. Sending a batch that cannot be answered in full returns a
-        // truncated body, which surfaces as a provider fault rather than the budget stop it
-        // actually is — the run then looks broken instead of finished for the day.
-        const requiredOutputTokens = batch.length * MIN_OUTPUT_TOKENS_PER_MESSAGE;
-        if (
-          inputTokensUsed + counters.usage.inputTokens + roughTokens >
-            env.AUTOMATION_MAX_INPUT_TOKENS ||
-          remainingOutputTokens < requiredOutputTokens ||
-          costUsed + counters.costMicrousd + projectedCost > env.AUTOMATION_MAX_COST_MICRO_USD
-        ) {
-          counters.stoppedReason = 'DAILY_BUDGET_REACHED';
-          break;
-        }
-        try {
-          await this.renewLease(accountId, token);
-          const providerInputs = batch.map((message, batchIndex) => ({
-            ...this.providerInput(message),
-            key: `m${batchIndex + 1}`,
-          }));
-          counters.providerCalls += 1;
-          const result = await this.classifier.classify(providerInputs, {
-            labelNames: approvedLabels.map((label) => label.leaf_name),
-            maxOutputTokens: outputTokenReserve,
-          });
-          counters.aiClassified += result.classifications.length;
-          counters.usage.inputTokens += result.usage.inputTokens;
-          counters.usage.cachedInputTokens += result.usage.cachedInputTokens;
-          counters.usage.outputTokens += result.usage.outputTokens;
-          counters.costMicrousd += estimatedCost(result.usage);
-          const byKey = new Map(result.classifications.map((item) => [item.key, item]));
-          for (const [batchIndex, message] of batch.entries()) {
-            await this.persistAndApply(
-              run.id,
-              userId,
-              accountId,
-              message,
-              byKey.get(`m${batchIndex + 1}`)!,
-              approvedLabels,
-              counters,
-            );
-          }
-        } catch (error) {
-          counters.failed += batch.length;
-          counters.lastErrorCode = errorCode(error);
-          if (error instanceof GeminiProviderError) {
-            counters.lastProviderStatus = error.providerStatus;
-            counters.lastProviderCode = error.providerCode;
-            counters.lastProviderRequestId = error.requestId;
-            // Pacing already respects the per-minute cap, so a 429 that outlived its retries is
-            // almost certainly the daily request cap. Stop the run and let the next scheduled
-            // tick resume from the checkpoints rather than spending the remaining quota here.
-            if (error.code === 'PROVIDER_RATE_LIMITED') {
-              counters.stoppedReason = 'PROVIDER_RATE_LIMITED';
-            }
-          }
-          logger.error(
-            {
-              ...safeErrorDetails(error),
-              ...safeProviderDetails(error),
-              runId: run.id,
-              accountId,
-            },
-            'automation classification batch failed',
-          );
-          if (counters.stoppedReason) break;
-          // One malformed response is not a reason to abandon the rest of the mailbox. A single
-          // bad batch used to end the run and discard every message still inside the budget, so
-          // the batch is left for the next run and this one carries on. A fault that is not
-          // batch-specific shows up as consecutive failures, and that does stop the run.
-          consecutiveBatchFailures += 1;
-          if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
-            counters.stoppedReason = 'PROVIDER_UNUSABLE';
-            break;
-          }
-          continue;
-        }
-        consecutiveBatchFailures = 0;
-        await report?.(this.progressOf(counters));
-      }
+      const stoppedReason = classified.stoppedReason;
+      const lastErrorCode = classified.lastErrorCode;
+      const failed = classified.failed + filed.failed;
+      const status = failed > 0 || stoppedReason ? 'PARTIAL' : 'COMPLETED';
+      await this.stampSchedule(accountId, status, lastErrorCode);
 
-      const status = counters.failed > 0 || counters.stoppedReason ? 'PARTIAL' : 'COMPLETED';
-      await this.finishRun(run.id, accountId, token, status, counters);
+      const counters = this.countersOf(classified, filed);
       await auditService.record({
         action: 'automation.run.completed',
         result: status === 'COMPLETED' ? 'SUCCESS' : 'FAILURE',
         userId,
-        metadata: {
-          runId: run.id,
-          status,
-          messagesSeen: counters.messagesSeen,
-          messagesLabeled: counters.messagesLabeled,
-          reviewRequired: counters.reviewRequired,
-          failed: counters.failed,
-          estimatedCostMicrousd: counters.costMicrousd,
-        },
+        metadata: { status, ...counters },
       });
       return {
         success: status === 'COMPLETED',
-        runId: run.id,
+        runId: null,
         status,
-        stoppedReason: counters.stoppedReason,
-        lastErrorCode: counters.lastErrorCode,
-        counters: this.progressOf(counters).counts,
+        stoppedReason,
+        lastErrorCode,
+        counters,
       };
     } catch (error) {
-      counters.lastErrorCode = errorCode(error);
-      counters.failed += 1;
-      await this.finishRun(run.id, accountId, token, 'FAILED', counters);
-      logger.error(
-        { ...safeErrorDetails(error), runId: run.id, accountId },
-        'automation run failed',
-      );
+      const failureCode = errorCode(error);
+      await this.stampSchedule(accountId, 'FAILED', failureCode);
+      logger.error({ ...safeErrorDetails(error), accountId }, 'automation run failed');
       await auditService.record({
         action: 'automation.run.failed',
         result: 'FAILURE',
         userId,
-        metadata: { runId: run.id, errorCode: counters.lastErrorCode },
+        metadata: { errorCode: failureCode },
       });
       throw error instanceof AppError
         ? error
@@ -964,79 +579,62 @@ export class AutomationService {
     }
   }
 
-  private providerInput(message: gmail_message_metadata): AutomationMessageInput {
+  /** The one view of a run both halves feed, and the one the Activity screen renders. */
+  private countersOf(classified: FacetRunCounters, filed: FilingCounters): Record<string, number> {
     return {
-      key: message.id,
-      subject: (message.subject ?? '').slice(0, 500),
-      sender: (message.sender_email ?? '').slice(0, 320),
-      senderDomain: senderDomain(message),
-      snippet: (message.snippet ?? '').slice(0, 1000),
-      isUnread: message.is_unread,
-      isImportant: message.is_important,
-      hasAttachments: message.has_attachments,
+      messagesSeen: filed.seen,
+      messagesClassified: classified.ruleDecided + classified.modelDecided,
+      ruleDecided: classified.ruleDecided,
+      modelDecided: classified.modelDecided,
+      crossEntityRuleHits: classified.crossEntityRuleHits,
+      messagesLabeled: filed.filed,
+      reviewRequired: filed.reviewRequired,
+      noLabelSkipped: filed.none,
+      staleLabelsRemoved: filed.staleLabelsRemoved,
+      labelsCreated: filed.labelsCreated,
+      labelsReused: filed.labelsReused,
+      failed: classified.failed + filed.failed,
+      providerCalls: classified.providerCalls,
+      estimatedCostMicrousd: classified.costMicrousd,
     };
   }
 
   /**
-   * The account's active routing rules, most specific first, restricted to labels the user has
-   * actually approved. Planner rules are authoritative; rules learned from applied mail still have
-   * to clear the confidence and sample thresholds before they can skip the model.
+   * When the scheduler should come back. Kept out of the lease entirely: the facet services own
+   * the lease now, and this runs after they have both released it.
+   *
+   * A rate limit that survived pacing and retries means the daily request cap, which only resets
+   * at midnight Pacific, so it backs off an hour instead of re-failing every tick. Anything else
+   * gets fifteen minutes. A run that stopped at the daily token budget has no error code and waits
+   * for the next scheduled hour, because that budget is daily and cumulative — a retry in fifteen
+   * minutes would reach the same wall.
    */
-  private async routingRules(accountId: string, approvedLabels: user_labels[]) {
-    const stored = await prisma.learned_classification_patterns.findMany({
-      where: {
+  private async stampSchedule(
+    accountId: string,
+    status: 'COMPLETED' | 'PARTIAL' | 'FAILED',
+    lastErrorCode: string | null,
+  ): Promise<void> {
+    await prisma.automation_states.upsert({
+      where: { connected_google_account_id: accountId },
+      create: {
         connected_google_account_id: accountId,
-        active: true,
-        OR: [
-          { rule_source: 'PLANNER' },
-          {
-            confidence: { gte: env.AUTOMATION_PATTERN_MIN_CONFIDENCE },
-            sample_count: { gte: env.AUTOMATION_PATTERN_MIN_SAMPLES },
-          },
-        ],
+        next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
       },
-    });
-    const byId = new Map(approvedLabels.map((label) => [label.id, label]));
-    const byName = new Map(approvedLabels.map((label) => [label.leaf_name, label]));
-    return stored
-      .flatMap((rule) => {
-        // A facet-only rule carries no label name at all; it belongs to the facet pass, and the
-        // filing path skips it the same way it skips a rule aimed at a folder that no longer exists.
-        const label =
-          (rule.user_label_id ? byId.get(rule.user_label_id) : null) ??
-          (rule.label_name ? byName.get(rule.label_name) : null);
-        if (!label) return [];
-        return [
-          {
-            id: rule.id,
-            kind: rule.rule_kind as RoutingRuleKind,
-            value: rule.match_value,
-            confidence: rule.confidence,
-            depth: label.depth,
-            label,
-          },
-        ];
-      })
-      .sort(byRoutingPrecedence);
-  }
-
-  /**
-   * Newest-first, to match the window the folders were designed from.
-   *
-   * The planner reads the last TAXONOMY_LOOKBACK_DAYS of mail, so a tree fits recent mail and
-   * describes older mail only by accident. Draining oldest-first spent whole runs on mail from
-   * years the planner never sampled — a mailbox reaching back to 2021 filed almost nothing and
-   * looked like a precision problem rather than a date-range one. Working backwards from today
-   * classifies the mail the tree was built for first, and the run's value shows up immediately.
-   *
-   * A backlog larger than one run's budget still continues on the next run; every message is
-   * checkpointed by its automation action row regardless of the order they are visited in.
-   */
-  private async unprocessedMessages(accountId: string) {
-    return prisma.gmail_message_metadata.findMany({
-      where: this.unprocessedWhere(accountId),
-      orderBy: { internal_date: 'desc' },
-      take: env.AUTOMATION_MAX_MESSAGES_PER_RUN,
+      update: {
+        last_run_completed_at: new Date(),
+        ...(status === 'COMPLETED'
+          ? { last_successful_run_at: new Date(), failure_count: 0 }
+          : { failure_count: { increment: 1 } }),
+        last_error_code: lastErrorCode,
+        retry_at:
+          status !== 'COMPLETED' && lastErrorCode
+            ? new Date(
+                Date.now() +
+                  (lastErrorCode === 'PROVIDER_RATE_LIMITED' ? 60 * 60_000 : 15 * 60_000),
+              )
+            : null,
+        next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
+      },
     });
   }
 
@@ -1119,215 +717,6 @@ export class AutomationService {
     return labels.map((label) => label.gmail_label_id);
   }
 
-  private async persistAndApply(
-    runId: string,
-    userId: string,
-    accountId: string,
-    message: gmail_message_metadata,
-    classification: AutomationClassification,
-    approvedLabels: user_labels[],
-    counters: RunCounters,
-    source: 'AI' | 'LEARNED_PATTERN' = 'AI',
-  ): Promise<void> {
-    const inputHash = hashMessage(message);
-    const matched = approvedLabels.find((label) => label.leaf_name === classification.labelName);
-
-    // No approved label fits: record the decision and leave the message in the inbox.
-    if (classification.labelName === NO_LABEL || !matched) {
-      await prisma.automation_message_actions.create({
-        data: {
-          automation_run_id: runId,
-          connected_google_account_id: accountId,
-          gmail_message_id: message.id,
-          user_id: userId,
-          status: 'SKIPPED',
-          label_name: NO_LABEL,
-          // No folder was chosen, so there is no path to record.
-          label_path: null,
-          confidence: classification.confidence,
-          source,
-          explanation: explanationOf(classification),
-          reason_codes: classification.reasonCodes.slice(0, 16),
-          input_hash: inputHash,
-        },
-      });
-      counters.noLabelSkipped += 1;
-      return;
-    }
-
-    const needsReview = classification.confidence < env.AUTOMATION_CONFIDENCE_THRESHOLD;
-    const action = await prisma.automation_message_actions.create({
-      data: {
-        automation_run_id: runId,
-        connected_google_account_id: accountId,
-        gmail_message_id: message.id,
-        user_id: userId,
-        status: needsReview ? 'REVIEW_REQUIRED' : 'PENDING',
-        label_name: matched.leaf_name,
-        label_path: matched.full_path,
-        confidence: classification.confidence,
-        source,
-        explanation: explanationOf(classification),
-        reason_codes: classification.reasonCodes.slice(0, 16),
-        input_hash: inputHash,
-      },
-    });
-    if (needsReview) {
-      counters.reviewRequired += 1;
-      return;
-    }
-    const applied = await this.applyAction(
-      action.id,
-      accountId,
-      message.gmail_message_id,
-      matched.full_path,
-      counters,
-    );
-    // A message filed by a rule already has one; only the model's own decisions teach new rules.
-    if (applied && source === 'AI') {
-      await this.learn(accountId, senderDomain(message), matched, classification.confidence);
-    }
-  }
-
-  private async applyAction(
-    actionId: string,
-    accountId: string,
-    remoteMessageId: string,
-    labelPath: string,
-    counters: RunCounters,
-  ): Promise<boolean> {
-    try {
-      const label = await this.gmail.ensureLabel(accountId, labelPath);
-      label.created ? (counters.labelsCreated += 1) : (counters.labelsReused += 1);
-      await this.gmail.applyLabel(accountId, remoteMessageId, label.id);
-      await prisma.automation_message_actions.update({
-        where: { id: actionId },
-        data: {
-          status: 'APPLIED',
-          gmail_label_id: label.id,
-          applied_at: new Date(),
-          attempt_count: { increment: 1 },
-          next_retry_at: null,
-          last_error_code: null,
-        },
-      });
-      const stored = await prisma.automation_message_actions.findUniqueOrThrow({
-        where: { id: actionId },
-        include: { message: { select: { label_ids: true } } },
-      });
-      await prisma.gmail_message_metadata.update({
-        where: { id: stored.gmail_message_id },
-        data: { label_ids: [...new Set([...stored.message.label_ids, label.id])] },
-      });
-      counters.messagesLabeled += 1;
-      return true;
-    } catch (error) {
-      const code = errorCode(error);
-      await prisma.automation_message_actions.update({
-        where: { id: actionId },
-        data: {
-          status: 'FAILED',
-          attempt_count: { increment: 1 },
-          last_error_code: code,
-          next_retry_at: new Date(Date.now() + 60_000),
-        },
-      });
-      counters.failed += 1;
-      logger.warn(
-        { ...safeErrorDetails(error), actionId, accountId },
-        'automation Gmail label application failed',
-      );
-      return false;
-    }
-  }
-
-  private async retryFailedActions(
-    accountId: string,
-    token: string,
-    counters: RunCounters,
-  ): Promise<void> {
-    const actions = await prisma.automation_message_actions.findMany({
-      where: {
-        connected_google_account_id: accountId,
-        status: { in: ['FAILED', 'PENDING'] },
-        // A NONE decision has no path and nothing to apply, so it is never retried.
-        label_path: { not: null },
-        attempt_count: { lt: env.AUTOMATION_MAX_ACTION_RETRIES },
-        OR: [{ next_retry_at: null }, { next_retry_at: { lte: new Date() } }],
-      },
-      include: { message: true },
-      take: env.AUTOMATION_BATCH_SIZE,
-    });
-    for (const action of actions) {
-      if (!action.label_path) continue;
-      await this.renewLease(accountId, token);
-      await this.applyAction(
-        action.id,
-        accountId,
-        action.message.gmail_message_id,
-        action.label_path,
-        counters,
-      );
-    }
-  }
-
-  /**
-   * Learns a sender-domain rule from a decision that stuck. A domain that turns out to feed two
-   * different folders is deactivated rather than flip-flopping: the planner owns the cross-sender
-   * routing, and a learned rule only earns its keep while it stays unambiguous.
-   */
-  private async learn(
-    accountId: string,
-    domain: string,
-    label: user_labels,
-    confidence: number,
-  ): Promise<void> {
-    const key = {
-      connected_google_account_id: accountId,
-      rule_kind: 'SENDER_DOMAIN' as const,
-      match_value: domain,
-    };
-    const existing = await prisma.learned_classification_patterns.findUnique({
-      where: { connected_google_account_id_rule_kind_match_value: key },
-    });
-    // A facet-only rule carries no label at all, so it cannot disagree about one. Reading its null
-    // label name as a contradiction would deactivate the rules the facet pass had just learned —
-    // the two rule systems share this table and must not undo each other's work.
-    if (existing?.label_name != null && existing.label_name !== label.leaf_name) {
-      // A planner rule is the user's decision; never let observed mail overwrite or disable it.
-      if (existing.rule_source === 'PLANNER') return;
-      await prisma.learned_classification_patterns.update({
-        where: { id: existing.id },
-        data: { active: false },
-      });
-      return;
-    }
-    await prisma.learned_classification_patterns.upsert({
-      where: { connected_google_account_id_rule_kind_match_value: key },
-      create: {
-        ...key,
-        rule_source: 'LEARNED',
-        user_label_id: label.id,
-        priority: RULE_PRIORITY.SENDER_DOMAIN,
-        label_name: label.leaf_name,
-        label_path: label.full_path,
-        confidence,
-        successful_apply_count: 1,
-      },
-      update: {
-        sample_count: { increment: 1 },
-        successful_apply_count: { increment: 1 },
-        confidence: Math.max(existing?.confidence ?? 0, confidence),
-        user_label_id: label.id,
-        // Both halves, always. Writing only the path onto a facet-only rule would leave the row
-        // with a path and no name, which learned_patterns_label_pair_check rejects outright.
-        label_name: label.leaf_name,
-        label_path: label.full_path,
-        last_used_at: new Date(),
-      },
-    });
-  }
-
   private async refreshMailbox(userId: string): Promise<void> {
     try {
       await gmailSyncService.incrementalSync(userId);
@@ -1341,110 +730,6 @@ export class AutomationService {
       }
       throw error;
     }
-  }
-
-  private async finishRun(
-    runId: string,
-    accountId: string,
-    token: string,
-    status: 'COMPLETED' | 'PARTIAL' | 'FAILED',
-    counters: RunCounters,
-  ): Promise<void> {
-    await prisma.$transaction(async (transaction) => {
-      const released = await transaction.automation_states.updateMany({
-        where: {
-          connected_google_account_id: accountId,
-          lease_token: token,
-          lease_expires_at: { gt: new Date() },
-        },
-        data: {
-          lease_token: null,
-          lease_expires_at: null,
-          active_run_id: null,
-          last_run_completed_at: new Date(),
-          ...(status === 'COMPLETED'
-            ? { last_successful_run_at: new Date(), failure_count: 0 }
-            : { failure_count: { increment: 1 } }),
-          last_error_code: counters.lastErrorCode,
-          // A rate limit that survived pacing and retries means the daily request cap, which only
-          // resets at midnight Pacific. Back off for an hour instead of re-failing every tick.
-          retry_at:
-            status !== 'COMPLETED' && counters.lastErrorCode
-              ? new Date(
-                  Date.now() +
-                    (counters.lastErrorCode === 'PROVIDER_RATE_LIMITED'
-                      ? 60 * 60_000
-                      : 15 * 60_000),
-                )
-              : null,
-          next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
-        },
-      });
-      if (released.count !== 1) {
-        throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease expired.', 409);
-      }
-      await transaction.automation_runs.update({
-        where: { id: runId },
-        data: {
-          status,
-          completed_at: new Date(),
-          messages_seen: counters.messagesSeen,
-          pattern_reused_count: counters.patternReused,
-          ai_classified_count: counters.aiClassified,
-          review_required_count: counters.reviewRequired,
-          no_label_skipped_count: counters.noLabelSkipped,
-          backlog_remaining: counters.backfillRemaining,
-          labels_created_count: counters.labelsCreated,
-          labels_reused_count: counters.labelsReused,
-          messages_labeled_count: counters.messagesLabeled,
-          failed_count: counters.failed,
-          provider_call_count: counters.providerCalls,
-          input_tokens: counters.usage.inputTokens,
-          cached_input_tokens: counters.usage.cachedInputTokens,
-          output_tokens: counters.usage.outputTokens,
-          estimated_cost_microusd: counters.costMicrousd,
-          stopped_reason: counters.stoppedReason,
-          last_error_code: counters.lastErrorCode,
-          last_provider_status: counters.lastProviderStatus,
-          last_provider_code: counters.lastProviderCode,
-          last_provider_request_id: counters.lastProviderRequestId,
-        },
-      });
-    });
-  }
-
-  private async renewLease(accountId: string, token: string): Promise<void> {
-    const renewed = await prisma.automation_states.updateMany({
-      where: {
-        connected_google_account_id: accountId,
-        lease_token: token,
-        lease_expires_at: { gt: new Date() },
-      },
-      data: {
-        lease_expires_at: new Date(Date.now() + env.AUTOMATION_LEASE_SECONDS * 1000),
-      },
-    });
-    if (renewed.count !== 1) {
-      throw new AppError('AUTOMATION_ALREADY_RUNNING', 'The automation lease expired.', 409);
-    }
-  }
-
-  private async releaseLease(
-    accountId: string,
-    token: string,
-    successful: boolean,
-    code: string | null,
-  ) {
-    await prisma.automation_states.updateMany({
-      where: { connected_google_account_id: accountId, lease_token: token },
-      data: {
-        lease_token: null,
-        lease_expires_at: null,
-        active_run_id: null,
-        ...(successful ? { last_successful_run_at: new Date() } : {}),
-        last_error_code: code,
-      },
-    });
   }
 
   private async connectedAccount(userId: string) {

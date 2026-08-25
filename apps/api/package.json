@@ -20,6 +20,7 @@
     "backup:pivot": "tsx scripts/backup-before-pivot.ts",
     "pivot:facets": "tsx scripts/pivot-facets.ts",
     "unapply:pivot": "tsx scripts/unapply-pivot.ts",
+    "sweep:labels": "tsx scripts/sweep-orphan-labels.ts",
     "file:facets": "tsx scripts/file-facets.ts",
     "report:facets": "tsx scripts/report-facets.ts"
   },

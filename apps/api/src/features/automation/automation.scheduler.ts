@@ -1,6 +1,8 @@
 import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { captureApiException } from '@api/observability/sentry.js';
+// One engine. `runScheduledAccount` refreshes the mailbox, classifies into facets, then files
+// through the canonical pivot — it no longer reaches the retired taxonomy classifier.
 import { automationService } from './automation.service.js';
 
 let timer: NodeJS.Timeout | null = null;

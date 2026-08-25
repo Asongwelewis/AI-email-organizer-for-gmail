@@ -106,12 +106,22 @@ lower levels by construction.
 approved and learned from mail that was actually filed. Automation applies matching rules with no
 model call and sends only the remainder to Gemini.
 
-**Gmail mutation is confined to three paths.** `src/features/automation` applies labels via
-`messages.modify` — the legacy leaf-path filer and `facet-filing.service`, whose apply is
-_exclusive_ so a re-filed message never wears two MailMind labels; the labels feature and
+**Gmail mutation is confined to three paths.** `facet-filing.service` applies labels via
+`messages.modify`, and its apply is _exclusive_ — the new label goes on and every other MailMind
+label comes off in the same call, so a re-filed message never wears two; `automation.service`
+applies one on a reviewer's approval, through the same exclusive path; the labels feature and
 `pivot.service` create/rename leaf paths on confirm, rename, and pivot apply. Deleting a label never
 unlabels mail, so a pivot never deletes folders — it reports the ones that no longer match and
-leaves them alone. Nothing else may mutate Gmail.
+leaves them alone. `npm run sweep:labels` is the deliberate exception, and it strips a label from
+its mail before deleting it. Nothing else may mutate Gmail.
+
+**One filing engine.** `automation.service` orchestrates and owns no classification of its own: a
+run refreshes the mailbox, calls `facetClassificationService.classifyAccount`, then
+`facetFilingService.fileAccount`. `POST /api/automation/run` and the scheduler both go through it.
+The taxonomy classifier that used to live here — a Gemini call per batch choosing a leaf of the
+approved tree, applied through an _additive_ `messages.modify` — is gone. Two engines writing the
+same table and the same labels could always undo each other, and the retired one was the one
+running unattended.
 
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one
