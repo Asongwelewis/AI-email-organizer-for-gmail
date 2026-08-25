@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -123,6 +125,29 @@ describe('filing confidence', () => {
     expect(
       filingConfidence(['domain', 'intent'], 2, { entity: 1, domain: 0.99, intent: 0.4 }),
     ).toBe(0.4);
+  });
+});
+
+/**
+ * The claim that makes re-filing cheap: the classification is already stored, so projecting it
+ * onto Gmail spends no tokens and asks nothing of a model. Changing a pivot or a threshold has to
+ * cost Gmail calls and nothing else — a re-classification would put the whole mailbox back
+ * through the daily budget every time a folder threshold moved.
+ */
+describe('filing and the model', () => {
+  it('imports nothing it could reach a model through', async () => {
+    const source = await readFile(
+      new URL('../src/features/automation/facet-filing.service.ts', import.meta.url),
+      'utf8',
+    );
+    const imports = [...source.matchAll(/^import\s+(type\s+)?[^;]*?from\s+'([^']+)';/gm)];
+    expect(imports.length).toBeGreaterThan(0);
+
+    const modelImports = imports
+      .filter(([, typeOnly]) => !typeOnly)
+      .map(([, , specifier]) => specifier!)
+      .filter((specifier) => /gemini|classifier|classification/i.test(specifier));
+    expect(modelImports).toEqual([]);
   });
 });
 
