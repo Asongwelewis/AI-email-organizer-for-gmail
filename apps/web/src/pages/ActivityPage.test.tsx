@@ -72,6 +72,29 @@ describe('ActivityPage', () => {
     expect(screen.getByText('118')).toBeInTheDocument();
   });
 
+  // The morning question is which of these ran while nobody was watching. A scheduled run that
+  // reads like a manual one leaves an overnight failure indistinguishable from a button press.
+  it('marks a run the scheduler started, so an overnight ending is recognisable', async () => {
+    mocks.getActivityRuns.mockResolvedValue({
+      runs: [
+        run({
+          id: 'a',
+          trigger: 'SCHEDULED',
+          state: 'STOPPED',
+          stopReason: 'PROVIDER_RATE_LIMITED',
+          errorMessage: 'Gemini rate-limited this run.',
+        }),
+        run({ id: 'b' }),
+      ],
+    });
+    renderScreen(<ActivityPage />, '/activity');
+
+    const items = await screen.findAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Scheduled');
+    expect(items[0]).toHaveTextContent('Gemini rate-limited this run.');
+    expect(items[1]).not.toHaveTextContent('Scheduled');
+  });
+
   it('shows the error code and message on a failed run', async () => {
     mocks.getActivityRuns.mockResolvedValue({
       runs: [

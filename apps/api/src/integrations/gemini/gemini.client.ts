@@ -1,4 +1,5 @@
 import { env } from '@api/config/env.js';
+import { logger } from '@api/config/logger.js';
 import { AppError } from '@api/errors/AppError.js';
 
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -71,6 +72,8 @@ type GenerateContentPayload = {
     cachedContentTokenCount?: number;
   };
   promptFeedback?: { blockReason?: string };
+  /** The model Google actually served. An alias resolves to a concrete id here. */
+  modelVersion?: string;
 };
 
 type GeminiErrorPayload = {
@@ -93,6 +96,11 @@ export interface GeminiJsonResponse {
   /** Parsed JSON from the model. Still untrusted: validate it against a Zod schema. */
   data: unknown;
   usage: GeminiUsage;
+  /**
+   * The concrete model this response came from, or null when Google omitted it. `GEMINI_MODEL`
+   * defaults to an alias, so this is the only place the served model is knowable.
+   */
+  modelVersion: string | null;
 }
 
 const delay = (milliseconds: number) =>
@@ -130,6 +138,36 @@ function paceRequest(): Promise<void> {
 export function resetGeminiPacing(): void {
   paceChain = Promise.resolve();
   nextAllowedAtMs = 0;
+}
+
+/**
+ * The model the last response actually came from.
+ *
+ * GEMINI_MODEL defaults to the `gemini-flash-lite-latest` alias, and Google repoints an alias
+ * without notice or a code change here — gemini-2.5-flash-lite was retired out from under this
+ * code once already. An unattended scheduler would carry on filing against a different model and
+ * the only visible symptom would be classification quality shifting for no reason anyone can
+ * name. Recording which model answered turns that into something a log can be searched for.
+ *
+ * Logged on change rather than per response: a backfill makes thousands of calls a day and an
+ * identical line per call would bury the one line that matters. The value is also returned on
+ * every response, so a caller that wants to checkpoint it per run can.
+ */
+let lastModelVersion: string | null = null;
+
+function noteModelVersion(modelVersion: string | null): void {
+  if (!modelVersion || modelVersion === lastModelVersion) return;
+  const previous = lastModelVersion;
+  lastModelVersion = modelVersion;
+  logger.info(
+    { configuredModel: env.GEMINI_MODEL, modelVersion, previousModelVersion: previous },
+    previous === null ? 'gemini resolved model version' : 'gemini resolved model version changed',
+  );
+}
+
+/** Test seam: forget the observed model so a suite does not inherit the previous test's. */
+export function resetGeminiModelVersion(): void {
+  lastModelVersion = null;
 }
 
 function providerError(
@@ -267,6 +305,8 @@ export async function requestGeminiJson(request: GeminiJsonRequest): Promise<Gem
       if (!text) {
         throw new AppError('PROVIDER_INVALID_RESPONSE', 'Gemini returned no content.', 502);
       }
+      const modelVersion = payload.modelVersion ?? null;
+      noteModelVersion(modelVersion);
       try {
         return {
           data: JSON.parse(text),
@@ -275,6 +315,7 @@ export async function requestGeminiJson(request: GeminiJsonRequest): Promise<Gem
             cachedInputTokens: payload.usageMetadata?.cachedContentTokenCount ?? 0,
             outputTokens: payload.usageMetadata?.candidatesTokenCount ?? 0,
           },
+          modelVersion,
         };
       } catch {
         throw new AppError('PROVIDER_INVALID_RESPONSE', 'Gemini returned malformed JSON.', 502);

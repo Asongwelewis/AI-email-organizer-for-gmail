@@ -115,6 +115,49 @@ in-process scheduler polls every 15 minutes and catches up after restart. Databa
 safe across multiple API instances. A platform that suspends every instance cannot provide an
 exact wall-clock guarantee, so keep one API instance available during the configured hour.
 
+### Which model actually answered
+
+`requestGeminiJson` returns the `modelVersion` Google reports on every `generateContent` response,
+and logs it the first time it is seen and again whenever it changes:
+
+```
+gemini resolved model version changed
+  { configuredModel: 'gemini-flash-lite-latest',
+    modelVersion: '…', previousModelVersion: '…' }
+```
+
+`GEMINI_MODEL` defaults to an alias that Google repoints without notice, so an unattended
+scheduler can start filing against a different model with no code change and no deploy. The only
+symptom would be classification quality shifting for a reason nobody can name. It is logged on
+change rather than per response because a backfill makes thousands of calls a day and an identical
+line per call would bury the one line that matters.
+
+## What the unattended path guarantees
+
+`test/automation-scheduler.test.ts` covers the parts of a nightly run that nobody is awake to
+watch:
+
+| Guarantee                                                                  | Why it matters overnight                                                      |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `AUTOMATION_ENABLED=false` starts no timer at all                          | It is the only mitigation while two filing engines still exist                |
+| Boot ticks immediately, then on `AUTOMATION_POLL_INTERVAL_MINUTES`         | A deploy must not cost a whole interval of catch-up                           |
+| A tick that overlaps a run in flight is skipped                            | Ticks are 15 minutes apart; a backfill is longer                              |
+| One account's failure does not stop the others, and reaches Sentry         | No response is open, so the log and the run row are the only trace            |
+| A failed tick releases its guard and ticks again                           | Otherwise one bad tick ends the day silently                                  |
+| A held lease refuses the run, and an expired one is taken over             | Two API instances share one database; a killed process must not wedge it      |
+| A long run keeps renewing its lease, scoped to one still live              | A backfill outlives a single lease term                                       |
+| The mailbox is refreshed before it is read, and a stale history id resyncs | Otherwise a nightly run files yesterday's mail and looks healthy doing it     |
+| A scheduled slot already used reports that run instead of filing twice     | The idempotency key is account/date/attempt                                   |
+| Success clears the backoff and schedules `AUTOMATION_SCHEDULE_HOUR_UTC`    | The daily promise                                                             |
+| `PROVIDER_RATE_LIMITED` backs off an hour; other faults, fifteen minutes   | A spent daily quota would otherwise re-fail every tick until midnight Pacific |
+| `DAILY_BUDGET_REACHED` waits for the next scheduled hour, not the tick     | The token budgets are daily and cumulative; a retry would reach the same wall |
+| The `retry_at` a stopped run writes is one a later tick selects on         | Each half can pass on its own while the join between them is broken           |
+| A hard failure closes the run `FAILED` and releases the lease              | A stuck lease locks out every later tick                                      |
+| Only mail with no action row is read, newest first                         | A run interrupted mid-flight resumes instead of re-classifying and re-billing |
+
+What these cannot establish is that three consecutive nights actually ran: that needs elapsed time
+on a real mailbox, and it must wait until one filing engine remains.
+
 ## Verification
 
 ```powershell
