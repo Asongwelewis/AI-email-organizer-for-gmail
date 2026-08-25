@@ -79,13 +79,24 @@ const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
  */
 const MIN_OUTPUT_TOKENS_PER_MESSAGE = 40;
 
-function hashMessage(message: gmail_message_metadata): string {
+/**
+ * Every message field a facet decision is derived from, and therefore everything `input_hash`
+ * covers. Declared once so the hash and the staleness sweep cannot disagree about what "the same
+ * input" means.
+ *
+ * Anything new the classifier is given to read belongs here as well. Sending it a snippet or a
+ * sender host without adding it would leave the checkpoint calling a decision current that was
+ * made without ever seeing the field.
+ */
+export const HASHED_MESSAGE_FIELDS = ['gmail_message_id', 'subject', 'sender_email'] as const;
+
+type HashableMessage = Pick<gmail_message_metadata, (typeof HASHED_MESSAGE_FIELDS)[number]>;
+
+function hashMessage(message: HashableMessage): string {
   return createHash('sha256')
     .update(
       [
-        message.gmail_message_id,
-        message.subject ?? '',
-        message.sender_email ?? '',
+        ...HASHED_MESSAGE_FIELDS.map((field) => message[field] ?? ''),
         FACET_CLASSIFIER_PROMPT_VERSION,
       ].join('|'),
     )
@@ -544,16 +555,24 @@ export class FacetClassificationService {
     }));
   }
 
+  /** Mail this account is willing to classify at all. Spam and drafts are never facetted. */
+  private classifiableWhere(accountId: string) {
+    return {
+      connected_google_account_id: accountId,
+      deleted_at: null,
+      is_draft: false,
+      is_sent: false,
+      is_trashed: false,
+      sender_email: { not: null },
+      NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
+    };
+  }
+
   private async unclassifiedMessages(accountId: string, limit?: number) {
-    return prisma.gmail_message_metadata.findMany({
+    const take = limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN;
+    const fresh = await prisma.gmail_message_metadata.findMany({
       where: {
-        connected_google_account_id: accountId,
-        deleted_at: null,
-        is_draft: false,
-        is_sent: false,
-        is_trashed: false,
-        sender_email: { not: null },
-        NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
+        ...this.classifiableWhere(accountId),
         // Never classified, or classified under a vocabulary that has since changed. Recording
         // prompt_version was pointless while nothing acted on it: bumping the vocabulary left
         // every existing message describing itself in terms that no longer existed. Re-running
@@ -564,7 +583,55 @@ export class FacetClassificationService {
         ],
       },
       orderBy: { internal_date: 'desc' },
-      take: limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN,
+      take,
+    });
+    if (fresh.length >= take) return fresh;
+
+    // Room left in the run, so spend it re-checking decisions against the input they were made
+    // from. Newest mail first, and never more than the run's own ceiling.
+    const stale = await this.staleByInput(accountId, take - fresh.length);
+    return [...fresh, ...stale];
+  }
+
+  /**
+   * Mail whose facets were derived from input that has since changed.
+   *
+   * `input_hash` records exactly what a decision was made from, and until now nothing ever read
+   * it — the same dead-column mistake `prompt_version` made before it. Sync upserts `subject` and
+   * `sender_email` on every pass, so a corrected subject would otherwise keep the facets chosen
+   * from text the message no longer carries, and stay filed under them forever.
+   *
+   * Ordered by `last_synced_at` because an incremental sync only writes the messages that
+   * actually changed, which makes recently-touched mail exactly where drift lives. It is a
+   * bounded sweep, not a full scan: a wholesale resync is worked through over successive runs
+   * rather than in one, and it only ever uses budget a run was not going to spend anyway.
+   */
+  private async staleByInput(accountId: string, limit: number) {
+    if (limit <= 0) return [];
+    // Asked of the decisions rather than of the mail: the question is whether each recorded
+    // decision still matches the message it was made from.
+    const decided = await prisma.message_facets.findMany({
+      where: {
+        connected_google_account_id: accountId,
+        prompt_version: FACET_CLASSIFIER_PROMPT_VERSION,
+        message: this.classifiableWhere(accountId),
+      },
+      orderBy: { message: { last_synced_at: 'desc' } },
+      take: limit,
+      select: {
+        input_hash: true,
+        message: {
+          select: { id: true, gmail_message_id: true, subject: true, sender_email: true },
+        },
+      },
+    });
+    const staleIds = decided
+      .filter((row) => row.input_hash !== hashMessage(row.message))
+      .map((row) => row.message.id);
+    if (staleIds.length === 0) return [];
+    return prisma.gmail_message_metadata.findMany({
+      where: { id: { in: staleIds } },
+      orderBy: { internal_date: 'desc' },
     });
   }
 

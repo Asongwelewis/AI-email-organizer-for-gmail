@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   patternUpdate: vi.fn(),
   patternUpdateMany: vi.fn(),
   facetUpsert: vi.fn(),
+  facetFindMany: vi.fn(),
   classify: vi.fn(),
 }));
 
@@ -29,14 +32,14 @@ vi.mock('../src/database/prisma.js', () => ({
       update: mocks.patternUpdate,
       updateMany: mocks.patternUpdateMany,
     },
-    message_facets: { upsert: mocks.facetUpsert },
+    message_facets: { upsert: mocks.facetUpsert, findMany: mocks.facetFindMany },
   },
 }));
 
 const { entityFor } = await import('../src/features/label-discovery/entity.js');
 const { resolveFacetRules, matchesRule, stableSubjectPhrase } =
   await import('../src/features/label-discovery/routing-rules.js');
-const { FacetClassificationService } =
+const { FacetClassificationService, HASHED_MESSAGE_FIELDS } =
   await import('../src/features/automation/facet-classification.service.js');
 
 const ACCOUNT = '11111111-1111-4111-8111-111111111111';
@@ -84,6 +87,7 @@ beforeEach(() => {
   mocks.patternUpdateMany.mockResolvedValue({ count: 0 });
   mocks.facetUpsert.mockResolvedValue({});
   mocks.messageFindMany.mockResolvedValue([]);
+  mocks.facetFindMany.mockResolvedValue([]);
 });
 
 describe('the entity facet', () => {
@@ -208,6 +212,32 @@ describe('subject phrases learned as rules', () => {
   it('returns null when a subject has nothing distinctive to learn from', () => {
     expect(stableSubjectPhrase('re: you and me')).toBeNull();
     expect(stableSubjectPhrase(null)).toBeNull();
+  });
+});
+
+/**
+ * Classification assigns facets; turning a facet combination into a folder is the pivot's job, and
+ * applying a label is the filer's. Reaching Gmail from here would put a third writer against the
+ * mailbox, which is the exact shape of the bug that has the legacy engine and the facet engine
+ * contradicting each other today.
+ *
+ * Guards the direct boundary: a value import from the Gmail integration. A type-only import of a
+ * Prisma row is fine, because a type cannot place a call.
+ */
+describe('the classification pass and Gmail', () => {
+  it('imports nothing it could call Gmail through', async () => {
+    const source = await readFile(
+      new URL('../src/features/automation/facet-classification.service.ts', import.meta.url),
+      'utf8',
+    );
+    const imports = [...source.matchAll(/^import\s+(type\s+)?[^;]*?from\s+'([^']+)';/gm)];
+    expect(imports.length).toBeGreaterThan(0);
+
+    const gmailValueImports = imports
+      .filter(([, typeOnly]) => !typeOnly)
+      .map(([, , specifier]) => specifier!)
+      .filter((specifier) => /gmail/i.test(specifier));
+    expect(gmailValueImports).toEqual([]);
   });
 });
 
@@ -478,6 +508,111 @@ describe('the facet classification pass', () => {
       { facets: null },
       { facets: { prompt_version: { not: expect.any(String) } } },
     ]);
+  });
+
+  /**
+   * `input_hash` records the exact input a decision was made from, and nothing used to read it —
+   * the same dead-column mistake `prompt_version` made before it. Sync overwrites subject and
+   * sender_email on every pass, so a decision made from text the message no longer carries would
+   * otherwise stand forever.
+   *
+   * The hash is never recomputed here: each test round-trips the value the service itself wrote,
+   * so a test cannot agree with a broken hash by copying its formula.
+   */
+  describe('the input hash as the checkpoint', () => {
+    const subject = 'Payment with insufficient funds';
+    const sender = 'alerts@exness.com';
+    const rules = () => [
+      facetRule({ id: 'r1', kind: 'SENDER_DOMAIN', value: 'exness.com', domain: 'finance' }),
+      facetRule({
+        id: 'r2',
+        kind: 'SUBJECT_CONTAINS',
+        value: 'insufficient funds',
+        intent: 'payment-failed',
+      }),
+    ];
+
+    /** Classify one message for real, and hand back the hash the service recorded for it. */
+    async function hashWrittenFor(input: { subject: string; sender: string }): Promise<string> {
+      mocks.messageFindMany.mockResolvedValueOnce([message({ id: 'a', ...input })]);
+      mocks.patternFindMany.mockResolvedValue(rules());
+      await service([]).classifyAccount(ACCOUNT);
+      const written = mocks.facetUpsert.mock.calls[0]![0].create.input_hash as string;
+      vi.clearAllMocks();
+      mocks.stateUpdateMany.mockResolvedValue({ count: 1 });
+      mocks.facetUpsert.mockResolvedValue({});
+      mocks.messageFindMany.mockResolvedValue([]);
+      mocks.facetFindMany.mockResolvedValue([]);
+      mocks.patternFindMany.mockResolvedValue([]);
+      return written;
+    }
+
+    const decidedRow = (input_hash: string, overrides: Record<string, unknown> = {}) => ({
+      input_hash,
+      message: {
+        id: 'a',
+        gmail_message_id: 'g-a',
+        subject,
+        sender_email: sender,
+        ...overrides,
+      },
+    });
+
+    it('leaves a decision alone while the message it was made from is unchanged', async () => {
+      const written = await hashWrittenFor({ subject, sender });
+      mocks.facetFindMany.mockResolvedValue([decidedRow(written)]);
+
+      await service([]).classifyAccount(ACCOUNT);
+
+      // Only the candidate query ran. Nothing was re-fetched, re-classified or re-written.
+      expect(mocks.messageFindMany).toHaveBeenCalledTimes(1);
+      expect(mocks.classify).not.toHaveBeenCalled();
+      expect(mocks.facetUpsert).not.toHaveBeenCalled();
+    });
+
+    it('re-classifies a message whose subject changed under its decision', async () => {
+      const written = await hashWrittenFor({ subject, sender });
+      // Still covered by the same rules, so the model stays out of it and the only thing under
+      // test is whether the changed input reopened the decision at all.
+      const changed = 'Another payment with insufficient funds';
+      mocks.facetFindMany.mockResolvedValue([decidedRow(written, { subject: changed })]);
+      mocks.messageFindMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([message({ id: 'a', subject: changed, sender })]);
+      mocks.patternFindMany.mockResolvedValue(rules());
+
+      const counters = await service([]).classifyAccount(ACCOUNT);
+
+      expect(mocks.messageFindMany.mock.calls[1]![0].where).toEqual({ id: { in: ['a'] } });
+      expect(counters.messagesSeen).toBe(1);
+      expect(mocks.facetUpsert).toHaveBeenCalledTimes(1);
+      expect(mocks.facetUpsert.mock.calls[0]![0].create.input_hash).not.toBe(written);
+    });
+
+    // The sweep hashes whatever the probe selected. A field in the hash that the probe does not
+    // select would hash as absent, so every decision would look stale and the whole mailbox
+    // would re-classify every run.
+    it('selects every field the hash covers, so the two cannot drift apart', async () => {
+      await service([]).classifyAccount(ACCOUNT);
+
+      const selected = mocks.facetFindMany.mock.calls[0]![0].select.message.select;
+      for (const field of HASHED_MESSAGE_FIELDS) {
+        expect(selected[field]).toBe(true);
+      }
+    });
+
+    it('spends no part of a full run on the sweep', async () => {
+      mocks.messageFindMany.mockResolvedValue(
+        Array.from({ length: 250 }, (_, index) =>
+          message({ id: `m${index}`, subject, sender: 'someone@example.com' }),
+        ),
+      );
+
+      await service([]).classifyAccount(ACCOUNT, { limit: 250 });
+
+      // The run was already full of never-classified mail, which always comes first.
+      expect(mocks.facetFindMany).not.toHaveBeenCalled();
+    });
   });
 
   it('keeps the rest of a batch when one message cannot be written', async () => {
