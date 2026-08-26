@@ -46,6 +46,28 @@ facetsRouter.get(
   classificationReadLimiter,
   asyncHandler((request, response) => facetsController.vocabulary(request, response)),
 );
+/*
+ * Propose -> confirm, for the vocabulary itself. Same shape as the folder tree and for the same
+ * reason: a taxonomy nobody agreed to must never start being used. Proposing spends a Gemini call
+ * and writes only a proposal; approving is what the classifier reads.
+ */
+facetsRouter.get(
+  '/vocabulary/status',
+  classificationReadLimiter,
+  asyncHandler((request, response) => facetsController.vocabularyOverview(request, response)),
+);
+facetsRouter.post(
+  '/vocabulary/propose',
+  classificationMutationLimiter,
+  requireTrustedOrigin,
+  asyncHandler((request, response) => facetsController.proposeVocabulary(request, response)),
+);
+facetsRouter.post(
+  '/vocabulary/confirm',
+  labelsMutationLimiter,
+  requireTrustedOrigin,
+  asyncHandler((request, response) => facetsController.approveVocabulary(request, response)),
+);
 facetsRouter.get(
   '/pivot/plan',
   classificationReadLimiter,

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
+import type { gmail_message_metadata } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -39,6 +40,7 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 
 const { env } = await import('../src/config/env.js');
+const { APPROVED_FACET_VOCABULARY } = await import('../src/features/label-discovery/facets.js');
 const { entityFor } = await import('../src/features/label-discovery/entity.js');
 const { resolveFacetRules, matchesRule, stableSubjectPhrase } =
   await import('../src/features/label-discovery/routing-rules.js');
@@ -56,7 +58,7 @@ function message(input: { id: string; subject: string; sender: string }) {
     sender_name: null,
     snippet: null,
     internal_date: new Date('2026-08-01T00:00:00.000Z'),
-  } as never;
+  } as unknown as gmail_message_metadata;
 }
 
 function facetRule(input: {
@@ -261,7 +263,14 @@ describe('the facet classification pass', () => {
       classifications,
       usage: { inputTokens: 120, cachedInputTokens: 0, outputTokens: 40 },
     });
-    return new FacetClassificationService({ classify: mocks.classify });
+    /*
+     * A vocabulary belongs to a mailbox now, so the service is handed one rather than reading a
+     * module constant. The checked-in set stands in: it is a real approved vocabulary, just no
+     * longer the only one there can be.
+     */
+    return new FacetClassificationService({ classify: mocks.classify }, {
+      requireApproved: async () => APPROVED_FACET_VOCABULARY,
+    } as never);
   }
 
   it('decides by rule with no model call when both facets are covered', async () => {

@@ -17,6 +17,7 @@ vi.mock('../src/database/prisma.js', () => ({
 
 const { MessageSearchService } = await import('../src/features/facets/message-search.service.js');
 const { PivotService } = await import('../src/features/labels/pivot.service.js');
+const { APPROVED_FACET_VOCABULARY } = await import('../src/features/label-discovery/facets.js');
 
 const ACCOUNT = '11111111-1111-4111-8111-111111111111';
 
@@ -66,8 +67,14 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/*
+ * A vocabulary belongs to a mailbox now, so the filter options come from the account's approved
+ * set rather than a module constant. The checked-in set stands in for one here.
+ */
 function service() {
-  return new MessageSearchService(new PivotService({} as never));
+  return new MessageSearchService(new PivotService({} as never), {
+    approved: async () => APPROVED_FACET_VOCABULARY,
+  } as never);
 }
 
 beforeEach(() => {

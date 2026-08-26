@@ -296,7 +296,9 @@ describe('which accounts a tick picks up', () => {
   });
 
   it('asks only for connected accounts that are due, by schedule or by backoff', async () => {
-    const service = new AutomationService({ classify: mocks.classifier }, gmailStub());
+    // Eligibility is a query and touches none of the injected services, so the defaults will do —
+    // the old literal named a `classify` method AutomationService has never had.
+    const service = new AutomationService();
 
     await service.eligibleScheduledAccounts();
 

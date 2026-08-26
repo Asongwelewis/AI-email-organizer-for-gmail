@@ -11,7 +11,7 @@ import {
   APPROVED_FACET_VOCABULARY,
   FACET_INDEPENDENCE_RULE,
   MODEL_FACET_NAMES,
-  isApprovedFacetValue,
+  type FacetVocabularyValue,
   type ModelFacetName,
 } from './facets.js';
 import { emailIdentity } from './label-normalization.js';
@@ -95,6 +95,15 @@ export interface FacetVocabularyReport {
 export interface FacetVocabularyInput {
   /** The full eligible population; the grounder samples from it. */
   messages: FacetEvidenceMessage[];
+  /**
+   * The vocabulary being grounded — this mailbox's, not the repository's.
+   *
+   * Grounding checks a candidate set of values against real mail: which of them this mailbox
+   * actually contains, roughly how much, and with which subjects. It does not invent values, so
+   * it needs a starting set, and whose starting set that is matters. A second user grounded
+   * against the checked-in constant would be told how well a stranger's taxonomy fits their mail.
+   */
+  vocabulary: Record<ModelFacetName, FacetVocabularyValue[]>;
 }
 
 export interface FacetVocabularyGrounder {
@@ -239,10 +248,12 @@ export function sampleFacetEvidence(
  * the model's: they hold before any call is made, so a vocabulary that breaks one is a bug in the
  * checked-in constant rather than a bad response.
  */
-export function auditApprovedVocabulary(): string[] {
+export function auditApprovedVocabulary(
+  vocabulary: Record<ModelFacetName, FacetVocabularyValue[]> = APPROVED_FACET_VOCABULARY,
+): string[] {
   const findings: string[] = [];
   for (const facet of MODEL_FACET_NAMES) {
-    const values = APPROVED_FACET_VOCABULARY[facet];
+    const values = vocabulary[facet];
     const max = FACET_LIMITS.maxValues[facet];
     if (values.length > max) {
       findings.push(`${facet}: ${values.length} values exceeds the ${max}-value limit.`);
@@ -271,6 +282,8 @@ export function auditApprovedVocabulary(): string[] {
 
 interface FacetValidationContext {
   sample: FacetEvidenceMessage[];
+  /** The candidate set being grounded. Defaults to the checked-in one for existing callers. */
+  vocabulary?: Record<ModelFacetName, FacetVocabularyValue[]>;
 }
 
 /**
@@ -294,7 +307,8 @@ export function validateFacetGrounding(
       502,
     );
   }
-  const findings = auditApprovedVocabulary();
+  const vocabulary = context.vocabulary ?? APPROVED_FACET_VOCABULARY;
+  const findings = auditApprovedVocabulary(vocabulary);
   const subjects = context.sample
     .map((message) => normalizeSubject(message.subject ?? ''))
     .filter(Boolean);
@@ -307,8 +321,8 @@ export function validateFacetGrounding(
     return subjects.some((subject) => subject.includes(normalized) || normalized.includes(subject));
   };
   return {
-    domain: groundFacet('domain', parsed.data.domain, grounded, findings),
-    intent: groundFacet('intent', parsed.data.intent, grounded, findings),
+    domain: groundFacet('domain', parsed.data.domain, grounded, findings, vocabulary),
+    intent: groundFacet('intent', parsed.data.intent, grounded, findings, vocabulary),
     findings,
   };
 }
@@ -318,11 +332,13 @@ function groundFacet(
   returned: z.infer<typeof valueSchema>[],
   grounded: (example: string) => boolean,
   findings: string[],
+  vocabulary: Record<ModelFacetName, FacetVocabularyValue[]>,
 ): FacetValue[] {
+  const approvedNames = new Set(vocabulary[facet].map((value) => value.name));
   const byName = new Map<string, z.infer<typeof valueSchema>>();
   for (const value of returned) {
     const name = value.name.trim();
-    if (!isApprovedFacetValue(facet, name)) {
+    if (!approvedNames.has(name)) {
       findings.push(`Discarded ${facet} "${name}": not a value of the approved vocabulary.`);
       continue;
     }
@@ -339,7 +355,7 @@ function groundFacet(
 
   // Declaration order — the order the mailbox owner approved. Ranking by the model's weights would
   // let an estimate decide which value keeps a contested example.
-  for (const approved of APPROVED_FACET_VOCABULARY[facet]) {
+  for (const approved of vocabulary[facet]) {
     const value = byName.get(approved.name);
     if (!value) {
       findings.push(`${facet} "${approved.name}": the model returned no grounding for it.`);
@@ -435,7 +451,7 @@ export class GeminiFacetVocabularyGrounder implements FacetVocabularyGrounder {
     const { data, usage } = await requestGeminiJson({
       systemInstruction: systemPrompt,
       payload: {
-        vocabularies: APPROVED_FACET_VOCABULARY,
+        vocabularies: input.vocabulary,
         exampleSubjectsPerValue: FACET_LIMITS.exampleSubjects,
         mailboxTotals: {
           messages: input.messages.length,
@@ -452,7 +468,10 @@ export class GeminiFacetVocabularyGrounder implements FacetVocabularyGrounder {
       responseSchema: geminiResponseSchema as unknown as Record<string, unknown>,
       maxOutputTokens: env.FACET_MAX_OUTPUT_TOKENS,
     });
-    const { domain, intent, findings } = validateFacetGrounding(data, { sample });
+    const { domain, intent, findings } = validateFacetGrounding(data, {
+      sample,
+      vocabulary: input.vocabulary,
+    });
     return {
       domain,
       intent,

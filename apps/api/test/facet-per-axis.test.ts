@@ -7,14 +7,20 @@ vi.mock('../src/config/logger.js', () => ({
 
 import { env } from '../src/config/env.js';
 import { GeminiFacetClassifier } from '../src/features/automation/facet-classifier.js';
-import { facetValueNames } from '../src/features/label-discovery/facets.js';
+import { APPROVED_FACET_VOCABULARY } from '../src/features/label-discovery/facets.js';
 import {
   resetGeminiModelVersion,
   resetGeminiPacing,
 } from '../src/integrations/gemini/gemini.client.js';
 
-const DOMAIN = facetValueNames('domain')[0]!;
-const INTENT = facetValueNames('intent')[0]!;
+/*
+ * A vocabulary is per account now, so the classifier is handed one rather than reading a module
+ * constant. The checked-in set is a perfectly good fixture — it is a real approved vocabulary,
+ * just no longer the only one there can be.
+ */
+const VOCABULARY = APPROVED_FACET_VOCABULARY;
+const DOMAIN = VOCABULARY.domain[0]!.name;
+const INTENT = VOCABULARY.intent[0]!.name;
 
 const input = {
   key: 'm1',
@@ -85,7 +91,9 @@ describe('a facet is discarded per axis, not per message', () => {
       ]),
     );
 
-    const [result] = (await new GeminiFacetClassifier().classify([input])).classifications;
+    const [result] = (
+      await new GeminiFacetClassifier().classify([input], { vocabulary: VOCABULARY })
+    ).classifications;
 
     expect(result).toMatchObject({ domain: null, intent: INTENT, intentConfidence: 0.88 });
     // A discarded axis carries no confidence: there is no decision left to be confident about.
@@ -106,7 +114,9 @@ describe('a facet is discarded per axis, not per message', () => {
       ]),
     );
 
-    const [result] = (await new GeminiFacetClassifier().classify([input])).classifications;
+    const [result] = (
+      await new GeminiFacetClassifier().classify([input], { vocabulary: VOCABULARY })
+    ).classifications;
 
     expect(result).toMatchObject({ domain: DOMAIN, domainConfidence: 0.93, intent: null });
     expect(result!.intentConfidence).toBe(0);
@@ -127,7 +137,9 @@ describe('a facet is discarded per axis, not per message', () => {
       ]),
     );
 
-    const [result] = (await new GeminiFacetClassifier().classify([input])).classifications;
+    const [result] = (
+      await new GeminiFacetClassifier().classify([input], { vocabulary: VOCABULARY })
+    ).classifications;
 
     expect(result).toMatchObject({ domain: DOMAIN, intent: null, intentConfidence: 0 });
   });
@@ -148,7 +160,9 @@ describe('a facet is discarded per axis, not per message', () => {
       ]),
     );
 
-    const { classifications } = await new GeminiFacetClassifier().classify([input]);
+    const { classifications } = await new GeminiFacetClassifier().classify([input], {
+      vocabulary: VOCABULARY,
+    });
 
     expect(classifications).toHaveLength(1);
     expect(classifications[0]).toMatchObject({ domain: null, intent: null });

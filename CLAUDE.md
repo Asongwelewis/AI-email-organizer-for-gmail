@@ -86,9 +86,8 @@ every Gmail label beneath it.
 
 **Facets are the classification vocabulary; folders are a view of them.** A message carries three
 orthogonal facets in `message_facets`: `entity` (the sending brand, derived from the sender domain
-in code — never asked of a model), plus `domain` and `intent` from two closed vocabularies the user
-approved, held as a checked-in constant in `features/label-discovery/facets.ts`. The classifier may
-return only those values. A single tree could express one ordering of these at a time, which is why
+in code — never asked of a model), plus `domain` and `intent` from two closed vocabularies the
+account's owner approved. The classifier may return only those values. A single tree could express one ordering of these at a time, which is why
 most of a real mailbox had no leaf to go in; facets are assigned independently and pivoted into
 folders afterwards.
 
@@ -107,6 +106,17 @@ the whole mailbox with Postgres full text (`simple`, and the sender address spli
 both sides of the match), narrowed by any combination of `entity`, `domain` and `intent`, with the
 folder each hit sits in attached. A facet filter joins `message_facets`; a phrase alone does not,
 so mail that was never classified stays findable. No model call, no Gmail call.
+
+**A vocabulary belongs to a mailbox, not to the repository.** `facet_vocabularies` holds the
+domains and intents one account approved, through the same propose → confirm shape as the folder
+tree: `POST /api/facets/vocabulary/propose` grounds a candidate set in that mailbox's own mail and
+writes it where the classifier cannot see it; `POST /api/facets/vocabulary/confirm` is the human
+approval. Until one exists, classification refuses with `FACET_VOCABULARY_NOT_APPROVED` — there is
+no default, because "career, development, education" describes one person's life. The checked-in
+constant in `features/label-discovery/facets.ts` is now a _starter set_ offered to a new mailbox
+and the seed the existing accounts were migrated with, never a fallback. `prompt_version` carries a
+fingerprint of the vocabulary, so approving a change re-classifies the affected mail through the
+staleness machinery that already exists.
 
 **Rules before AI.** `learned_classification_patterns` holds routing rules — `SENDER_DOMAIN`,
 `SENDER_ADDRESS`, or `SUBJECT_CONTAINS`, never regular expressions — installed when a plan is

@@ -7,6 +7,10 @@ import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { entityFor } from '@api/features/label-discovery/entity.js';
 import { emailIdentity } from '@api/features/label-discovery/label-normalization.js';
+import {
+  facetVocabularyRepository,
+  type FacetVocabularyRepository,
+} from '@api/features/label-discovery/facet-vocabulary.repository.js';
 import { captureApiException } from '@api/observability/sentry.js';
 import {
   normalizeRuleValue,
@@ -20,7 +24,7 @@ import {
 } from '@api/integrations/gemini/gemini.client.js';
 import type { AutomationUsage } from './automation.types.js';
 import {
-  FACET_CLASSIFIER_PROMPT_VERSION,
+  facetPromptVersion,
   geminiFacetClassifier,
   type FacetClassification,
   type FacetClassifier,
@@ -98,13 +102,10 @@ export const HASHED_MESSAGE_FIELDS = [
 
 type HashableMessage = Pick<gmail_message_metadata, (typeof HASHED_MESSAGE_FIELDS)[number]>;
 
-function hashMessage(message: HashableMessage): string {
+function hashMessage(message: HashableMessage, promptVersion: string): string {
   return createHash('sha256')
     .update(
-      [
-        ...HASHED_MESSAGE_FIELDS.map((field) => message[field] ?? ''),
-        FACET_CLASSIFIER_PROMPT_VERSION,
-      ].join('|'),
+      [...HASHED_MESSAGE_FIELDS.map((field) => message[field] ?? ''), promptVersion].join('|'),
     )
     .digest('hex');
 }
@@ -154,7 +155,10 @@ interface StoredFacetRule extends FacetRoutingRule {
 }
 
 export class FacetClassificationService {
-  constructor(private readonly classifier: FacetClassifier = geminiFacetClassifier) {}
+  constructor(
+    private readonly classifier: FacetClassifier = geminiFacetClassifier,
+    private readonly vocabularies: FacetVocabularyRepository = facetVocabularyRepository,
+  ) {}
 
   /**
    * Classifies unclassified mail for one account.
@@ -169,6 +173,14 @@ export class FacetClassificationService {
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
+    /*
+     * The vocabulary this mailbox approved, resolved before the lease and before a single token is
+     * spent. There is no default to fall back to: "career, development, education" describes one
+     * person's life, and classifying a second mailbox against it would file that person's mail
+     * into a stranger's taxonomy. An account that has approved nothing is refused here.
+     */
+    const vocabulary = await this.vocabularies.requireApproved(accountId);
+    const promptVersion = facetPromptVersion(vocabulary);
     const counters = emptyCounters();
     const now = new Date();
     const token = randomUUID();
@@ -211,7 +223,7 @@ export class FacetClassificationService {
       const outputTokensBefore = spentToday._sum.output_tokens ?? 0;
       const costBefore = spentToday._sum.estimated_cost_microusd ?? 0;
 
-      const messages = await this.unclassifiedMessages(accountId, options.limit);
+      const messages = await this.unclassifiedMessages(accountId, promptVersion, options.limit);
       counters.messagesSeen = messages.length;
       const rules = await this.facetRules(accountId);
 
@@ -235,12 +247,19 @@ export class FacetClassificationService {
         }
         if (resolved.domain && resolved.intent) {
           counters.ruleDecided += 1;
-          await this.persist(accountId, message, entity, 'RULE', {
-            domain: resolved.domain.value,
-            domainConfidence: resolved.domain.rule.confidence,
-            intent: resolved.intent.value,
-            intentConfidence: resolved.intent.rule.confidence,
-          });
+          await this.persist(
+            accountId,
+            message,
+            entity,
+            'RULE',
+            {
+              domain: resolved.domain.value,
+              domainConfidence: resolved.domain.rule.confidence,
+              intent: resolved.intent.value,
+              intentConfidence: resolved.intent.rule.confidence,
+            },
+            promptVersion,
+          );
           this.countAssignments(counters, entity, resolved.domain.value, resolved.intent.value);
           continue;
         }
@@ -308,6 +327,7 @@ export class FacetClassificationService {
           }));
           counters.providerCalls += 1;
           const result = await this.classifier.classify(inputs, {
+            vocabulary,
             maxOutputTokens: outputTokenReserve,
           });
           counters.usage.inputTokens += result.usage.inputTokens;
@@ -325,12 +345,19 @@ export class FacetClassificationService {
             // tokens are already spent, so letting one unwritable row discard the twenty-four
             // beside it throws away work that was paid for and correct.
             try {
-              await this.persist(accountId, entry.message, entity, 'MODEL', {
-                domain,
-                domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
-                intent,
-                intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
-              });
+              await this.persist(
+                accountId,
+                entry.message,
+                entity,
+                'MODEL',
+                {
+                  domain,
+                  domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
+                  intent,
+                  intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
+                },
+                promptVersion,
+              );
               counters.modelDecided += 1;
               this.countAssignments(counters, entity, domain, intent);
               counters.rulesLearned += await this.learn(accountId, entry.message, decision, entity);
@@ -409,6 +436,7 @@ export class FacetClassificationService {
     entity: string | null,
     source: 'RULE' | 'MODEL',
     facets: FacetPair,
+    promptVersion: string,
   ): Promise<void> {
     const data = {
       entity,
@@ -417,8 +445,8 @@ export class FacetClassificationService {
       intent: facets.intent,
       intent_confidence: facets.intent ? facets.intentConfidence : null,
       source,
-      prompt_version: FACET_CLASSIFIER_PROMPT_VERSION,
-      input_hash: hashMessage(message),
+      prompt_version: promptVersion,
+      input_hash: hashMessage(message, promptVersion),
       classified_at: new Date(),
     };
     await prisma.message_facets.upsert({
@@ -599,7 +627,7 @@ export class FacetClassificationService {
     };
   }
 
-  private async unclassifiedMessages(accountId: string, limit?: number) {
+  private async unclassifiedMessages(accountId: string, promptVersion: string, limit?: number) {
     const take = limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN;
     const fresh = await prisma.gmail_message_metadata.findMany({
       where: {
@@ -608,10 +636,7 @@ export class FacetClassificationService {
         // prompt_version was pointless while nothing acted on it: bumping the vocabulary left
         // every existing message describing itself in terms that no longer existed. Re-running
         // now picks those up, and `persist` upserts, so a re-classification replaces in place.
-        OR: [
-          { facets: null },
-          { facets: { prompt_version: { not: FACET_CLASSIFIER_PROMPT_VERSION } } },
-        ],
+        OR: [{ facets: null }, { facets: { prompt_version: { not: promptVersion } } }],
       },
       orderBy: { internal_date: 'desc' },
       take,
@@ -620,7 +645,7 @@ export class FacetClassificationService {
 
     // Room left in the run, so spend it re-checking decisions against the input they were made
     // from. Newest mail first, and never more than the run's own ceiling.
-    const stale = await this.staleByInput(accountId, take - fresh.length);
+    const stale = await this.staleByInput(accountId, promptVersion, take - fresh.length);
     return [...fresh, ...stale];
   }
 
@@ -637,14 +662,14 @@ export class FacetClassificationService {
    * bounded sweep, not a full scan: a wholesale resync is worked through over successive runs
    * rather than in one, and it only ever uses budget a run was not going to spend anyway.
    */
-  private async staleByInput(accountId: string, limit: number) {
+  private async staleByInput(accountId: string, promptVersion: string, limit: number) {
     if (limit <= 0) return [];
     // Asked of the decisions rather than of the mail: the question is whether each recorded
     // decision still matches the message it was made from.
     const decided = await prisma.message_facets.findMany({
       where: {
         connected_google_account_id: accountId,
-        prompt_version: FACET_CLASSIFIER_PROMPT_VERSION,
+        prompt_version: promptVersion,
         message: this.classifiableWhere(accountId),
       },
       orderBy: { message: { last_synced_at: 'desc' } },
@@ -663,7 +688,7 @@ export class FacetClassificationService {
       },
     });
     const staleIds = decided
-      .filter((row) => row.input_hash !== hashMessage(row.message))
+      .filter((row) => row.input_hash !== hashMessage(row.message, promptVersion))
       .map((row) => row.message.id);
     if (staleIds.length === 0) return [];
     return prisma.gmail_message_metadata.findMany({

@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
-import { APPROVED_FACET_VOCABULARY } from '@api/features/label-discovery/facets.js';
+import {
+  facetVocabularyRepository,
+  type FacetVocabularyRepository,
+} from '@api/features/label-discovery/facet-vocabulary.repository.js';
 import { buildPivot, pivotLeafFor, type PivotFacet } from '@api/features/label-discovery/pivot.js';
 import { pivotService, type PivotService } from '@api/features/labels/pivot.service.js';
 
@@ -101,7 +104,10 @@ function searchTerms(query: string): string {
 }
 
 export class MessageSearchService {
-  constructor(private readonly pivots: PivotService = pivotService) {}
+  constructor(
+    private readonly pivots: PivotService = pivotService,
+    private readonly vocabularies: FacetVocabularyRepository = facetVocabularyRepository,
+  ) {}
 
   /**
    * Subject and sender across the whole mailbox, narrowed by any combination of facets.
@@ -250,20 +256,21 @@ export class MessageSearchService {
   /**
    * What there is to filter by, and how much mail each value holds.
    *
-   * `domain` and `intent` come from the checked-in vocabulary, so every approved value appears
-   * even at zero — a filter that hides its own empty options makes the vocabulary look smaller
-   * than it is. `entity` is derived from senders and has no fixed list, so it is whatever this
-   * mailbox actually turns out to contain.
+   * `domain` and `intent` come from the vocabulary THIS mailbox approved, so every approved value
+   * appears even at zero — a filter that hides its own empty options makes the vocabulary look
+   * smaller than it is. `entity` is derived from senders and has no fixed list, so it is whatever
+   * this mailbox actually turns out to contain.
    */
   async vocabulary(accountId: string, limit = 200): Promise<FacetVocabulary> {
-    const [entities, domains, intents] = await Promise.all([
+    const [entities, domains, intents, vocabulary] = await Promise.all([
       this.facetCounts(accountId, 'entity', limit),
       this.facetCounts(accountId, 'domain', limit),
       this.facetCounts(accountId, 'intent', limit),
+      this.vocabularies.approved(accountId),
     ]);
 
     const approved = (facet: 'domain' | 'intent', counts: Map<string, number>) =>
-      APPROVED_FACET_VOCABULARY[facet].map((value) => ({
+      vocabulary[facet].map((value) => ({
         value: value.name,
         messageCount: counts.get(value.name) ?? 0,
       }));

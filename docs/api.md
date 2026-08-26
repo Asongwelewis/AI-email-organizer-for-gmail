@@ -582,6 +582,51 @@ buys nothing while costing exact matches.
 `400 FACET_VALIDATION_FAILED` when the query constrains nothing — a search with neither a phrase
 nor a facet is the mailbox, not a search — or when a facet value is not one.
 
+### `GET /api/facets/vocabulary/status`
+
+The vocabulary this mailbox approved, any pending proposal, and whether the classifier can run at
+all.
+
+```json
+{
+  "approved": { "domain": [{ "name": "finance", "definition": "…" }], "intent": [] },
+  "proposed": { "domain": [], "intent": [] },
+  "ready": false
+}
+```
+
+### `POST /api/facets/vocabulary/propose`
+
+Grounds a candidate vocabulary in this mailbox's **own** mail — which of its values the mailbox
+actually contains, roughly how much, and with which subjects — and records the result as a
+proposal. One Gemini call. It writes nothing the classifier can read.
+
+The candidate is the account's own approved set when it has one, so re-proposing measures how well
+the current vocabulary still fits. A mailbox with nothing approved is offered the checked-in
+starter set as a **starting point, not an inheritance**: values that fit nothing in this mailbox
+come back at zero weight with no examples, which is exactly the signal for dropping them before
+approving.
+
+### `POST /api/facets/vocabulary/confirm`
+
+The human approval, and the only step after which the classifier speaks differently.
+
+```json
+{ "values": [{ "facet": "domain", "name": "finance", "definition": "Banking, payments, …" }] }
+```
+
+Replaces the approved set rather than merging into it: a vocabulary is a closed set the model
+chooses from, so a value left out has to stop being returnable. Mail already classified is not
+touched — `prompt_version` carries a fingerprint of the vocabulary, so affected messages simply
+read as stale and re-classify on the next pass instead of vanishing from their folders.
+
+`422 FACET_VOCABULARY_EMPTY` when either axis would be left with no values.
+
+Until a vocabulary is approved, `POST /api/facets/classify` and the daily run answer
+`409 FACET_VOCABULARY_NOT_APPROVED`. There is no default to fall back to: "career, development,
+education" describes one person's life, and classifying a second mailbox against it would file that
+person's mail into a stranger's taxonomy.
+
 ### `GET /api/facets/vocabulary`
 
 What there is to filter by, with how much mail sits behind each value. `entity` is derived from

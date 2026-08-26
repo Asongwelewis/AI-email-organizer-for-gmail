@@ -68,6 +68,7 @@ model connected_google_accounts {
   automation_runs                 automation_runs[]
   automation_message_actions      automation_message_actions[]
   facet_pivot_settings            facet_pivot_settings?
+  facet_vocabularies              facet_vocabularies[]
   learned_classification_patterns learned_classification_patterns[]
   message_facets                  message_facets[]
   user_labels                     user_labels[]
@@ -679,6 +680,33 @@ model message_facets {
   @@index([connected_google_account_id, classified_at(sort: Desc)], map: "message_facets_account_classified_idx")
   @@index([connected_google_account_id, entity, intent], map: "message_facets_account_entity_intent_idx")
   @@index([connected_google_account_id, domain, intent], map: "message_facets_account_domain_intent_idx")
+}
+
+/// The domains and intents ONE mailbox owner approved. A vocabulary belongs to a mailbox, not to
+/// the repository: "career, finance, education" is the right set for the mailbox it was designed
+/// from and nobody else's.
+model facet_vocabularies {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  /// Only the two model facets. `entity` is derived in code and is never a vocabulary.
+  facet                       String
+  name                        String
+  /// One sentence, precise enough to route by. Sent to the model verbatim.
+  definition                  String
+  status                      facet_vocabulary_status   @default(PROPOSED)
+  position                    Int                       @default(0)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, facet, status, name], map: "facet_vocabularies_account_value_unique_idx")
+  @@index([connected_google_account_id, status], map: "facet_vocabularies_account_status_idx")
+}
+
+/// Whether a value is a pending proposal or the vocabulary the classifier may actually speak.
+enum facet_vocabulary_status {
+  PROPOSED
+  APPROVED
 }
 
 /// The account's canonical facet ordering: which pivot is materialised into folders and Gmail.

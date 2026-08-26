@@ -13,6 +13,7 @@ const applicationTables = [
   'automation_states',
   'connected_google_accounts',
   'facet_pivot_settings',
+  'facet_vocabularies',
   'gmail_labels',
   'gmail_message_metadata',
   'gmail_sync_runs',
@@ -51,6 +52,8 @@ const requiredIndexes = [
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
+  'facet_vocabularies_account_status_idx',
+  'facet_vocabularies_account_value_unique_idx',
   'gmail_labels_account_label_unique_idx',
   'gmail_labels_account_managed_idx',
   'gmail_labels_account_name_unique_idx',
@@ -200,6 +203,8 @@ try {
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
+        'facet_vocabularies_account_status_idx',
+        'facet_vocabularies_account_value_unique_idx',
         'gmail_labels_account_label_unique_idx',
         'gmail_labels_account_managed_idx',
         'gmail_labels_account_name_unique_idx',
@@ -354,12 +359,12 @@ try {
   // than absorbed. The cost is that every schema change must update them here — which is the point,
   // but it also means a stale number reads as a real failure: these three had drifted several
   // migrations behind before the facet work began.
-  assert(summary?.enum_count === 19n, 'all nineteen enum types must exist');
-  assert(summary.foreign_key_count === 29n, 'all twenty-nine foreign keys must exist');
+  assert(summary?.enum_count === 20n, 'all twenty enum types must exist');
+  assert(summary.foreign_key_count === 30n, 'all thirty foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 20n,
-    'exactly twenty intended Prisma migrations must be applied',
+    summary.migration_count === 21n,
+    'exactly twenty-one intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');

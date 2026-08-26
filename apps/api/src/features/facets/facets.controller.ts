@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '@api/errors/AppError.js';
 import { PIVOT_FACETS, type PivotFacet } from '@api/features/label-discovery/pivot.js';
 import { facetsService } from './facets.service.js';
+import { vocabularyService } from './vocabulary.service.js';
 
 const facetName = z.enum(PIVOT_FACETS);
 
@@ -87,6 +88,28 @@ const searchQuery = z
       .optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
     cursor: z.string().uuid().optional(),
+  })
+  .strict();
+
+/**
+ * The values a person approved. Shape-checked here rather than trusted: these strings become the
+ * closed vocabulary a model is told to choose from and the folder names a pivot spells, so a value
+ * that is not a slug, or a definition long enough to swamp the prompt, is a 400.
+ */
+const vocabularyBody = z
+  .object({
+    values: z
+      .array(
+        z
+          .object({
+            facet: z.enum(['domain', 'intent']),
+            name: facetValue,
+            definition: z.string().min(10).max(400),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(128),
   })
   .strict();
 
@@ -197,6 +220,27 @@ export class FacetsController {
   async vocabulary(request: Request, response: Response): Promise<void> {
     noStore(response);
     response.json(await facetsService.vocabulary(request.auth!.user.id));
+  }
+
+  /** The approved vocabulary, any pending proposal, and whether the classifier can run. */
+  async vocabularyOverview(request: Request, response: Response): Promise<void> {
+    noStore(response);
+    response.json(await vocabularyService.overview(request.auth!.user.id));
+  }
+
+  /**
+   * Grounds a candidate vocabulary in this mailbox's own mail and records it as a proposal.
+   * Spends one Gemini call and changes nothing the classifier can see.
+   */
+  async proposeVocabulary(request: Request, response: Response): Promise<void> {
+    noStore(response);
+    response.json(await vocabularyService.propose(request.auth!.user.id));
+  }
+
+  /** The human approval. The only step after which the classifier speaks differently. */
+  async approveVocabulary(request: Request, response: Response): Promise<void> {
+    const body = parse(vocabularyBody, request.body);
+    response.json(await vocabularyService.approve(request.auth!.user.id, body.values));
   }
 }
 
