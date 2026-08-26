@@ -6,6 +6,7 @@ import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { entityFor } from '@api/features/label-discovery/entity.js';
+import { emailIdentity } from '@api/features/label-discovery/label-normalization.js';
 import { captureApiException } from '@api/observability/sentry.js';
 import {
   normalizeRuleValue,
@@ -88,7 +89,12 @@ const MIN_OUTPUT_TOKENS_PER_MESSAGE = 40;
  * sender host without adding it would leave the checkpoint calling a decision current that was
  * made without ever seeing the field.
  */
-export const HASHED_MESSAGE_FIELDS = ['gmail_message_id', 'subject', 'sender_email'] as const;
+export const HASHED_MESSAGE_FIELDS = [
+  'gmail_message_id',
+  'subject',
+  'sender_email',
+  'snippet',
+] as const;
 
 type HashableMessage = Pick<gmail_message_metadata, (typeof HASHED_MESSAGE_FIELDS)[number]>;
 
@@ -290,7 +296,13 @@ export class FacetClassificationService {
             key: `m${batchIndex + 1}`,
             subject: (entry.message.subject ?? '').slice(0, 300),
             sender: (entry.message.sender_email ?? '').slice(0, 320),
-            senderDomain: entityFor(entry.message.sender_email) ?? '',
+            // The real host, not the brand slug: `entityFor` is the entity facet the code already
+            // derived, so sending it back duplicated a decided answer and discarded the evidence.
+            senderHost: emailIdentity(entry.message.sender_email).senderDomain,
+            // Bounded deliberately. Input is the budget that binds a day's filing — every
+            // message's metadata is sent whether it ends up filed or not — so this buys the
+            // intent signal without doubling what a batch costs to read.
+            snippet: (entry.message.snippet ?? '').slice(0, 200),
             ...(entry.known.domain ? { knownDomain: entry.known.domain } : {}),
             ...(entry.known.intent ? { knownIntent: entry.known.intent } : {}),
           }));
@@ -640,7 +652,13 @@ export class FacetClassificationService {
       select: {
         input_hash: true,
         message: {
-          select: { id: true, gmail_message_id: true, subject: true, sender_email: true },
+          select: {
+            id: true,
+            gmail_message_id: true,
+            subject: true,
+            sender_email: true,
+            snippet: true,
+          },
         },
       },
     });

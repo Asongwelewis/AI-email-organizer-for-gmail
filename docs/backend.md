@@ -160,6 +160,14 @@ itself the checkpoint — a run stopped by a spent quota resumes exactly where i
 message is ever classified twice. **It makes no Gmail call at all**: turning a facet combination
 into a folder is the pivot's job.
 
+The classifier is given the subject, the sender, the real sending **host** (`m.learn.coursera.org`,
+not the brand slug — the brand is the entity facet, already derived in code) and a bounded snippet.
+The prompt encodes the asymmetry between them: the host is **strong evidence for domain** and
+**near-zero for intent**, because it says who is speaking and never what happened; the snippet is
+the reverse. Where a host-to-domain mapping is reliable it belongs in a `SENDER_DOMAIN` rule
+instead, which already supports subdomain granularity and prefers the longer, more specific value —
+`learn.coursera.org → education` then costs no tokens at all and cannot be ignored.
+
 The checkpoint is keyed on `prompt_version` and on an `input_hash` over the message fields a
 decision is derived from, listed once as `HASHED_MESSAGE_FIELDS`. A run reads never-classified mail
 first; if that does not fill the run, the remainder is spent re-checking existing decisions against

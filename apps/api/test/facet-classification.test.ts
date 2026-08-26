@@ -673,6 +673,54 @@ describe('the facet classification pass', () => {
     expect(mocks.runAggregate.mock.calls[0]![0].where.started_at.gte.getUTCHours()).toBe(0);
   });
 
+  /**
+   * The payload used to send `entityFor(...)` under the name `senderDomain` — the entity facet the
+   * code already derives and never asks the model for. It duplicated a decided answer while
+   * throwing away the one thing the envelope actually adds, and it carried no snippet at all, so
+   * "what does this message want?" was answered from a subject line alone.
+   */
+  it('sends the real sending host and the snippet, not the brand slug', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        ...message({
+          id: 'a',
+          subject: "Data engineering's got interesting",
+          sender: 'no-reply@m.learn.coursera.org',
+        }),
+        snippet: 'Your new course starts on Monday.',
+      },
+    ]);
+
+    await service([
+      { key: 'm1', domain: 'education', domainConfidence: 0.9, intent: null, intentConfidence: 0 },
+    ]).classifyAccount(ACCOUNT);
+
+    const [inputs] = mocks.classify.mock.calls[0]!;
+    expect(inputs[0]).toMatchObject({
+      senderHost: 'm.learn.coursera.org',
+      snippet: 'Your new course starts on Monday.',
+    });
+    // The brand is derived in code and is never a question for the model.
+    expect(inputs[0]).not.toHaveProperty('senderDomain');
+  });
+
+  // Input is the budget that binds a day of filing: every message's metadata is read whether it
+  // ends up filed or not, so the snippet has to be bounded rather than sent whole.
+  it('bounds the snippet rather than sending the whole stored preview', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        ...message({ id: 'a', subject: 'A subject', sender: 'a@example.com' }),
+        snippet: 'x'.repeat(900),
+      },
+    ]);
+
+    await service([
+      { key: 'm1', domain: null, domainConfidence: 0, intent: null, intentConfidence: 0 },
+    ]).classifyAccount(ACCOUNT);
+
+    expect(mocks.classify.mock.calls[0]![0][0].snippet).toHaveLength(200);
+  });
+
   it('refuses to run while the account is already leased', async () => {
     mocks.stateUpdateMany.mockResolvedValueOnce({ count: 0 });
     await expect(service([]).classifyAccount(ACCOUNT)).rejects.toMatchObject({

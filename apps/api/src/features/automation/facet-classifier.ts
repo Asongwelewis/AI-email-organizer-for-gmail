@@ -11,7 +11,7 @@ import {
 import { requestGeminiJson } from '@api/integrations/gemini/gemini.client.js';
 import type { AutomationUsage } from './automation.types.js';
 
-export const FACET_CLASSIFIER_PROMPT_VERSION = 'mailmind-facet-classifier-v1';
+export const FACET_CLASSIFIER_PROMPT_VERSION = 'mailmind-facet-classifier-v2';
 
 /**
  * Returned when a message fits no value of a facet. Distinct from the old NONE: it applies to ONE
@@ -24,7 +24,19 @@ export interface FacetClassifierInput {
   key: string;
   subject: string;
   sender: string;
-  senderDomain: string;
+  /**
+   * The real sending host — `m.learn.coursera.org`, not the brand slug.
+   *
+   * This field used to carry `entityFor(...)`, which is the entity facet the code already derives
+   * and the model is never asked for. It duplicated a decided answer and threw away the one piece
+   * of evidence the envelope actually adds.
+   */
+  senderHost: string;
+  /**
+   * Gmail's own preview of the body. For a subject like "Data engineering's got interesting… 🙂"
+   * this is where the whole signal lives, and the facet payload carried nothing like it.
+   */
+  snippet: string;
   /** Absent when a rule already decided this axis; the model is not asked to re-decide it. */
   knownDomain?: string;
   knownIntent?: string;
@@ -94,6 +106,12 @@ const systemPrompt = [
   'A third facet, the sending brand, is derived in code. Never let who sent a message decide its',
   'intent: an "insufficient funds" notice is payment-failed whether it comes from a bank, a broker,',
   'or a streaming service.',
+  '',
+  'The two axes read the evidence differently, and senderHost is where they diverge most.',
+  'senderHost is STRONG evidence for domain: it says which area of life a message belongs to, and',
+  '"learn.coursera.org" is education whatever the message turns out to be about. It is NEAR-ZERO',
+  'evidence for intent: the host says who is speaking, never what happened. snippet is the reverse',
+  '— it is usually the best evidence for intent, and weak evidence for domain.',
   '',
   'Some records arrive with knownDomain or knownIntent already decided by a routing rule. Treat',
   'those as settled, use them as context, and still return a value for that axis matching what was',

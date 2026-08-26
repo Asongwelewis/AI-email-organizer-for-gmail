@@ -20,7 +20,8 @@ const input = {
   key: 'm1',
   subject: 'Your payment could not be processed',
   sender: 'billing@example.com',
-  senderDomain: 'example.com',
+  senderHost: 'billing.example.com',
+  snippet: 'We were unable to charge your card.',
 };
 
 const respondWith = (results: unknown[]) =>
