@@ -28,12 +28,22 @@
  *
  *   npm run sweep:labels --workspace @mailmind/api
  *   npm run sweep:labels --workspace @mailmind/api -- --apply
+ *   npm run sweep:labels --workspace @mailmind/api -- --all --apply   (leave Gmail alone entirely)
  */
 import { prisma } from '../src/database/prisma.js';
 import { pivotService } from '../src/features/labels/pivot.service.js';
 import { createGmailClient, withGmailRetry } from '../src/integrations/gmail/gmail.client.js';
 
-const apply = process.argv.slice(2).includes('--apply');
+const args = process.argv.slice(2);
+const apply = args.includes('--apply');
+/**
+ * Treat EVERY MailMind label as orphaned, whatever the pivot currently produces.
+ *
+ * For leaving Gmail alone entirely: the PWA renders its folder view from `message_facets` and
+ * deep-links into Gmail by message id, which needs no label at all. This is how the labels come
+ * back off once that is the shape of the product.
+ */
+const all = args.includes('--all');
 const write = (line = '') => process.stdout.write(`${line}\n`);
 
 /** Gmail caps `messages.modify` batches at 1000 ids. */
@@ -58,8 +68,15 @@ async function main(): Promise<void> {
     pivotService.plan(account.id),
   ]);
 
-  // Folders the current pivot still produces. Everything else under MailMind/ is dead.
-  const live = new Set(plan.changes.map((change) => change.fullPath));
+  // Folders the current pivot still produces. Everything else under MailMind/ is dead — and with
+  // --all, nothing is live and the whole MailMind tree comes off.
+  const live = all ? new Set<string>() : new Set(plan.changes.map((change) => change.fullPath));
+  /*
+   * Rows to delete outright: only folders the pivot no longer produces. `--all` strips Gmail but
+   * KEEPS the folder tree, because the PWA still renders from `user_labels` today — deleting it
+   * would leave the app with nothing to show. What has to go either way is the stored pointer to
+   * a Gmail label that no longer exists.
+   */
   const orphanRowIds = new Map(plan.orphaned.map((row) => [row.fullPath, row.id]));
   const orphans = labels.filter((label) => label.name && !live.has(label.name));
 
@@ -125,6 +142,13 @@ async function main(): Promise<void> {
     if (rowId) {
       await prisma.user_labels.deleteMany({
         where: { connected_google_account_id: account.id, id: rowId },
+      });
+    } else if (orphan.name) {
+      // The folder survives; its Gmail label does not. Leaving the id behind would have the
+      // database naming a label that is gone.
+      await prisma.user_labels.updateMany({
+        where: { connected_google_account_id: account.id, full_path: orphan.name },
+        data: { gmail_label_id: null },
       });
     }
     write(`    swept`);
