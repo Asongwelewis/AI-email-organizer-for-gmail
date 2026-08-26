@@ -970,3 +970,226 @@
   min-width: 2.5rem;
   padding: 0.3rem 0.45rem;
 }
+
+/* ------------------------------------------------------------------ setup */
+
+/* The first-run path. Each step is gated on the one before it, so the marker carries the state
+   and the action only appears on the step you can actually take. */
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-step {
+  display: flex;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.setup-step--waiting {
+  opacity: 0.55;
+}
+
+.setup-step--current {
+  border-color: var(--accent);
+  box-shadow: var(--highlight-inset);
+}
+
+.setup-step__marker {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--surface-inset);
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-step__marker svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.setup-step--done .setup-step__marker {
+  background: var(--accent);
+  color: var(--ink-inverted);
+}
+
+.setup-step--current .setup-step__marker {
+  background: var(--accent);
+  color: var(--ink-inverted);
+}
+
+.setup-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.setup-step__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.setup-step__description {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--app-ink-soft);
+}
+
+.setup-step__action {
+  padding-top: 0.5rem;
+}
+
+/* ----------------------------------------------------------------- review */
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.review__subject {
+  margin: 0;
+  font-weight: 600;
+}
+
+.review__sender,
+.review__snippet,
+.review__why {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.review__snippet {
+  /* Two lines of a truncated snippet is enough to recognise a message; more is a mail client. */
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.review__decision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.review__proposal {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.review__confidence {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-tertiary);
+}
+
+.review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ pivot */
+
+.pivot-order {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pivot-order__item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+}
+
+.pivot-order__depth {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--surface-inset);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+.pivot-order__label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.pivot-order__controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.pivot-min {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.pivot-min input {
+  width: 5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__title--sub {
+  font-size: 1.125rem;
+}
+
+.plan-node__name {
+  flex: 1;
+}
+
+.plan-node__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-tertiary);
+}

@@ -1,4 +1,4 @@
-import { CheckCheck, History, LayoutGrid, LogOut } from 'lucide-react';
+import { CheckCheck, FolderTree, History, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
@@ -7,11 +7,16 @@ import { useAuth } from '@web/context/useAuth';
 
 /**
  * One layout, one breakpoint. Below 768px the navigation is a bottom tab bar; above it, a left
- * rail beside a max-width column. The same three destinations either way — a phone layout stretched
+ * rail beside a max-width column. The same destinations either way — a phone layout stretched
  * across a desktop is the failure this avoids.
+ *
+ * Setup is deliberately not in here. It is a path you walk once, linked to from wherever an
+ * account turns out not to be ready; a permanent tab for it would be clutter forever after.
  */
 const NAV = [
   { to: '/sorted', label: 'Sorted', Icon: LayoutGrid },
+  { to: '/folders', label: 'Folders', Icon: FolderTree },
+  { to: '/review', label: 'Review', Icon: ListChecks },
   { to: '/approve', label: 'Approve', Icon: CheckCheck },
   { to: '/activity', label: 'Activity', Icon: History },
 ] as const;

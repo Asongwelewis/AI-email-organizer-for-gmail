@@ -93,16 +93,38 @@ test('a signed-in visitor lands in the authenticated shell', async ({ page }) =>
   await expect(page.getByRole('button', { name: /Job hunt/ })).toBeVisible();
 });
 
-test('the three screens are reachable from the navigation', async ({ page }) => {
+test('every screen is reachable from the navigation', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/sorted');
 
+  // Folders and Review are the screens restored in card 14. Without them the pipeline exists in
+  // the API and cannot be operated at all.
+  await page.getByRole('link', { name: 'Folders' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Folders' })).toBeVisible();
+  await page.getByRole('link', { name: 'Review' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible();
   await page.getByRole('link', { name: 'Approve' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Approve' })).toBeVisible();
   await page.getByRole('link', { name: 'Activity' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
   await expect(page.getByText('Nothing has run yet')).toBeVisible();
+});
+
+/**
+ * Setup is deliberately absent from the navigation — it is a path you walk once. What matters is
+ * that it exists and is reachable, because the first-run failure this card removes was landing on
+ * an empty Sorted screen whose only route onwards answered 409.
+ */
+test('the setup path exists and gates its steps in order', async ({ page }) => {
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/setup');
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Set up' })).toBeVisible();
+  // This account is already connected, so step one is behind it and reading the mailbox is next.
+  await expect(page.getByText('Connect Gmail')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Start reading/i })).toBeVisible();
 });
 
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {

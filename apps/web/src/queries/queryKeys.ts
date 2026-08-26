@@ -8,4 +8,7 @@ export const queryKeys = {
   activityRuns: ['activity', 'runs'] as const,
   activityRun: (runId: string) => ['activity', 'runs', runId] as const,
   folderMessages: (labelId: string) => ['labels', labelId, 'messages'] as const,
+  pivotSettings: ['facets', 'pivot'] as const,
+  pivotPlan: ['facets', 'pivot', 'plan'] as const,
+  pivotView: (order: string[]) => ['facets', 'pivot', 'view', order.join(',')] as const,
 };

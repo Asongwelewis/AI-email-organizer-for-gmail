@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, ExternalLink, Search } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { FolderTile } from '@web/components/app/FolderTile';
@@ -114,10 +114,32 @@ export function SortedPage() {
       ) : null}
 
       {labelsQuery.isSuccess && labels.length === 0 ? (
-        <EmptyState
-          title="No folders yet"
-          description="Approve a proposed folder tree and the folders you keep will appear here."
-        />
+        /*
+         * This used to point at Approve, which is precisely where a fresh account got a 409: no
+         * Gmail connected and no mail synced. An empty screen has to name the step that is
+         * actually missing, so it sends people where the work is.
+         */
+        connectionQuery.data && !connectionQuery.data.connected ? (
+          <EmptyState
+            title="Connect your mailbox"
+            description="Nothing can be sorted until MailMind can read your mail. It takes about a minute."
+            action={
+              <Link className="button button--primary" to="/setup">
+                Set up MailMind
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No folders yet"
+            description="Your mail is read but not arranged. Choose how it should be grouped and apply it."
+            action={
+              <Link className="button button--primary" to="/folders">
+                Shape my folders
+              </Link>
+            }
+          />
+        )
       ) : null}
 
       {visible.length > 0 ? (

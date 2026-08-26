@@ -13,6 +13,9 @@ import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
 import { ActivityPage } from '@web/pages/ActivityPage';
 import { ApprovePage } from '@web/pages/ApprovePage';
 import { SortedPage } from '@web/pages/SortedPage';
+import { SetupPage } from '@web/pages/SetupPage';
+import { ReviewPage } from '@web/pages/ReviewPage';
+import { PivotPage } from '@web/pages/PivotPage';
 import { isSentryEnabled } from '@web/instrument';
 
 /**
@@ -36,7 +39,10 @@ const publicRoutes: RouteObject[] = [
 ];
 
 const appRoutes: RouteObject[] = [
+  { path: '/setup', element: <SetupPage /> },
   { path: '/sorted', element: <SortedPage /> },
+  { path: '/folders', element: <PivotPage /> },
+  { path: '/review', element: <ReviewPage /> },
   { path: '/approve', element: <ApprovePage /> },
   { path: '/activity', element: <ActivityPage /> },
 ];

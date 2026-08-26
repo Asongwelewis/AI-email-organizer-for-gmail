@@ -8,7 +8,14 @@ import type {
   GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
-import type { ActivityRunsResponse, StartedRun } from '@web/types/activity';
+import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
+import type {
+  PivotApplyResult,
+  PivotFacet,
+  PivotPlan,
+  PivotSettings,
+  PivotView,
+} from '@web/types/facets';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
 import type {
   ApprovePlanInput,
@@ -209,6 +216,62 @@ export const api = {
 
   async skipAutomationReview(id: string): Promise<void> {
     await http.post(`/automation/review/${id}/skip`, {});
+  },
+
+  async getPivotSettings(): Promise<PivotSettings> {
+    const response = await http.get<PivotSettings>('/facets/pivot');
+    return response.data;
+  },
+
+  /** Changes which ordering is canonical. Writes nothing to Gmail until `applyPivot`. */
+  async setPivotSettings(input: {
+    canonicalPivot: PivotFacet[];
+    minMessages?: number;
+  }): Promise<PivotSettings> {
+    const response = await http.put<PivotSettings>('/facets/pivot', input);
+    return response.data;
+  },
+
+  /** What applying the canonical ordering would do. Reads only. */
+  async getPivotPlan(): Promise<PivotPlan> {
+    const response = await http.get<PivotPlan>('/facets/pivot/plan');
+    return response.data;
+  },
+
+  /**
+   * Any ordering at all, materialised or not — the same facet rows arranged differently, with no
+   * Gmail call and no model call behind it.
+   */
+  async getPivotView(order: PivotFacet[], minMessages?: number): Promise<PivotView> {
+    const response = await http.get<PivotView>('/facets/pivot/view', {
+      params: {
+        order: order.join(','),
+        ...(minMessages === undefined ? {} : { minMessages }),
+      },
+    });
+    return response.data;
+  },
+
+  async applyPivot(): Promise<PivotApplyResult> {
+    const response = await http.post<PivotApplyResult>('/facets/pivot/apply', {});
+    return response.data;
+  },
+
+  /** 202: classifying a mailbox is thousands of paced Gemini calls. */
+  async classifyFacets(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/facets/classify', {});
+    return response.data;
+  },
+
+  /** 202: filing is one Gmail call per message. */
+  async fileFacets(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/facets/file', {});
+    return response.data;
+  },
+
+  async getActivityRun(runId: string): Promise<ActivityRun> {
+    const response = await http.get<ActivityRun>(`/activity/runs/${runId}`);
+    return response.data;
   },
 };
 

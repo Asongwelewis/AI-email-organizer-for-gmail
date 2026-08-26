@@ -127,4 +127,26 @@ describe('SortedPage', () => {
     expect(screen.getByText('GMAIL_ACCOUNT_NOT_CONNECTED')).toBeInTheDocument();
     expect(screen.getByText('Connect Gmail before using labels.')).toBeInTheDocument();
   });
+
+  /**
+   * The first-run failure this rebuild exists to remove: an empty Sorted screen whose only route
+   * onwards was Approve, which answered 409 because Gmail had never been connected.
+   */
+  it('sends an unconnected account to Setup, not to Approve', async () => {
+    mocks.getLabels.mockResolvedValue({ labels: [], plan: null });
+    mocks.getGmailStatus.mockResolvedValue({ connected: false, email: null });
+    renderScreen(<SortedPage />, '/sorted');
+
+    const link = await screen.findByRole('link', { name: /set up mailmind/i });
+    expect(link).toHaveAttribute('href', '/setup');
+  });
+
+  it('sends a connected account with no folders to the folder shape', async () => {
+    mocks.getLabels.mockResolvedValue({ labels: [], plan: null });
+    mocks.getGmailStatus.mockResolvedValue({ connected: true, email: 'user@example.com' });
+    renderScreen(<SortedPage />, '/sorted');
+
+    const link = await screen.findByRole('link', { name: /shape my folders/i });
+    expect(link).toHaveAttribute('href', '/folders');
+  });
 });
