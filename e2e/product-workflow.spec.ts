@@ -257,6 +257,8 @@ test('every surviving page renders without console or page errors', async ({ pag
     '/activity',
     '/privacy',
     '/terms',
+    '/support',
+    '/data-deletion',
   ]) {
     await page.goto(route);
     await expect(page.locator('h1').first()).toBeVisible();

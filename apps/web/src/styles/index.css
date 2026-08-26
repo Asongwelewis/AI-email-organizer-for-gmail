@@ -3645,3 +3645,138 @@ summary,
   gap: 0.6rem;
   justify-items: start;
 }
+
+/* ------------------------------------------------------------ legal documents */
+
+/**
+ * A reading column, not a hero.
+ *
+ * `.legal-page` centres a huge title over one sentence, which was right for a placeholder saying
+ * "this will be published later" and wrong for a document somebody has to actually read before
+ * connecting their mailbox.
+ */
+.legal-doc {
+  min-height: 100dvh;
+  padding: 3rem 1.5rem 6rem;
+  color: var(--ink);
+  background: var(--surface-window);
+}
+
+.legal-doc__column {
+  /* A measure, not a width: ~70 characters is where prose stops being hard to track. */
+  width: min(100%, 46rem);
+  margin: 0 auto;
+}
+
+.legal-doc__back {
+  display: inline-block;
+  margin-bottom: 2.5rem;
+  font-size: 0.875rem;
+  color: var(--ink-secondary);
+  text-decoration: none;
+}
+
+.legal-doc__back:hover {
+  color: var(--ink);
+}
+
+.legal-doc h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1.15;
+}
+
+.legal-doc__updated {
+  margin: 0 0 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ink-secondary);
+}
+
+/* The honest one-paragraph version, before the detail. Set apart so it is read first. */
+.legal-doc__summary {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2.5rem;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--surface-inset);
+}
+
+.legal-doc__summary p {
+  margin: 0;
+}
+
+.legal-doc h2 {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.legal-doc h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.legal-doc p,
+.legal-doc li {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink-secondary);
+}
+
+.legal-doc li {
+  margin-bottom: 0.4rem;
+}
+
+.legal-doc strong {
+  color: var(--ink);
+}
+
+.legal-doc code {
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.legal-doc a {
+  color: var(--accent);
+}
+
+.legal-doc__confirm {
+  display: block;
+  margin: 1rem 0;
+}
+
+.legal-doc__confirm input {
+  width: min(100%, 20rem);
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.legal-doc__confirm input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/*
+ * The one destructive control in the product. Colour alone never carries meaning here — the label
+ * says "Delete everything" and the action is behind a typed confirmation — but it should not look
+ * like the button beside it either.
+ */
+.button--danger {
+  color: #fff;
+  background: #d7373f;
+  border-color: #d7373f;
+}
+
+.button--danger:hover:not(:disabled) {
+  background: #bf2c33;
+}

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   rotate: vi.fn(),
   revokeCurrent: vi.fn(),
   revokeAll: vi.fn(),
+  deleteAccount: vi.fn(),
   audit: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ vi.mock('../src/auth/auth.service.js', () => ({
     denyGoogleLogin: mocks.denyGoogleLogin,
     me: mocks.me,
     completeTutorial: mocks.completeTutorial,
+    deleteAccount: mocks.deleteAccount,
   },
 }));
 vi.mock('../src/sessions/session.service.js', () => ({
@@ -160,6 +162,38 @@ describe('authentication HTTP routes', () => {
     expect(all.status).toBe(200);
     expect(all.body).toEqual({ success: true, revokedSessions: 2 });
     expect(mocks.revokeAll).toHaveBeenCalledWith('authenticated-user-id');
+  });
+
+  /**
+   * Card 29, S5. Google's restricted-scope policy requires in-app deletion, and it is the one
+   * irreversible thing the API does — so it takes a session, a trusted Origin, and clears the
+   * cookie in the same response rather than leaving a signed-in shell over a deleted account.
+   */
+  it('deletes an account only for an authenticated caller from a trusted origin', async () => {
+    mocks.deleteAccount.mockResolvedValue({ connectedAccounts: 1 });
+
+    const unauthenticated = await request(testApp)
+      .delete('/api/auth/me')
+      .set('Origin', 'http://localhost:5173');
+    expect(unauthenticated.status).toBe(401);
+
+    const crossOrigin = await request(testApp)
+      .delete('/api/auth/me')
+      .set('Cookie', 'mailmind_session=valid-session')
+      .set('Origin', 'https://evil.example');
+    expect(crossOrigin.status).toBe(403);
+
+    expect(mocks.deleteAccount).not.toHaveBeenCalled();
+
+    const deleted = await request(testApp)
+      .delete('/api/auth/me')
+      .set('Cookie', 'mailmind_session=valid-session')
+      .set('Origin', 'http://localhost:5173');
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ success: true, connectedAccounts: 1 });
+    expect(mocks.deleteAccount).toHaveBeenCalledWith('authenticated-user-id');
+    // Nothing to hold a session for any more.
+    expect(deleted.headers['set-cookie']?.[0]).toContain('mailmind_session=;');
   });
 
   it('persists an authenticated skip decision and rejects invalid tutorial input', async () => {

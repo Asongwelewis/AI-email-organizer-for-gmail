@@ -94,6 +94,31 @@ Session lifetime and rate-limit controls:
   `503 GMAIL_WRITE_DISABLED`, and the daily run classifies without filing. Turning it on is how
   someone asks for the export.
 
+### Rate limiting
+
+Every limiter is backed by `rate_limit_hits` in Postgres, so counters hold across API instances and
+across restarts. The window is part of the primary key rather than a value inside the row: a new
+window is a new row, so two instances incrementing the same client both land on one atomic
+`on conflict do update` instead of racing over a count they each read a moment earlier. Expired
+rows are swept opportunistically, because an expired row is already invisible to the increment path.
+
+`passOnStoreError` is left at `false`: a limiter that cannot reach the database is not limiting, and
+these guard the OAuth and session endpoints. Under `NODE_ENV=test` the in-memory store is used, so
+the HTTP contract suites do not need a database to exercise a route; the Postgres store is tested
+directly.
+
+### The browser perimeter
+
+`vercel.json` carries the document's headers — Helmet covers API responses, and an API's headers do
+not protect the page. CSP, HSTS, `frame-ancestors`, `Referrer-Policy`, `Permissions-Policy` and
+`X-Content-Type-Options` are all set there.
+
+The pre-paint theme script has to run inline, so the policy names its SHA-256 rather than opening
+`script-src` to every inline script. A hash pinned in JSON and a script in HTML cannot stay in step
+on their own, so `apps/web/src/security/headers.test.ts` recomputes the hash from `index.html` and
+asserts the policy contains it — editing the script without updating the policy fails a test rather
+than silently disabling the script and reintroducing the white flash on every load.
+
 ### Measuring the classifier
 
 `npm run eval:facets --workspace @mailmind/api` scores the facet classifier against a labelled set

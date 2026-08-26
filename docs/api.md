@@ -438,6 +438,28 @@ Gmail labels and every message already filed under them are left untouched.
 { "success": true, "gmailLabelRetained": true, "removedDescendants": 2 }
 ```
 
+### `DELETE /api/auth/me`
+
+Deletes the account and everything stored about it. Requires a session and a trusted Origin, and
+clears the session cookie in the same response.
+
+Google's restricted-scope policy requires this to exist and to be reachable in-app; `/data-deletion`
+in the SPA is the page that calls it, and it is public so it can be linked from a privacy policy and
+from the Cloud Console.
+
+What happens, in order: every connected Google account's tokens are revoked **with Google first**,
+so no live grant is left behind; `audit_logs` rows are detached rather than deleted, because the
+record that an account existed and was deleted is the evidence the deletion happened; then the
+`users` row is deleted and the schema's cascades take the connected accounts, message metadata,
+facets, folders, rules and runs with it.
+
+Revocation is best-effort by design. If Google is unreachable the deletion still proceeds — refusing
+would leave someone who asked to be forgotten in the database because a third party had an outage.
+
+```json
+{ "success": true, "connectedAccounts": 1 }
+```
+
 ## Facets and the pivot
 
 A message carries three orthogonal facets, and a folder tree is a **view** of them. These routes

@@ -21,6 +21,7 @@ const applicationTables = [
   'learned_classification_patterns',
   'message_facets',
   'oauth_states',
+  'rate_limit_hits',
   'sessions',
   'taxonomy_plan_node_rules',
   'taxonomy_plan_nodes',
@@ -85,6 +86,7 @@ const requiredIndexes = [
   'oauth_states_purpose_idx',
   'oauth_states_state_hash_unique_idx',
   'oauth_states_used_at_idx',
+  'rate_limit_hits_expiry_idx',
   'sessions_expires_at_idx',
   'sessions_revoked_at_idx',
   'sessions_token_hash_unique_idx',
@@ -126,7 +128,7 @@ try {
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
         'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
-        'message_facets', 'facet_pivot_settings'
+        'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
       )
     order by c.relname
   `;
@@ -165,7 +167,8 @@ try {
       'automation_settings', 'automation_states', 'automation_runs',
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-      'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels'
+      'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
+      'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -236,6 +239,7 @@ try {
         'oauth_states_purpose_idx',
         'oauth_states_state_hash_unique_idx',
         'oauth_states_used_at_idx',
+        'rate_limit_hits_expiry_idx',
         'sessions_expires_at_idx',
         'sessions_revoked_at_idx',
         'sessions_token_hash_unique_idx',
@@ -363,8 +367,8 @@ try {
   assert(summary.foreign_key_count === 30n, 'all thirty foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 21n,
-    'exactly twenty-one intended Prisma migrations must be applied',
+    summary.migration_count === 22n,
+    'exactly twenty-two intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');

@@ -115,6 +115,15 @@ export const api = {
     await http.post('/auth/logout-all');
   },
 
+  /**
+   * Deletes the account and everything stored about it. Irreversible, and the server clears the
+   * session cookie in the same response.
+   */
+  async deleteAccount(): Promise<{ success: boolean; connectedAccounts: number }> {
+    const response = await http.delete<{ success: boolean; connectedAccounts: number }>('/auth/me');
+    return response.data;
+  },
+
   async completeTutorial(
     decision: 'COMPLETED' | 'SKIPPED',
   ): Promise<{ success: boolean; tutorialCompletedAt: string }> {

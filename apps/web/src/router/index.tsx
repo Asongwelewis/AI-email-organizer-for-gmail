@@ -9,7 +9,10 @@ import { PublicLayout } from '@web/layouts/PublicLayout';
 import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
-import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
+import { DataDeletionPage } from '@web/pages/DataDeletionPage';
+import { PrivacyPolicy } from '@web/pages/PrivacyPolicy';
+import { SupportPage } from '@web/pages/SupportPage';
+import { TermsOfService } from '@web/pages/TermsOfService';
 import { ActivityPage } from '@web/pages/ActivityPage';
 import { ApprovePage } from '@web/pages/ApprovePage';
 import { FindPage } from '@web/pages/FindPage';
@@ -35,8 +38,16 @@ const publicRoutes: RouteObject[] = [
   },
   { path: '/login', element: <LoginPage /> },
   { path: '/auth/callback', element: <AuthCallbackPage /> },
-  { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },
-  { path: '/terms', element: <LegalPlaceholder title="Terms of Service" /> },
+  /*
+   * Real documents, not placeholders, and public: Google's restricted-scope verification needs a
+   * privacy policy, terms, a support page and an in-app deletion path, all reachable without
+   * signing in. Deletion is signed-out-aware rather than protected — the page has to be linkable
+   * from a policy and from the Cloud Console.
+   */
+  { path: '/privacy', element: <PrivacyPolicy /> },
+  { path: '/terms', element: <TermsOfService /> },
+  { path: '/support', element: <SupportPage /> },
+  { path: '/data-deletion', element: <DataDeletionPage /> },
 ];
 
 const appRoutes: RouteObject[] = [

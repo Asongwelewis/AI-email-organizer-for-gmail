@@ -682,6 +682,20 @@ model message_facets {
   @@index([connected_google_account_id, domain, intent], map: "message_facets_account_domain_intent_idx")
 }
 
+/// Rate-limit counters, shared by every API instance. One row per (key, window): a new window is
+/// a new row, so two instances incrementing the same client both land on an atomic upsert rather
+/// than racing over a value one of them read a moment ago.
+model rate_limit_hits {
+  key          String
+  window_start DateTime @db.Timestamptz(6)
+  window_ms    Int
+  hits         Int      @default(0)
+  expires_at   DateTime @db.Timestamptz(6)
+
+  @@id([key, window_start, window_ms])
+  @@index([expires_at], map: "rate_limit_hits_expiry_idx")
+}
+
 /// The domains and intents ONE mailbox owner approved. A vocabulary belongs to a mailbox, not to
 /// the repository: "career, finance, education" is the right set for the mailbox it was designed
 /// from and nobody else's.
