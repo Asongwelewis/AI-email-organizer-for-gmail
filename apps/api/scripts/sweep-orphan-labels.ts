@@ -30,6 +30,8 @@
  *   npm run sweep:labels --workspace @mailmind/api -- --apply
  *   npm run sweep:labels --workspace @mailmind/api -- --all --apply   (leave Gmail alone entirely)
  */
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../src/database/prisma.js';
 import { pivotService } from '../src/features/labels/pivot.service.js';
 import { createGmailClient, withGmailRetry } from '../src/integrations/gmail/gmail.client.js';
@@ -96,7 +98,7 @@ async function main(): Promise<void> {
         connected_google_account_id: account.id,
         label_ids: { has: orphan.gmail_label_id },
       },
-      select: { id: true, gmail_message_id: true, label_ids: true },
+      select: { id: true, gmail_message_id: true },
     });
     write(`  ${orphan.name} — ${holders.length} message(s) still carry it`);
     if (!apply) continue;
@@ -112,21 +114,24 @@ async function main(): Promise<void> {
           },
         }),
       );
-      // Keep the stored metadata in step, or the next filing run would still believe these
-      // messages wear a MailMind label and try to strip one that no longer exists. Only the
-      // orphan comes off: a message's own labels, and INBOX, are not MailMind's to touch.
-      await Promise.all(
-        batch.map((message) =>
-          prisma.gmail_message_metadata.update({
-            where: { id: message.id },
-            data: {
-              label_ids: {
-                set: message.label_ids.filter((id) => id !== orphan.gmail_label_id),
-              },
-            },
-          }),
-        ),
-      );
+      /*
+       * Keep the stored metadata in step, or the next filing run would still believe these
+       * messages wear a MailMind label and try to strip one that no longer exists.
+       *
+       * One statement, not one per message. This fanned out a thousand concurrent updates through
+       * `Promise.all` and exhausted the pool on the first folder with real mail in it — the pooled
+       * connection limit is 1. `array_remove` also says exactly what is meant: the orphan comes
+       * off and a message's own labels, INBOX included, are not MailMind's to touch.
+       */
+      await prisma.$executeRaw`
+        update gmail_message_metadata
+           set label_ids = array_remove(label_ids, ${orphan.gmail_label_id})
+         where id in (${Prisma.join(
+           // Cast each parameter rather than the column: `id` is uuid and Prisma sends text, and
+           // casting the column instead would work while quietly giving up the index.
+           batch.map((message) => Prisma.sql`${message.id}::uuid`),
+         )})
+      `;
     }
 
     // Only now, with no message left wearing it.
