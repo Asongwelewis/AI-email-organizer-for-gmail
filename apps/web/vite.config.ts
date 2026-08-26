@@ -13,7 +13,15 @@ export default defineConfig(({ mode }) => {
   const configured = (name: string) => Boolean(environment[name]?.trim());
   const configuredUploadVariables = uploadVariableNames.filter(configured);
   const sentrySourceMapsEnabled = configuredUploadVariables.length === uploadVariableNames.length;
-  const sentryRequired = environment.SENTRY_REQUIRE_CONFIG === 'true';
+  /*
+   * A production frontend build must report its own errors, so the deploy command asks for that
+   * guarantee — but a Vercel PREVIEW is not a production build, and Sentry credentials are
+   * reasonably scoped to the production environment. Requiring them everywhere meant no branch
+   * could ever be previewed: every preview deployment failed here, on a secret it should not have
+   * needed. The guard now holds where it was aimed and nowhere else.
+   */
+  const sentryRequired =
+    environment.SENTRY_REQUIRE_CONFIG === 'true' && environment.VERCEL_ENV !== 'preview';
   const sentryDsnConfigured = configured('VITE_SENTRY_DSN');
   const appVersion = environment.VITE_APP_VERSION?.trim();
 
@@ -28,7 +36,10 @@ export default defineConfig(({ mode }) => {
     throw new Error('VITE_APP_VERSION is required when frontend Sentry is configured.');
   }
   if (sentryRequired && !sentryDsnConfigured) {
-    throw new Error('VITE_SENTRY_DSN is required for this production frontend build.');
+    throw new Error(
+      'VITE_SENTRY_DSN is required for this production frontend build. Set VITE_SENTRY_DSN, ' +
+        'SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT in the deployment environment.',
+    );
   }
   if (sentryRequired && !sentrySourceMapsEnabled) {
     throw new Error(
