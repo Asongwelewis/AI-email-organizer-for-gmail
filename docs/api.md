@@ -438,6 +438,83 @@ Gmail labels and every message already filed under them are left untouched.
 { "success": true, "gmailLabelRetained": true, "removedDescendants": 2 }
 ```
 
+## Facets and the pivot
+
+A message carries three orthogonal facets, and a folder tree is a **view** of them. These routes
+operate that pipeline: classify mail into facets, choose which ordering is materialised, preview
+any ordering, and project the canonical one onto Gmail.
+
+Every route requires a session. The two that spend a quota and the two that write take the
+trusted-Origin check.
+
+### `POST /api/facets/classify`
+
+**202.** Classifies mail that has no facets yet, or whose facets were derived from input that has
+since changed. Thousands of paced Gemini calls, so it answers with a run id to poll at
+`GET /api/activity/runs/:id` rather than holding the request.
+
+```json
+{ "runId": "…", "state": "RUNNING", "kind": "FACET_CLASSIFICATION", "alreadyRunning": false }
+```
+
+Resumable by construction: the `message_facets` row is the checkpoint, so a run stopped by a spent
+quota picks up where it left off and no message is classified twice.
+
+### `POST /api/facets/file`
+
+**202.** Projects stored facets onto Gmail through the canonical pivot. Spends **no tokens and
+makes no model call** — the classification is already stored — so re-filing after a pivot or
+threshold change costs one Gmail call per message and not a single re-classification. The apply is
+exclusive: the new label goes on and every other MailMind label comes off in the same
+`messages.modify`.
+
+### `GET /api/facets/pivot`
+
+The account's canonical ordering and the folder floor.
+
+```json
+{ "canonicalPivot": ["entity", "intent"], "minMessages": 5 }
+```
+
+### `PUT /api/facets/pivot`
+
+Changes which ordering is canonical. **Writes nothing to Gmail** — the tree only moves when
+`apply` is called, which is what makes trying an ordering out safe.
+
+```json
+{ "canonicalPivot": ["domain", "intent", "entity"], "minMessages": 8 }
+```
+
+`400 FACET_VALIDATION_FAILED` if the ordering is empty, names a facet twice, or names something
+that is not `entity`, `domain` or `intent`. A pivot is an order of **distinct** facets: repeating
+one is not a deeper tree, it is the same level twice.
+
+### `GET /api/facets/pivot/plan`
+
+What applying the canonical pivot would do, without doing it. Every node with `KEEP` or `CREATE`,
+the folders that match no current combination (`orphaned`), and how many Gmail labels would be
+created. Nothing is written and Gmail is not called.
+
+### `GET /api/facets/pivot/view?order=domain,intent,entity&minMessages=3`
+
+Any ordering at all, materialised or not — the same facet rows arranged differently, computed from
+`message_facets` with no Gmail call and no model call. `Netflix > Payment failed` and
+`Finance > Payment failed > Netflix` are the same mail, reordered, with nothing reclassified. Both
+parameters are optional and fall back to the account's settings.
+
+### `POST /api/facets/pivot/apply`
+
+Writes the canonical pivot into `user_labels` and creates the missing **leaf** paths in Gmail.
+Answers inline: this is bounded by the number of folders, which is tens, not by the number of
+messages.
+
+`user_labels.facet_key` is a folder's identity and the path is only how it is spelled, so
+re-applying keeps an existing row and its `gmail_label_id`. A folder whose combination survived a
+spelling change is renamed rather than recreated, which keeps the mail already under it.
+
+It **never deletes**. Folders that match no current combination come back in `orphaned` for a
+person to decide about, because deleting a Gmail label does not unlabel the mail beneath it.
+
 ## Daily automation
 
 All endpoints require a session; mutations require a trusted Origin. Status and review responses

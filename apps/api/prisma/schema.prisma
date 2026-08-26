@@ -415,6 +415,7 @@ enum activity_run_kind {
   GMAIL_LABEL_SYNC
   LABEL_PROPOSAL
   AUTOMATION_FILING
+  FACET_CLASSIFICATION
 }
 
 enum activity_run_state {
