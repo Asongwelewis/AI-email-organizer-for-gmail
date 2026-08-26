@@ -375,7 +375,10 @@ describe('an unattended run and how it ends', () => {
     outcome = undefined;
     env.AUTOMATION_ENABLED = true;
     env.GEMINI_API_KEY = 'test-gemini-key';
+    // The shipped default: what runs unattended is classification alone.
+    env.GMAIL_WRITE_ENABLED = false;
     mocks.stateUpsert.mockResolvedValue({});
+    mocks.runCreate.mockResolvedValue({ id: 'classification-run-1' });
     mocks.runUpdate.mockResolvedValue({});
     mocks.incrementalSync.mockResolvedValue(undefined);
     mocks.initialSync.mockResolvedValue(undefined);
@@ -401,6 +404,7 @@ describe('an unattended run and how it ends', () => {
   afterEach(() => {
     env.AUTOMATION_ENABLED = originalEnabled;
     env.GEMINI_API_KEY = originalKey;
+    env.GMAIL_WRITE_ENABLED = false;
   });
 
   it('files under a SCHEDULED run record and waits for it, unlike the 202 path', async () => {
@@ -531,11 +535,33 @@ describe('an unattended run and how it ends', () => {
 
     expect(outcome?.counts).toMatchObject({
       messagesClassified: 10,
-      messagesLabeled: 8,
-      reviewRequired: 1,
-      noLabelSkipped: 1,
+      // Nothing was filed, because nothing was meant to be: the filing counters are present and
+      // zero rather than absent, so a screen reading them keeps rendering.
+      messagesLabeled: 0,
       providerCalls: 1,
     });
+  });
+
+  /**
+   * Card 21. The mailbox is the source, not the store: an unattended night classifies mail into
+   * facets and stops there, and the PWA builds its folders from those rows. Nothing calls
+   * `messages.modify` unless someone turned the export on.
+   */
+  it('classifies overnight and writes nothing into the mailbox', async () => {
+    await service().runScheduledAccount('account-1', 'user-1');
+
+    expect(mocks.classifyAccount).toHaveBeenCalledWith('account-1');
+    expect(mocks.fileAccount).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ state: 'SUCCEEDED' });
+  });
+
+  it('files as well when the Gmail export is turned on', async () => {
+    env.GMAIL_WRITE_ENABLED = true;
+
+    await service().runScheduledAccount('account-1', 'user-1');
+
+    expect(mocks.fileAccount).toHaveBeenCalledWith('account-1', 'user-1');
+    expect(outcome?.counts).toMatchObject({ messagesLabeled: 8 });
   });
 
   // Overnight the only thing that can explain a crash is the run record, so the failure has to

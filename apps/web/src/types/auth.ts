@@ -27,6 +27,15 @@ export interface GmailConnectionStatus {
   status: GoogleConnectionState;
   grantedScopes: string[];
   requiresReauthentication: boolean;
+  /** What a fresh connection would ask for — read-only unless the label export is turned on. */
+  requestedGmailScope?: string;
+  /** Whether this grant can write to the mailbox at all. Only `gmail.modify` can. */
+  canModifyMail?: boolean;
+  /**
+   * A grant wider than this deployment uses. Google's grants are cumulative per client, so an
+   * account connected before the read-only downgrade keeps `modify` until it is revoked.
+   */
+  holdsUnusedWriteScope?: boolean;
   connectedAt?: string | null;
   updatedAt?: string | null;
 }

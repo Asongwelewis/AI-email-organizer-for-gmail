@@ -462,7 +462,8 @@ quota picks up where it left off and no message is classified twice.
 
 ### `POST /api/facets/file`
 
-**202.** Projects stored facets onto Gmail through the canonical pivot. Spends **no tokens and
+**202.** Projects stored facets onto Gmail through the canonical pivot. **Opt-in, and off by
+default** — `503 GMAIL_WRITE_DISABLED` unless `GMAIL_WRITE_ENABLED` is set. Spends **no tokens and
 makes no model call** — the classification is already stored — so re-filing after a pivot or
 threshold change costs one Gmail call per message and not a single re-classification. The apply is
 exclusive: the new label goes on and every other MailMind label comes off in the same
@@ -531,11 +532,82 @@ combination in a real mailbox holds 1,823 messages, so a folder pages.
 would hand back the entire mailbox under a folder heading, so the shape is checked before it
 reaches a query.
 
+### `GET /api/facets/search?q=payment%20failed&intent=payment-failed&entity=netflix`
+
+Subject and sender across the **whole mailbox**, narrowed by any combination of facets. No model
+call and no Gmail call — Postgres full text over metadata the sync already stored, so there is no
+body here to search and there never will be.
+
+`intent=payment-failed` on its own is the thing a Gmail label tree genuinely cannot do: one intent
+across every brand at once, because facets are orthogonal and a tree can only express one ordering
+of them. `q` on its own searches mail that has never been classified too, which is exactly the mail
+a person is most likely to be hunting for.
+
+```json
+{
+  "query": "payment failed",
+  "filters": { "entity": "netflix", "domain": null, "intent": null },
+  "order": ["domain", "intent", "entity"],
+  "results": [
+    {
+      "id": "…",
+      "gmailMessageId": "18f0abc",
+      "subject": "Your payment failed",
+      "senderEmail": "billing@netflix.com",
+      "entity": "netflix",
+      "intent": "payment-failed",
+      "folder": {
+        "facetKey": "…",
+        "fullPath": "MailMind/Netflix/Payment failed",
+        "leafName": "Payment failed"
+      }
+    }
+  ],
+  "total": 3,
+  "nextCursor": null
+}
+```
+
+Every hit carries the folder it sits in under `order` (the account's saved ordering unless the
+query names another) — "it was under Finance all along" is half the answer. `folder` is null for
+mail in no folder: unclassified, or in a combination below the floor.
+
+The address is split on punctuation on both sides of the match, so `netflix` finds
+`billing@netflix.com` and pasting the whole address finds it too. Matching is `simple`, not
+`english`: the vocabulary is brand names, order numbers and subject lines, and stemming _Coursera_
+buys nothing while costing exact matches.
+
+`limit` defaults to 50 and caps at 200; `cursor` is the previous page's `nextCursor`.
+
+`400 FACET_VALIDATION_FAILED` when the query constrains nothing — a search with neither a phrase
+nor a facet is the mailbox, not a search — or when a facet value is not one.
+
+### `GET /api/facets/vocabulary`
+
+What there is to filter by, with how much mail sits behind each value. `entity` is derived from
+senders so it is whatever this mailbox contains, commonest first; `domain` and `intent` are the
+approved closed vocabularies, and every value appears even at zero, because a filter that hides its
+own empty options makes the vocabulary look smaller than it is.
+
+```json
+{
+  "entity": [{ "value": "netflix", "messageCount": 330 }],
+  "domain": [{ "value": "finance", "messageCount": 812 }],
+  "intent": [{ "value": "payment-failed", "messageCount": 9 }]
+}
+```
+
 ### `POST /api/facets/pivot/apply`
 
 Writes the canonical pivot into `user_labels` and creates the missing **leaf** paths in Gmail.
 Answers inline: this is bounded by the number of folders, which is tens, not by the number of
 messages.
+
+**Opt-in, and off by default.** This and `POST /api/facets/file` are the only two routes that
+create or move anything in a real mailbox, and both answer `503 GMAIL_WRITE_DISABLED` unless
+`GMAIL_WRITE_ENABLED` is set. The PWA builds its folders from `message_facets` and a message's deep
+link addresses it by id, so nothing a person sees depends on a Gmail label; writing them is the
+export path for someone who also wants the tree in Gmail's own sidebar.
 
 `user_labels.facet_key` is a folder's identity and the path is only how it is spelled, so
 re-applying keeps an existing row and its `gmail_label_id`. A folder whose combination survived a
@@ -560,6 +632,9 @@ send `Cache-Control: no-store`.
   before accepting: `409 AUTOMATION_NO_APPROVED_LABELS` when no label is confirmed,
   `503 AUTOMATION_DISABLED` or `503 AUTOMATION_NOT_CONFIGURED` when the feature is off. Everything
   else — a rate limit, the daily budget, a provider outage — ends up on the run record.
+  A run classifies and stops there: filing is opt-in behind `GMAIL_WRITE_ENABLED` and off by
+  default, so what runs unattended writes nothing into the mailbox. Mail classified tonight is in
+  its folder tonight, because the folder is a view of `message_facets`.
 - `GET /api/automation/gaps` groups the messages recorded as fitting no approved folder, by sending
   domain and by subject shape, and returns the clusters large enough to justify a folder as
   `{ analyzedCount, clusteredCount, clusters[] }`. Each cluster carries the `kind`/`value` of the

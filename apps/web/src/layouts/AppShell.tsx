@@ -1,4 +1,12 @@
-import { CheckCheck, FolderTree, History, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
+import {
+  CheckCheck,
+  FolderTree,
+  History,
+  LayoutGrid,
+  ListChecks,
+  LogOut,
+  Search,
+} from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
@@ -15,6 +23,7 @@ import { useAuth } from '@web/context/useAuth';
  */
 const NAV = [
   { to: '/sorted', label: 'Sorted', Icon: LayoutGrid },
+  { to: '/find', label: 'Find', Icon: Search },
   { to: '/folders', label: 'Folders', Icon: FolderTree },
   { to: '/review', label: 'Review', Icon: ListChecks },
   { to: '/approve', label: 'Approve', Icon: CheckCheck },

@@ -10,12 +10,15 @@ import type {
 } from '@web/types/auth';
 import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type {
+  FacetVocabulary,
   FolderMessages,
   PivotApplyResult,
   PivotFacet,
   PivotPlan,
   PivotSettings,
   PivotView,
+  SearchFilters,
+  SearchResults,
 } from '@web/types/facets';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
 import type {
@@ -268,6 +271,35 @@ export const api = {
         ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       },
     });
+    return response.data;
+  },
+
+  /**
+   * Subject and sender across the whole mailbox, narrowed by any combination of facets. No model
+   * call and no Gmail call behind it — Postgres full text over stored metadata.
+   */
+  async searchMessages(
+    query: string,
+    filters: SearchFilters = {},
+    options: { order?: PivotFacet[]; limit?: number; cursor?: string } = {},
+  ): Promise<SearchResults> {
+    const response = await http.get<SearchResults>('/facets/search', {
+      params: {
+        ...(query ? { q: query } : {}),
+        ...(filters.entity ? { entity: filters.entity } : {}),
+        ...(filters.domain ? { domain: filters.domain } : {}),
+        ...(filters.intent ? { intent: filters.intent } : {}),
+        ...(options.order?.length ? { order: options.order.join(',') } : {}),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+      },
+    });
+    return response.data;
+  },
+
+  /** What there is to filter by, and how much mail sits behind each value. */
+  async getFacetVocabulary(): Promise<FacetVocabulary> {
+    const response = await http.get<FacetVocabulary>('/facets/vocabulary');
     return response.data;
   },
 

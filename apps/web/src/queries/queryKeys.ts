@@ -12,4 +12,19 @@ export const queryKeys = {
   pivotPlan: ['facets', 'pivot', 'plan'] as const,
   pivotView: (order: string[]) => ['facets', 'pivot', 'view', order.join(',')] as const,
   facetMessages: (facetKey: string) => ['facets', 'messages', facetKey] as const,
+  facetVocabulary: ['facets', 'vocabulary'] as const,
+  facetSearch: (
+    query: string,
+    filters: { entity?: string; domain?: string; intent?: string },
+    order: string[],
+  ) =>
+    [
+      'facets',
+      'search',
+      query,
+      filters.entity ?? '',
+      filters.domain ?? '',
+      filters.intent ?? '',
+      order.join(','),
+    ] as const,
 };

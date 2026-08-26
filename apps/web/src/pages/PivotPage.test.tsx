@@ -44,7 +44,8 @@ const view = (overrides = {}) => ({
 
 /**
  * Facets are orthogonal, so a folder tree is a view of them. This screen is where that becomes
- * usable: every arrangement below is computed on read, and only Apply touches the mailbox.
+ * usable: every arrangement is computed on read, saving one only decides where Sorted opens, and
+ * the Gmail mirror is an optional export tucked behind a disclosure.
  */
 describe('PivotPage', () => {
   beforeEach(() => {
@@ -96,13 +97,36 @@ describe('PivotPage', () => {
     expect(mocks.setPivotSettings).not.toHaveBeenCalled();
   });
 
-  // Apply materialises whatever is canonical, so applying an unsaved ordering would build the old
-  // shape and quietly discard what is on screen.
-  it('saves the ordering before applying it', async () => {
+  /**
+   * Saving is now the primary action, and it is only a preference: which arrangement Sorted opens
+   * on. Nothing about the mailbox moves, which is what "canonical" stopped meaning once Gmail left
+   * the write path.
+   */
+  it('saves an arrangement as the default without touching Gmail', async () => {
     renderScreen(<PivotPage />, '/folders');
 
     await userEvent.click(await screen.findByRole('button', { name: /move what it wants up/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /save and apply/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /save as my default/i }));
+
+    await waitFor(() =>
+      expect(mocks.setPivotSettings).toHaveBeenCalledWith({
+        canonicalPivot: ['intent', 'entity'],
+        minMessages: 5,
+      }),
+    );
+    expect(mocks.applyPivot).not.toHaveBeenCalled();
+    expect(mocks.fileFacets).not.toHaveBeenCalled();
+  });
+
+  // Only one arrangement can reach Gmail, so exporting an unsaved one would mirror the old shape
+  // and quietly discard what is on screen.
+  it('saves the arrangement before mirroring it into Gmail', async () => {
+    renderScreen(<PivotPage />, '/folders');
+
+    await userEvent.click(await screen.findByRole('button', { name: /move what it wants up/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /create the folders in gmail/i }),
+    );
 
     await waitFor(() => expect(mocks.applyPivot).toHaveBeenCalled());
     expect(mocks.setPivotSettings).toHaveBeenCalledWith({
@@ -124,7 +148,9 @@ describe('PivotPage', () => {
     });
     renderScreen(<PivotPage />, '/folders');
 
-    await userEvent.click(await screen.findByRole('button', { name: /apply to gmail/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /create the folders in gmail/i }),
+    );
 
     expect(await screen.findByText(/left alone/i)).toBeInTheDocument();
   });
@@ -132,10 +158,10 @@ describe('PivotPage', () => {
   it('files mail through the pivot as a background run', async () => {
     renderScreen(<PivotPage />, '/folders');
 
-    await userEvent.click(await screen.findByRole('button', { name: /file my mail/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /label my mail/i }));
 
     await waitFor(() => expect(mocks.fileFacets).toHaveBeenCalled());
-    expect(await screen.findByText(/filing started/i)).toBeInTheDocument();
+    expect(await screen.findByText(/labelling started/i)).toBeInTheDocument();
   });
 
   it('shows the server code when applying fails', async () => {
@@ -144,9 +170,28 @@ describe('PivotPage', () => {
     );
     renderScreen(<PivotPage />, '/folders');
 
-    await userEvent.click(await screen.findByRole('button', { name: /apply to gmail/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /create the folders in gmail/i }),
+    );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('AUTOMATION_NO_APPROVED_LABELS');
+  });
+
+  /**
+   * Card 21. The mirror is an export now, and off unless the server was configured to allow it —
+   * so the refusal has to read as a setting rather than as a broken screen.
+   */
+  it('explains a refused mirror as a setting, not a failure', async () => {
+    mocks.applyPivot.mockRejectedValue(
+      apiError('GMAIL_WRITE_DISABLED', 'MailMind is not set up to write labels into Gmail.', 503),
+    );
+    renderScreen(<PivotPage />, '/folders');
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /create the folders in gmail/i }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('GMAIL_WRITE_DISABLED');
   });
 
   it('explains an empty tree instead of rendering nothing', async () => {

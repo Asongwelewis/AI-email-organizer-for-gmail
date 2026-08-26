@@ -84,6 +84,35 @@ Session lifetime and rate-limit controls:
 - `GMAIL_SYNC_MAX_RETRIES`
 - `GMAIL_SYNC_RETRY_BASE_MS`
 - `GMAIL_SYNC_LEASE_SECONDS`
+- `GMAIL_WRITE_ENABLED` — whether MailMind may write labels into the mailbox at all. It also
+  decides **which Gmail scope the connect flow asks for**: `gmail.readonly` when off,
+  `gmail.modify` when on. **Defaults to
+  `false`.** The PWA builds its folders from `message_facets` and a message's deep link addresses it
+  by id, so nothing a person sees depends on a Gmail label; labelling buys organisation visible
+  inside the Gmail app and costs one `messages.modify` per message per run. With it off,
+  `facetFilingService.fileAccount` and `pivotService.apply` refuse with
+  `503 GMAIL_WRITE_DISABLED`, and the daily run classifies without filing. Turning it on is how
+  someone asks for the export.
+
+### Gmail scope
+
+The connect flow asks for **`gmail.readonly`**. `gmail.modify` is a Google _restricted_ scope — it
+can alter and delete a person's mail, which is what pulls an app into verification plus an annual
+CASA Tier 2 assessment — and with Gmail out of the write path the product does not use it. Turning
+on `GMAIL_WRITE_ENABLED` widens the request to `gmail.modify`, because the label export genuinely
+needs it.
+
+Two separate questions, both of which must be yes before anything is written to a mailbox: does
+this **deployment** offer the export (`GMAIL_WRITE_ENABLED`), and did this **person** grant it
+(`gmail.modify` in `granted_scopes`). The second cannot be turned on from a config file.
+`AutomationGmailService` is the single choke point every Gmail write passes through and checks it
+before the first remote call, so a filing run refuses up front with `403 GMAIL_WRITE_SCOPE_MISSING`
+rather than dying part-way and leaving a mailbox half in one tree and half in another.
+
+`modify` implies read, so an account connected before the downgrade keeps working. Google's grants
+are cumulative per client, though, so asking for less does not take the wider scope back: the
+status route reports `holdsUnusedWriteScope`, and Setup offers to narrow it by revoking the grant
+and reconnecting.
 
 The sync boundary is metadata-only. The API requests Gmail messages with `format: "metadata"` and
 the `Subject`, `From`, `To`, `Cc`, and `Date` headers. It stores those fields, Gmail IDs, a truncated

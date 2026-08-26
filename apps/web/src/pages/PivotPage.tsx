@@ -1,23 +1,34 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
-import { FACET_LABELS, PIVOT_FACETS, type PivotFacet, type PivotNode } from '@web/types/facets';
+import {
+  FACET_LABELS,
+  PIVOT_FACETS,
+  pivotOrderKey,
+  type PivotFacet,
+  type PivotNode,
+} from '@web/types/facets';
 
 /**
- * Choose the ordering, see the tree it makes, then apply it.
+ * Shape an arrangement, see the tree it makes, keep it as your default.
  *
  * Facets are orthogonal, so a folder tree is a **view** of them rather than the thing itself. The
  * same mail is `Netflix > Payment failed` under one ordering and `Finance > Payment failed >
  * Netflix` under another — switching recomputes nothing about the mail, only the arrangement.
  *
- * That is what makes this screen safe to play with: `buildPivot` is a pure function of the stored
- * facets, so every arrangement below is computed on read with no Gmail call and no model call.
- * Only **Apply** touches the mailbox, and only for the ordering marked canonical.
+ * There used to be a canonical one, because a message carries one MailMind label and no more and
+ * only one ordering could be written to Gmail. That constraint was Gmail's, and Gmail is no longer
+ * in the write path: every ordering is available at once on Sorted, and what is saved here is
+ * simply which one that screen opens on.
+ *
+ * `buildPivot` is a pure function of the stored facets, so everything below is computed on read —
+ * no Gmail call, no model call, nothing to undo.
  */
 
 /** Moves a facet within the order. Reordering is the whole interaction, so it stays explicit. */
@@ -84,10 +95,21 @@ export function PivotPage() {
     enabled: effectiveOrder.length > 0,
   });
 
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.setPivotSettings({ canonicalPivot: effectiveOrder, minMessages: effectiveMin }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.pivotSettings }),
+  });
+
+  /*
+   * The export path. Applying creates folders in a real mailbox and filing puts one label on each
+   * message, and both are opt-in on the server — off unless someone asked for their mail labelled
+   * in Gmail's own sidebar. Nothing on Sorted depends on either.
+   */
   const applyMutation = useMutation({
     mutationFn: async () => {
-      // Save the ordering first: apply materialises whatever is canonical, so applying without
-      // saving would build the old shape and quietly discard what is on screen.
+      // Save first: apply materialises whatever is saved, so applying without saving would build
+      // the old shape and quietly discard what is on screen.
       await api.setPivotSettings({ canonicalPivot: effectiveOrder, minMessages: effectiveMin });
       return api.applyPivot();
     },
@@ -118,8 +140,9 @@ export function PivotPage() {
         <h1 className="screen__title">Folders</h1>
       </header>
       <p className="screen__lede">
-        Your mail already knows what it is about. This decides how it is arranged — drag the levels
-        into the order you want and see the tree before anything changes in Gmail.
+        Your mail already knows what it is about. This decides how it is arranged — put the levels
+        in the order you want and see the tree it makes. Every arrangement stays available on
+        Sorted; this one is just where that screen opens.
       </p>
 
       {settingsQuery.isError ? (
@@ -194,37 +217,25 @@ export function PivotPage() {
         <button
           className="button button--primary"
           type="button"
-          disabled={applyMutation.isPending || effectiveOrder.length === 0}
-          onClick={() => applyMutation.mutate()}
+          disabled={saveMutation.isPending || effectiveOrder.length === 0 || !changed}
+          onClick={() => saveMutation.mutate()}
         >
-          {applyMutation.isPending ? 'Applying…' : changed ? 'Save and apply' : 'Apply to Gmail'}
+          {saveMutation.isPending ? 'Saving…' : 'Save as my default'}
         </button>
-        <button
-          className="button"
-          type="button"
-          disabled={fileMutation.isPending}
-          onClick={() => fileMutation.mutate()}
-        >
-          {fileMutation.isPending ? 'Starting…' : 'File my mail'}
-        </button>
+        {effectiveOrder.length > 0 ? (
+          <Link
+            className="button"
+            to={`/sorted?order=${encodeURIComponent(pivotOrderKey(effectiveOrder))}`}
+          >
+            Open this arrangement
+          </Link>
+        ) : null}
       </div>
 
-      {applyMutation.isError ? <ErrorNotice error={applyMutation.error} /> : null}
-      {fileMutation.isError ? <ErrorNotice error={fileMutation.error} /> : null}
-
-      {applyMutation.isSuccess ? (
+      {saveMutation.isError ? <ErrorNotice error={saveMutation.error} /> : null}
+      {saveMutation.isSuccess && !changed ? (
         <p className="notice" role="status">
-          {formatCount(applyMutation.data.gmailLabelsCreated)} folder(s) created in Gmail,{' '}
-          {formatCount(applyMutation.data.gmailLabelsReused)} reused.{' '}
-          {applyMutation.data.orphaned.length > 0
-            ? `${formatCount(applyMutation.data.orphaned.length)} old folder(s) no longer match anything — they were left alone, because deleting a label does not unlabel its mail.`
-            : ''}
-        </p>
-      ) : null}
-
-      {fileMutation.isSuccess ? (
-        <p className="notice" role="status">
-          Filing started. It runs in the background — watch it on Activity.
+          Saved. Sorted opens on this arrangement now — the others are still one click away.
         </p>
       ) : null}
 
@@ -251,6 +262,59 @@ export function PivotPage() {
           </p>
         </>
       ) : null}
+
+      {/*
+        Optional, and off unless it was turned on. MailMind is the folder view; labelling Gmail
+        buys organisation visible inside the Gmail app and costs a nested label per folder and one
+        modify per message. Only this arrangement can be exported — a message wears one Gmail label
+        and no more, which is the constraint that used to make "canonical" a real word here.
+      */}
+      <details className="export">
+        <summary>Also mirror this into Gmail</summary>
+        <p className="screen__hint">
+          MailMind does not need Gmail labels: a message opens by id whether it is filed, archived
+          or still in the inbox. Mirroring adds the folders to Gmail&rsquo;s own sidebar, and only
+          this arrangement can be mirrored — a message wears one Gmail label and no more. It is off
+          unless your MailMind server was configured to allow it.
+        </p>
+        <div className="screen__actions">
+          <button
+            className="button"
+            type="button"
+            disabled={applyMutation.isPending || effectiveOrder.length === 0}
+            onClick={() => applyMutation.mutate()}
+          >
+            {applyMutation.isPending ? 'Creating folders…' : 'Create the folders in Gmail'}
+          </button>
+          <button
+            className="button"
+            type="button"
+            disabled={fileMutation.isPending}
+            onClick={() => fileMutation.mutate()}
+          >
+            {fileMutation.isPending ? 'Starting…' : 'Label my mail'}
+          </button>
+        </div>
+
+        {applyMutation.isError ? <ErrorNotice error={applyMutation.error} /> : null}
+        {fileMutation.isError ? <ErrorNotice error={fileMutation.error} /> : null}
+
+        {applyMutation.isSuccess ? (
+          <p className="notice" role="status">
+            {formatCount(applyMutation.data.gmailLabelsCreated)} folder(s) created in Gmail,{' '}
+            {formatCount(applyMutation.data.gmailLabelsReused)} reused.{' '}
+            {applyMutation.data.orphaned.length > 0
+              ? `${formatCount(applyMutation.data.orphaned.length)} old folder(s) no longer match anything — they were left alone, because deleting a label does not unlabel its mail.`
+              : ''}
+          </p>
+        ) : null}
+
+        {fileMutation.isSuccess ? (
+          <p className="notice" role="status">
+            Labelling started. It runs in the background — watch it on Activity.
+          </p>
+        ) : null}
+      </details>
     </section>
   );
 }

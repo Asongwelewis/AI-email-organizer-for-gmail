@@ -1,4 +1,5 @@
 import { auditService } from '@api/audit/audit.service.js';
+import { env } from '@api/config/env.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
@@ -302,6 +303,17 @@ export class PivotService {
    * removing folders is a decision for a person, not a side effect of re-running a pivot.
    */
   async apply(accountId: string, userId: string): Promise<PivotApplyResult> {
+    // Opt-in, and off by default, for the same reason filing is: this is the only step here that
+    // creates anything in someone's mailbox. `plan` and `view` stay open — they are pure functions
+    // of the facet rows, and the PWA's folders are built from them rather than from what was
+    // written to Gmail.
+    if (!env.GMAIL_WRITE_ENABLED) {
+      throw new AppError(
+        'GMAIL_WRITE_DISABLED',
+        'MailMind is not set up to write labels into Gmail.',
+        503,
+      );
+    }
     const plan = await this.plan(accountId);
     let rowsCreated = 0;
     let rowsKept = 0;

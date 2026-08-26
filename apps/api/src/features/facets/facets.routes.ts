@@ -35,6 +35,17 @@ facetsRouter.get(
   classificationReadLimiter,
   asyncHandler((request, response) => facetsController.folderMessages(request, response)),
 );
+// Findability's other half. Reads only: Postgres full text over stored metadata, no remote call.
+facetsRouter.get(
+  '/search',
+  classificationReadLimiter,
+  asyncHandler((request, response) => facetsController.search(request, response)),
+);
+facetsRouter.get(
+  '/vocabulary',
+  classificationReadLimiter,
+  asyncHandler((request, response) => facetsController.vocabulary(request, response)),
+);
 facetsRouter.get(
   '/pivot/plan',
   classificationReadLimiter,

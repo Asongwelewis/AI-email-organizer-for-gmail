@@ -92,32 +92,50 @@ return only those values. A single tree could express one ordering of these at a
 most of a real mailbox had no leaf to go in; facets are assigned independently and pivoted into
 folders afterwards.
 
-**One pivot is materialised; the rest are computed on read.** `facet_pivot_settings` holds an
+**Every ordering at once; one of them is the remembered default.** `facet_pivot_settings` holds an
 ordered `canonical_pivot` (default `["entity", "intent"]`) and `min_messages`. `buildPivot` is a
-pure function of the facet rows, so the tree can be built and reviewed before any remote call. Only
-that ordering becomes `user_labels` rows and Gmail labels — a message carries one MailMind label
-and no more. Any other ordering is answered from `message_facets` without touching Gmail.
+pure function of the facet rows, so any ordering is answered from `message_facets` with no remote
+call, and the PWA offers them side by side with the ordering in the URL. The saved one decides
+which arrangement Sorted opens on, and is the only one that can be mirrored into Gmail — a message
+carries one MailMind label and no more, which is a Gmail limit rather than a product requirement.
 `user_labels.facet_key` is a folder's identity, so re-applying a pivot keeps an existing row and its
 `gmail_label_id`. Folder names are unique among **siblings**, not per account: a pivot repeats its
 lower levels by construction.
+
+**Findability is folders plus search.** `GET /api/facets/search` matches subject and sender across
+the whole mailbox with Postgres full text (`simple`, and the sender address split on punctuation on
+both sides of the match), narrowed by any combination of `entity`, `domain` and `intent`, with the
+folder each hit sits in attached. A facet filter joins `message_facets`; a phrase alone does not,
+so mail that was never classified stays findable. No model call, no Gmail call.
 
 **Rules before AI.** `learned_classification_patterns` holds routing rules — `SENDER_DOMAIN`,
 `SENDER_ADDRESS`, or `SUBJECT_CONTAINS`, never regular expressions — installed when a plan is
 approved and learned from mail that was actually filed. Automation applies matching rules with no
 model call and sends only the remainder to Gemini.
 
-**Gmail mutation is confined to three paths.** `facet-filing.service` applies labels via
-`messages.modify`, and its apply is _exclusive_ — the new label goes on and every other MailMind
-label comes off in the same call, so a re-filed message never wears two; `automation.service`
-applies one on a reviewer's approval, through the same exclusive path; the labels feature and
-`pivot.service` create/rename leaf paths on confirm, rename, and pivot apply. Deleting a label never
-unlabels mail, so a pivot never deletes folders — it reports the ones that no longer match and
-leaves them alone. `npm run sweep:labels` is the deliberate exception, and it strips a label from
-its mail before deleting it. Nothing else may mutate Gmail.
+**Gmail is the source, not the store.** The PWA builds its folders from `message_facets` and a
+message's deep link addresses it by id — `#all/<id>` resolves whether the message is filed,
+archived or still in the inbox — so nothing a person sees depends on a Gmail label existing.
+Writing them is therefore an **export**, opt-in behind `GMAIL_WRITE_ENABLED` and **off by
+default**: with it off, `facetFilingService.fileAccount` and `pivotService.apply` answer
+`503 GMAIL_WRITE_DISABLED` and the daily run classifies without filing. The filing code is kept,
+not deleted — it is that export path.
+
+**When the export is on, Gmail mutation is confined to three paths.** `facet-filing.service`
+applies labels via `messages.modify`, and its apply is _exclusive_ — the new label goes on and every
+other MailMind label comes off in the same call, so a re-filed message never wears two;
+`automation.service` applies one on a reviewer's approval, through the same exclusive path; the
+labels feature and `pivot.service` create/rename leaf paths on confirm, rename, and pivot apply.
+Deleting a label never unlabels mail, so a pivot never deletes folders — it reports the ones that no
+longer match and leaves them alone. `npm run sweep:labels` is the deliberate exception, and it
+strips a label from its mail before deleting it. Nothing else may mutate Gmail.
 
 **One filing engine.** `automation.service` orchestrates and owns no classification of its own: a
-run refreshes the mailbox, calls `facetClassificationService.classifyAccount`, then
-`facetFilingService.fileAccount`. `POST /api/automation/run` and the scheduler both go through it.
+run refreshes the mailbox and calls `facetClassificationService.classifyAccount`, then
+`facetFilingService.fileAccount` only when the Gmail export is enabled. `POST /api/automation/run`
+and the scheduler both go through it. A classification-only run opens its own `automation_runs`
+row, because the daily token and cost caps are read back as a sum over today's rows and filing used
+to be what opened it.
 The taxonomy classifier that used to live here — a Gemini call per batch choosing a leaf of the
 approved tree, applied through an _additive_ `messages.modify` — is gone. Two engines writing the
 same table and the same labels could always undo each other, and the retired one was the one

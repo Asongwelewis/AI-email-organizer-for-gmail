@@ -36,6 +36,7 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 
+const { env } = await import('../src/config/env.js');
 const filing = await import('../src/features/automation/facet-filing.service.js');
 const { FacetFilingService, filingConfidence } = filing;
 const { PivotService } = await import('../src/features/labels/pivot.service.js');
@@ -92,6 +93,9 @@ function service() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Filing is the export path, and off by default. This suite is about what it does when someone
+  // has asked for it; the refusal when they have not is its own test below.
+  env.GMAIL_WRITE_ENABLED = true;
   mocks.stateUpsert.mockResolvedValue({});
   mocks.stateUpdateMany.mockResolvedValue({ count: 1 });
   mocks.pivotSettingsUpsert.mockResolvedValue({
@@ -152,6 +156,36 @@ describe('filing and the model', () => {
 });
 
 describe('filing mail into pivot folders', () => {
+  /**
+   * Card 21. The PWA reads its folders from `message_facets`, so nothing a person sees depends on
+   * a Gmail label. Filing became the export path: opt-in, and refused when nobody asked for it —
+   * before the lease is taken, so a refusal cannot lock an account out of anything else.
+   */
+  it('refuses to write into Gmail unless the export was turned on', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    mocks.facetFindMany.mockResolvedValue(netflixMailbox());
+
+    await expect(service().fileAccount(ACCOUNT, USER, {})).rejects.toMatchObject({
+      code: 'GMAIL_WRITE_DISABLED',
+      statusCode: 503,
+    });
+    expect(mocks.applyExclusiveLabel).not.toHaveBeenCalled();
+    expect(mocks.stateUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // A dry run resolves every decision and writes nothing anywhere, so there is nothing for the
+  // gate to protect and reporting on a mailbox stays available with the export off.
+  it('still resolves a dry run with the export off, because it writes nothing', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    mocks.facetFindMany.mockResolvedValue(netflixMailbox());
+
+    const result = await service().fileAccount(ACCOUNT, USER, { dryRun: true });
+
+    expect(result.filed).toBe(6);
+    expect(mocks.applyExclusiveLabel).not.toHaveBeenCalled();
+    expect(mocks.actionUpsert).not.toHaveBeenCalled();
+  });
+
   it('files a message into its leaf and reuses the existing label', async () => {
     mocks.facetFindMany.mockResolvedValue(netflixMailbox());
     const result = await service().fileAccount(ACCOUNT, USER, {});

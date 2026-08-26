@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { automation_trigger, user_labels } from '@prisma/client';
 
 import { auditService } from '@api/audit/audit.service.js';
@@ -210,6 +211,14 @@ export class AutomationService {
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
+    /*
+     * "There is somewhere to file into" is a precondition of filing, and only of filing. With the
+     * Gmail export off a run classifies and stops, folders are computed from `message_facets` by
+     * `buildPivot`, and no `user_labels` row is involved anywhere — so requiring one here would
+     * refuse every run on an account that has never mirrored its folders into Gmail, which is now
+     * the default account.
+     */
+    if (!env.GMAIL_WRITE_ENABLED) return;
     const approved = await prisma.user_labels.count({
       where: { connected_google_account_id: accountId },
     });
@@ -538,38 +547,56 @@ export class AutomationService {
         total: classified.messagesSeen,
       });
 
-      // Filing runs even when classification stopped early. It spends no tokens and makes no model
-      // call, so mail that IS classified belongs in its folder tonight rather than tomorrow.
-      const filed = await this.filing.fileAccount(accountId, userId);
+      /*
+       * Filing is opt-in now, and off by default. What runs unattended is classification alone:
+       * the PWA builds its folders from `message_facets`, so mail classified tonight is in its
+       * folder tonight without a single `messages.modify`. Turning `GMAIL_WRITE_ENABLED` on adds
+       * the projection onto Gmail back to the end of the same run.
+       *
+       * When it does run it runs even if classification stopped early — it spends no tokens and
+       * makes no model call, so mail that IS classified belongs in its folder tonight.
+       */
+      const filed = env.GMAIL_WRITE_ENABLED
+        ? await this.filing.fileAccount(accountId, userId)
+        : null;
 
       /*
-       * What classification spent goes onto the run row filing opened, so one run is one row.
+       * What classification spent goes onto one run row, so one run is one row.
        *
        * Nothing else records it. `status().usageToday` sums these columns across today's runs,
        * and the classifier's own daily cap reads the same sum — so leaving them unwritten would
-       * both blank the usage panel and hand every run of the day a fresh full allowance.
+       * both blank the usage panel and hand every run of the day a fresh full allowance. Filing
+       * used to open that row; with filing off there is nobody left to open it, which is why a
+       * classification-only run opens its own.
        */
-      if (filed.runId) {
-        await prisma.automation_runs.update({
-          where: { id: filed.runId },
-          data: {
-            trigger,
-            ai_classified_count: classified.modelDecided,
-            pattern_reused_count: classified.ruleDecided,
-            provider_call_count: classified.providerCalls,
-            input_tokens: classified.usage.inputTokens,
-            cached_input_tokens: classified.usage.cachedInputTokens,
-            output_tokens: classified.usage.outputTokens,
-            estimated_cost_microusd: classified.costMicrousd,
-            stopped_reason: classified.stoppedReason,
-            last_error_code: classified.lastErrorCode,
-          },
-        });
-      }
+      const runId = filed?.runId ?? (await this.openClassificationRun(accountId, trigger));
+      await prisma.automation_runs.update({
+        where: { id: runId },
+        data: {
+          trigger,
+          ...(filed
+            ? {}
+            : {
+                status: classified.failed > 0 || classified.stoppedReason ? 'PARTIAL' : 'COMPLETED',
+                completed_at: new Date(),
+                messages_seen: classified.messagesSeen,
+                failed_count: classified.failed,
+              }),
+          ai_classified_count: classified.modelDecided,
+          pattern_reused_count: classified.ruleDecided,
+          provider_call_count: classified.providerCalls,
+          input_tokens: classified.usage.inputTokens,
+          cached_input_tokens: classified.usage.cachedInputTokens,
+          output_tokens: classified.usage.outputTokens,
+          estimated_cost_microusd: classified.costMicrousd,
+          stopped_reason: classified.stoppedReason,
+          last_error_code: classified.lastErrorCode,
+        },
+      });
 
       const stoppedReason = classified.stoppedReason;
       const lastErrorCode = classified.lastErrorCode;
-      const failed = classified.failed + filed.failed;
+      const failed = classified.failed + (filed?.failed ?? 0);
       const status = failed > 0 || stoppedReason ? 'PARTIAL' : 'COMPLETED';
       await this.stampSchedule(accountId, status, lastErrorCode);
 
@@ -582,8 +609,8 @@ export class AutomationService {
       });
       return {
         success: status === 'COMPLETED',
-        // The run row filing opened, now carrying both halves. The Activity screen links to it.
-        runId: filed.runId,
+        // One row for the whole run, whichever half opened it. The Activity screen links to it.
+        runId,
         status,
         stoppedReason,
         lastErrorCode,
@@ -605,21 +632,51 @@ export class AutomationService {
     }
   }
 
-  /** The one view of a run both halves feed, and the one the Activity screen renders. */
-  private countersOf(classified: FacetRunCounters, filed: FilingCounters): Record<string, number> {
+  /**
+   * Opens the run row a classification-only run reports into.
+   *
+   * Filing used to open it for both halves. With Gmail out of the write path there is no filing
+   * half on a normal night, and the usage columns still have to land somewhere: the daily token
+   * and cost caps are read back as a sum over today's rows.
+   */
+  private async openClassificationRun(
+    accountId: string,
+    trigger: automation_trigger,
+  ): Promise<string> {
+    const run = await prisma.automation_runs.create({
+      data: {
+        connected_google_account_id: accountId,
+        idempotency_key: `${accountId}:facet-classification:${randomUUID()}`,
+        trigger,
+      },
+    });
+    return run.id;
+  }
+
+  /**
+   * The one view of a run, and the one the Activity screen renders.
+   *
+   * `filed` is null on a run that only classified, which is every run unless writing to Gmail was
+   * turned on. The filing counters are then zero rather than absent: a screen that has rendered
+   * "0 filed" every night reads correctly, where a missing key would render nothing at all.
+   */
+  private countersOf(
+    classified: FacetRunCounters,
+    filed: FilingCounters | null,
+  ): Record<string, number> {
     return {
-      messagesSeen: filed.seen,
+      messagesSeen: filed?.seen ?? classified.messagesSeen,
       messagesClassified: classified.ruleDecided + classified.modelDecided,
       ruleDecided: classified.ruleDecided,
       modelDecided: classified.modelDecided,
       crossEntityRuleHits: classified.crossEntityRuleHits,
-      messagesLabeled: filed.filed,
-      reviewRequired: filed.reviewRequired,
-      noLabelSkipped: filed.none,
-      staleLabelsRemoved: filed.staleLabelsRemoved,
-      labelsCreated: filed.labelsCreated,
-      labelsReused: filed.labelsReused,
-      failed: classified.failed + filed.failed,
+      messagesLabeled: filed?.filed ?? 0,
+      reviewRequired: filed?.reviewRequired ?? 0,
+      noLabelSkipped: filed?.none ?? 0,
+      staleLabelsRemoved: filed?.staleLabelsRemoved ?? 0,
+      labelsCreated: filed?.labelsCreated ?? 0,
+      labelsReused: filed?.labelsReused ?? 0,
+      failed: classified.failed + (filed?.failed ?? 0),
       providerCalls: classified.providerCalls,
       estimatedCostMicrousd: classified.costMicrousd,
     };

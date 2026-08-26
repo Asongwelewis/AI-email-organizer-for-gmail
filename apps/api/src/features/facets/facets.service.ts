@@ -22,6 +22,13 @@ import {
   type PivotService,
 } from '@api/features/labels/pivot.service.js';
 import type { PivotFacet, PivotResult } from '@api/features/label-discovery/pivot.js';
+import {
+  messageSearchService,
+  type FacetVocabulary,
+  type MessageSearchService,
+  type SearchFilters,
+  type SearchResult,
+} from './message-search.service.js';
 
 /**
  * The HTTP surface of the facet pipeline.
@@ -44,6 +51,7 @@ export class FacetsService {
     private readonly pivots: PivotService = pivotService,
     private readonly activity: ActivityService = activityService,
     private readonly accounts: ActivityRepository = activityRepository,
+    private readonly search_: MessageSearchService = messageSearchService,
   ) {}
 
   /** Classifies unclassified mail into facets. 202: the client polls the run id. */
@@ -172,6 +180,26 @@ export class FacetsService {
   async apply(userId: string): Promise<PivotApplyResult> {
     const account = await this.accounts.activeAccountForUser(userId);
     return this.pivots.apply(account.id, userId);
+  }
+
+  /**
+   * Subject and sender across the whole mailbox, narrowed by any combination of facets. No model
+   * call and no Gmail call — Postgres full text over metadata the sync already stored.
+   */
+  async search(
+    userId: string,
+    query: string | null,
+    filters: SearchFilters,
+    options: { limit?: number; cursor?: string; order?: PivotFacet[] } = {},
+  ): Promise<SearchResult> {
+    const account = await this.accounts.activeAccountForUser(userId);
+    return this.search_.search(account.id, query, filters, options);
+  }
+
+  /** What there is to filter by, and how much mail sits behind each value. */
+  async vocabulary(userId: string): Promise<FacetVocabulary> {
+    const account = await this.accounts.activeAccountForUser(userId);
+    return this.search_.vocabulary(account.id);
   }
 }
 

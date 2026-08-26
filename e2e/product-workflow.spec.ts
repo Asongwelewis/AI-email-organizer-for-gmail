@@ -114,6 +114,21 @@ async function apiMock(route: Route) {
       collapsed: 0,
     },
     '/api/facets/messages': { messages: [], nextCursor: null, total: 0 },
+    // Find reads these two. A screen that logs a 404 because nothing serves a call it makes is
+    // exactly what the console-error test below exists to catch.
+    '/api/facets/vocabulary': {
+      entity: [{ value: 'linkedin', messageCount: 40 }],
+      domain: [{ value: 'career', messageCount: 40 }],
+      intent: [{ value: 'application-received', messageCount: 25 }],
+    },
+    '/api/facets/search': {
+      query: null,
+      filters: { entity: null, domain: null, intent: null },
+      order: ['domain', 'intent'],
+      results: [],
+      total: 0,
+      nextCursor: null,
+    },
   };
   const response = responses[path];
   if (response === undefined) {
@@ -168,13 +183,17 @@ test('every screen is reachable from the navigation', async ({ page }) => {
 
   // Folders and Review are the screens restored in card 14. Without them the pipeline exists in
   // the API and cannot be operated at all.
-  await page.getByRole('link', { name: 'Folders' }).click();
+  // Exact names: a screen may also link to another by a longer phrase — Find offers "Browse
+  // folders instead" — and a substring match would resolve to two elements.
+  await page.getByRole('link', { name: 'Find', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Find' })).toBeVisible();
+  await page.getByRole('link', { name: 'Folders', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Folders' })).toBeVisible();
-  await page.getByRole('link', { name: 'Review' }).click();
+  await page.getByRole('link', { name: 'Review', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible();
-  await page.getByRole('link', { name: 'Approve' }).click();
+  await page.getByRole('link', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Approve' })).toBeVisible();
-  await page.getByRole('link', { name: 'Activity' }).click();
+  await page.getByRole('link', { name: 'Activity', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
   await expect(page.getByText('Nothing has run yet')).toBeVisible();
 });
@@ -231,6 +250,7 @@ test('every surviving page renders without console or page errors', async ({ pag
     '/login',
     '/setup',
     '/sorted',
+    '/find',
     '/folders',
     '/review',
     '/approve',

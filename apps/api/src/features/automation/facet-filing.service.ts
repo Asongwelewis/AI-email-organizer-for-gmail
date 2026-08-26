@@ -127,6 +127,16 @@ export class FacetFilingService {
     userId: string,
     options: FilingOptions = {},
   ): Promise<FilingCounters & { pivot: PivotResult; runId: string | null }> {
+    // Opt-in, and off by default. Filing is the export path now, not the product: the PWA reads
+    // its folders from `message_facets`, so nothing a person sees depends on a Gmail label. A dry
+    // run is still allowed through, because it resolves decisions and writes nothing anywhere.
+    if (!env.GMAIL_WRITE_ENABLED && !options.dryRun) {
+      throw new AppError(
+        'GMAIL_WRITE_DISABLED',
+        'MailMind is not set up to write labels into Gmail.',
+        503,
+      );
+    }
     const counters = emptyCounters();
     const now = new Date();
     const token = randomUUID();

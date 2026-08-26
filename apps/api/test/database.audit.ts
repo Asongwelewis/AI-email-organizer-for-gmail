@@ -60,6 +60,7 @@ const requiredIndexes = [
   'gmail_messages_account_deleted_idx',
   'gmail_messages_account_history_idx',
   'gmail_messages_account_message_unique_idx',
+  'gmail_messages_account_search_idx',
   'gmail_messages_account_thread_idx',
   'gmail_sync_runs_account_started_idx',
   'gmail_sync_runs_status_idx',
@@ -208,6 +209,7 @@ try {
         'gmail_messages_account_deleted_idx',
         'gmail_messages_account_history_idx',
         'gmail_messages_account_message_unique_idx',
+        'gmail_messages_account_search_idx',
         'gmail_messages_account_thread_idx',
         'gmail_sync_runs_account_started_idx',
         'gmail_sync_runs_status_idx',
@@ -356,8 +358,8 @@ try {
   assert(summary.foreign_key_count === 29n, 'all twenty-nine foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 18n,
-    'exactly eighteen intended Prisma migrations must be applied',
+    summary.migration_count === 20n,
+    'exactly twenty intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');

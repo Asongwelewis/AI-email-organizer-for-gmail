@@ -13,7 +13,13 @@ import { safeRedirectPath } from '@api/security/safe-redirect.js';
 import type { CallbackStatus } from '@api/security/safe-redirect.js';
 import { createGoogleOAuthClient } from './google-oauth.client.js';
 import { verifyGoogleIdentity } from './google-identity.service.js';
-import { GMAIL_MODIFY_SCOPE, GOOGLE_GMAIL_SCOPES } from './google-scopes.js';
+import {
+  googleGmailScopes,
+  hasGmailReadScope,
+  hasGmailWriteScope,
+  holdsUnusedWriteScope,
+  requestedGmailScope,
+} from './google-scopes.js';
 import { googleTokenService } from './google-token.service.js';
 
 function parseScopes(scope: string | null | undefined): string[] {
@@ -44,10 +50,17 @@ export class GoogleGmailService {
     });
     const needsConsent = !existing?.refresh_token_ciphertext || purpose === 'REAUTHORIZE_GMAIL';
     return createGoogleOAuthClient('GMAIL').generateAuthUrl({
-      scope: [...GOOGLE_GMAIL_SCOPES],
+      // Read-only unless this deployment turned the label export on. `modify` is a restricted
+      // scope and the product does not use it: the sync boundary is metadata-only.
+      scope: googleGmailScopes(),
       state: rawState,
       access_type: 'offline',
-      include_granted_scopes: true,
+      /*
+       * Deliberately absent when narrowing: `include_granted_scopes` is incremental authorisation,
+       * and asking for it here would carry a legacy `modify` grant forward into the new token
+       * rather than letting the connection settle at what this deployment actually asks for.
+       */
+      ...(env.GMAIL_WRITE_ENABLED ? { include_granted_scopes: true } : {}),
       ...(needsConsent ? { prompt: 'consent' } : {}),
     });
   }
@@ -83,7 +96,9 @@ export class GoogleGmailService {
       const { tokens } = await client.getToken(code);
       const identity = await verifyGoogleIdentity(client, tokens.id_token);
       const scopes = parseScopes(tokens.scope);
-      const hasRequiredScope = scopes.includes(GMAIL_MODIFY_SCOPE);
+      // Reading is all MailMind needs. `modify` implies read, so a grant made before the downgrade
+      // still satisfies every path and must not present as a broken connection.
+      const hasRequiredScope = hasGmailReadScope(scopes);
       const existing = await connectedGoogleAccountRepository.findByUserAndSubject(
         oauthState.initiating_user_id,
         identity.subject,
@@ -241,6 +256,9 @@ export class GoogleGmailService {
         status: 'DISCONNECTED',
         grantedScopes: [],
         requiresReauthentication: false,
+        requestedGmailScope: requestedGmailScope(),
+        canModifyMail: false,
+        holdsUnusedWriteScope: false,
       };
     }
     return {
@@ -249,6 +267,15 @@ export class GoogleGmailService {
       status: account.connection_status,
       grantedScopes: account.granted_scopes,
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
+      /** What a fresh connection would ask for, so a screen can say it without guessing. */
+      requestedGmailScope: requestedGmailScope(),
+      canModifyMail: hasGmailWriteScope(account.granted_scopes),
+      /*
+       * Google's grants are cumulative per client, so asking for less does not take the wider
+       * scope back. An account connected before the downgrade keeps `modify` until it is revoked
+       * and granted again, and that is worth offering rather than quietly holding on to.
+       */
+      holdsUnusedWriteScope: holdsUnusedWriteScope(account.granted_scopes),
       connectedAt: account.connected_at?.toISOString() ?? null,
       updatedAt: account.updated_at.toISOString(),
     };

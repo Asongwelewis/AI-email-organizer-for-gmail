@@ -14,6 +14,10 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   GMAIL_REAUTH_REQUIRED: 'Your Gmail connection needs to be renewed.',
   GMAIL_CONNECTION_FAILED: 'We could not update your Gmail connection. Please try again.',
   GMAIL_ACCOUNT_NOT_CONNECTED: 'Connect Gmail before working with labels.',
+  GMAIL_WRITE_SCOPE_MISSING:
+    'This mailbox was connected for reading only, so MailMind cannot write labels into it. Your folders are unaffected — they are built here, not in Gmail.',
+  GMAIL_WRITE_DISABLED:
+    'This MailMind is not set up to write labels into Gmail. Your folders are here either way — nothing in the app depends on them existing in Gmail.',
   LABEL_NAME_INVALID:
     'That label name cannot be used. Use 2-60 characters, no slashes, and something more specific than a generic word.',
   LABEL_DUPLICATE: 'Two of those labels are too similar to keep both. Rename one and try again.',

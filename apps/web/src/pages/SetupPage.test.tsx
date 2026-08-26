@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   initializeGmailLabels: vi.fn(),
   initialGmailSync: vi.fn(),
   classifyFacets: vi.fn(),
+  disconnectGmail: vi.fn(),
 }));
 
 vi.mock('@web/services/http', () => ({
@@ -56,6 +57,33 @@ describe('SetupPage', () => {
     mocks.initializeGmailLabels.mockResolvedValue({ success: true, labelsUpserted: 12 });
     mocks.initialGmailSync.mockResolvedValue({ runId: 'run-1', state: 'RUNNING' });
     mocks.classifyFacets.mockResolvedValue({ runId: 'run-2', state: 'RUNNING' });
+    mocks.disconnectGmail.mockResolvedValue(undefined);
+  });
+
+  /**
+   * Card 25. Google's grants are cumulative per client, so asking for less does not take the wider
+   * scope back — an account connected while MailMind wrote labels keeps `gmail.modify` until the
+   * grant is revoked. Holding an unused permission to alter someone's mail is worth offering to
+   * give back rather than quietly keeping.
+   */
+  it('offers to narrow a grant that is wider than MailMind uses', async () => {
+    mocks.getGmailStatus.mockResolvedValue(
+      connection({ holdsUnusedWriteScope: true, canModifyMail: true }),
+    );
+    renderScreen(<SetupPage />, '/setup');
+
+    await userEvent.click(await screen.findByRole('button', { name: /narrow to read-only/i }));
+
+    // Revoking is what disconnecting does, so narrowing is a disconnect and a fresh connect.
+    await waitFor(() => expect(mocks.disconnectGmail).toHaveBeenCalled());
+  });
+
+  it('says nothing about narrowing when the grant is already read-only', async () => {
+    mocks.getGmailStatus.mockResolvedValue(connection({ holdsUnusedWriteScope: false }));
+    renderScreen(<SetupPage />, '/setup');
+
+    await screen.findByText('Connect Gmail');
+    expect(screen.queryByRole('button', { name: /narrow to read-only/i })).not.toBeInTheDocument();
   });
 
   // Each step is gated on the one before it. Offering an action the account is not ready for is

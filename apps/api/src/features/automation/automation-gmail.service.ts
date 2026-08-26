@@ -1,14 +1,47 @@
 import { createGmailClient, withGmailRetry } from '@api/integrations/gmail/gmail.client.js';
 import { gmailRepository } from '@api/integrations/gmail/gmail.repository.js';
 import { prisma } from '@api/database/prisma.js';
+import { AppError } from '@api/errors/AppError.js';
+import { hasGmailWriteScope } from '@api/integrations/google/google-scopes.js';
 
+/**
+ * Every write MailMind makes to a mailbox goes through this class, which is what makes it the one
+ * place the authority to make them has to be checked.
+ *
+ * `GMAIL_WRITE_ENABLED` says whether this deployment offers the label export at all;
+ * `gmail.modify` says whether this particular person granted it. Both have to be true, and the
+ * second is the one that cannot be turned on from a config file — an account connected under the
+ * read-only scope simply cannot be written to, and finding that out here beats finding it out as a
+ * 403 from Google half way through nine thousand messages.
+ */
 export class AutomationGmailService {
+  /**
+   * Refuses before the first remote write when the account never granted write authority.
+   *
+   * Reading `granted_scopes` rather than trying the call is deliberate: a partial filing run that
+   * dies on message 4,000 leaves a mailbox half in the old tree and half in the new one.
+   */
+  private async assertWritable(accountId: string): Promise<void> {
+    const account = await prisma.connected_google_accounts.findUnique({
+      where: { id: accountId },
+      select: { granted_scopes: true },
+    });
+    if (!account || !hasGmailWriteScope(account.granted_scopes)) {
+      throw new AppError(
+        'GMAIL_WRITE_SCOPE_MISSING',
+        'This mailbox was connected for reading only.',
+        403,
+      );
+    }
+  }
+
   async ensureLabel(accountId: string, labelPath: string) {
     const existing = await prisma.gmail_labels.findFirst({
       where: { connected_google_account_id: accountId, name: labelPath },
     });
     if (existing) return { id: existing.gmail_label_id, created: false };
 
+    await this.assertWritable(accountId);
     const gmail = await createGmailClient(accountId);
     const remote = await withGmailRetry(() => gmail.users.labels.list({ userId: 'me' }));
     let label = remote.data.labels?.find((candidate) => candidate.name === labelPath);
@@ -40,6 +73,7 @@ export class AutomationGmailService {
   }
 
   async renameLabel(accountId: string, labelId: string, labelPath: string): Promise<void> {
+    await this.assertWritable(accountId);
     const gmail = await createGmailClient(accountId);
     const updated = await withGmailRetry(() =>
       gmail.users.labels.update({
@@ -64,6 +98,7 @@ export class AutomationGmailService {
   }
 
   async applyLabel(accountId: string, remoteMessageId: string, labelId: string): Promise<void> {
+    await this.assertWritable(accountId);
     const gmail = await createGmailClient(accountId);
     await withGmailRetry(() =>
       gmail.users.messages.modify({
@@ -93,6 +128,7 @@ export class AutomationGmailService {
   ): Promise<void> {
     const removeLabelIds = otherMailMindLabelIds.filter((id) => id !== labelId);
     if (!labelId && removeLabelIds.length === 0) return;
+    await this.assertWritable(accountId);
     const gmail = await createGmailClient(accountId);
     await withGmailRetry(() =>
       gmail.users.messages.modify({

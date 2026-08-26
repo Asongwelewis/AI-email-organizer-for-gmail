@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   actionFindFirst: vi.fn(),
   actionCreate: vi.fn(),
   actionUpdate: vi.fn(),
+  runCreate: vi.fn(),
   runUpdate: vi.fn(),
   messageUpdate: vi.fn(),
   userLabelFindMany: vi.fn(),
@@ -58,7 +59,7 @@ vi.mock('../src/database/prisma.js', () => ({
       create: mocks.actionCreate,
       update: mocks.actionUpdate,
     },
-    automation_runs: { update: mocks.runUpdate },
+    automation_runs: { create: mocks.runCreate, update: mocks.runUpdate },
     gmail_labels: { findMany: mocks.gmailLabelFindMany },
     gmail_message_metadata: { update: mocks.messageUpdate, count: vi.fn().mockResolvedValue(0) },
     user_labels: {
@@ -136,6 +137,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   env.GEMINI_API_KEY = 'test-gemini-key';
   env.AUTOMATION_ENABLED = true;
+  // The shipped default. Filing is the export path now, not what runs every night.
+  env.GMAIL_WRITE_ENABLED = false;
   mocks.connectedAccount.mockResolvedValue({ id: 'account-1', user_id: 'user-1' });
   mocks.stateUpsert.mockResolvedValue({});
   mocks.userLabelCount.mockResolvedValue(1);
@@ -145,79 +148,57 @@ beforeEach(() => {
   mocks.classifyAccount.mockResolvedValue(classified());
   mocks.fileAccount.mockResolvedValue(filed());
   mocks.auditRecord.mockResolvedValue(undefined);
+  mocks.runCreate.mockResolvedValue({ id: 'classification-run-1' });
   mocks.runUpdate.mockResolvedValue({});
 });
 
 afterEach(() => {
   env.AUTOMATION_ENABLED = true;
+  env.GMAIL_WRITE_ENABLED = false;
 });
 
 /**
- * One engine.
+ * One engine, and — since card 21 — one half of it on a normal night.
  *
- * There used to be two, and the one the scheduler ran unattended was the retired taxonomy
+ * There used to be two engines, and the one the scheduler ran unattended was the retired taxonomy
  * classifier — a Gemini call per batch that picked a leaf of the approved tree and applied it
  * through an ADDITIVE modify. It was mis-filing live mail. What is left orchestrates the facet
  * pipeline and owns nothing about how a message is classified or where it ends up.
+ *
+ * Filing is now opt-in and off by default: the PWA builds its folders from `message_facets`, so
+ * mail classified tonight is in its folder tonight without a single `messages.modify`.
  */
-describe('a filing run', () => {
-  it('refreshes the mailbox, classifies into facets, then files, in that order', async () => {
+describe('an unattended run', () => {
+  it('refreshes the mailbox and classifies it, and writes nothing to Gmail', async () => {
     await service().run('user-1');
 
     expect(mocks.incrementalSync).toHaveBeenCalledWith('user-1');
     expect(mocks.classifyAccount).toHaveBeenCalledWith('account-1');
-    expect(mocks.fileAccount).toHaveBeenCalledWith('account-1', 'user-1');
+    expect(mocks.fileAccount).not.toHaveBeenCalled();
     expect(mocks.incrementalSync.mock.invocationCallOrder[0]!).toBeLessThan(
       mocks.classifyAccount.mock.invocationCallOrder[0]!,
     );
-    expect(mocks.classifyAccount.mock.invocationCallOrder[0]!).toBeLessThan(
-      mocks.fileAccount.mock.invocationCallOrder[0]!,
-    );
-  });
-
-  it('reports both halves of the run under one set of counters', async () => {
-    const result = await service().run('user-1');
-
-    expect(result).toMatchObject({ success: true, status: 'COMPLETED' });
-    expect(result.counters).toMatchObject({
-      messagesClassified: 10,
-      ruleDecided: 4,
-      modelDecided: 6,
-      messagesLabeled: 8,
-      reviewRequired: 1,
-      noLabelSkipped: 1,
-      staleLabelsRemoved: 1,
-      providerCalls: 1,
-    });
-  });
-
-  /**
-   * Filing spends no tokens and makes no model call — the classification is already stored. So a
-   * run that ran out of Gemini budget half way still has mail worth putting into folders tonight,
-   * and holding it back until tomorrow would buy nothing.
-   */
-  it('files what was classified even when classification stopped early', async () => {
-    mocks.classifyAccount.mockResolvedValue(
-      classified({ stoppedReason: 'DAILY_BUDGET_REACHED', modelDecided: 2 }),
-    );
-
-    const result = await service().run('user-1');
-
-    expect(mocks.fileAccount).toHaveBeenCalled();
-    expect(result).toMatchObject({ status: 'PARTIAL', stoppedReason: 'DAILY_BUDGET_REACHED' });
   });
 
   /**
    * One run, one row. Nothing else records what classification spent: `status().usageToday` sums
    * these columns across today's runs, and the classifier's own daily cap reads the same sum. Left
    * unwritten they would blank the usage panel AND hand every run of the day a full allowance.
+   *
+   * Filing used to open that row. With filing off there is nobody left to open it, so a
+   * classification-only run opens its own and closes it in the same breath.
    */
-  it('records what classification spent onto the run row filing opened', async () => {
+  it('opens a run row of its own and records what classification spent onto it', async () => {
     const result = await service().run('user-1');
 
+    expect(mocks.runCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ connected_google_account_id: 'account-1' }),
+      }),
+    );
     expect(mocks.runUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'automation-run-1' },
+        where: { id: 'classification-run-1' },
         data: expect.objectContaining({
           provider_call_count: 1,
           input_tokens: 120,
@@ -225,11 +206,33 @@ describe('a filing run', () => {
           estimated_cost_microusd: 2000,
           ai_classified_count: 6,
           pattern_reused_count: 4,
+          // Nobody else will close it, so the classification-only path closes it itself.
+          status: 'COMPLETED',
+          messages_seen: 10,
         }),
       }),
     );
-    // And the activity run links to it, so a reader can get from an ending to its cost.
-    expect(result.runId).toBe('automation-run-1');
+    expect(result.runId).toBe('classification-run-1');
+  });
+
+  /**
+   * A screen that has rendered "0 filed" every night reads correctly; a missing key renders
+   * nothing at all. So the filing counters are zero on a run that did not file, not absent.
+   */
+  it('reports the filing counters as zero rather than leaving them out', async () => {
+    const result = await service().run('user-1');
+
+    expect(result).toMatchObject({ success: true, status: 'COMPLETED' });
+    expect(result.counters).toMatchObject({
+      messagesSeen: 10,
+      messagesClassified: 10,
+      ruleDecided: 4,
+      modelDecided: 6,
+      messagesLabeled: 0,
+      labelsCreated: 0,
+      staleLabelsRemoved: 0,
+      providerCalls: 1,
+    });
   });
 
   // Each facet service takes the same account-scoped lease itself, so a run holding one while it
@@ -249,6 +252,70 @@ describe('a filing run', () => {
     await expect(service().run('user-1')).rejects.toMatchObject({ code: 'AUTOMATION_DISABLED' });
     expect(mocks.classifyAccount).not.toHaveBeenCalled();
     expect(mocks.fileAccount).not.toHaveBeenCalled();
+  });
+});
+
+/** The export path: someone who does want the folders mirrored into Gmail's own sidebar. */
+describe('a run with Gmail writing turned on', () => {
+  beforeEach(() => {
+    env.GMAIL_WRITE_ENABLED = true;
+  });
+
+  it('refreshes the mailbox, classifies into facets, then files, in that order', async () => {
+    await service().run('user-1');
+
+    expect(mocks.fileAccount).toHaveBeenCalledWith('account-1', 'user-1');
+    expect(mocks.classifyAccount.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.fileAccount.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('reports both halves of the run under one set of counters', async () => {
+    const result = await service().run('user-1');
+
+    expect(result).toMatchObject({ success: true, status: 'COMPLETED' });
+    expect(result.counters).toMatchObject({
+      messagesClassified: 10,
+      messagesLabeled: 8,
+      reviewRequired: 1,
+      noLabelSkipped: 1,
+      staleLabelsRemoved: 1,
+    });
+  });
+
+  /**
+   * Filing spends no tokens and makes no model call — the classification is already stored. So a
+   * run that ran out of Gemini budget half way still has mail worth putting into folders tonight,
+   * and holding it back until tomorrow would buy nothing.
+   */
+  it('files what was classified even when classification stopped early', async () => {
+    mocks.classifyAccount.mockResolvedValue(
+      classified({ stoppedReason: 'DAILY_BUDGET_REACHED', modelDecided: 2 }),
+    );
+
+    const result = await service().run('user-1');
+
+    expect(mocks.fileAccount).toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'PARTIAL', stoppedReason: 'DAILY_BUDGET_REACHED' });
+  });
+
+  // Filing already opened a row, so nothing opens a second one for the same run.
+  it('records what classification spent onto the run row filing opened', async () => {
+    const result = await service().run('user-1');
+
+    expect(mocks.runCreate).not.toHaveBeenCalled();
+    expect(mocks.runUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'automation-run-1' },
+        data: expect.objectContaining({
+          provider_call_count: 1,
+          input_tokens: 120,
+          ai_classified_count: 6,
+          pattern_reused_count: 4,
+        }),
+      }),
+    );
+    expect(result.runId).toBe('automation-run-1');
   });
 
   it('surfaces a filing failure rather than reporting a run that did not happen', async () => {
@@ -285,6 +352,7 @@ describe('accepting a run over HTTP', () => {
 
   // A precondition the caller can act on still answers synchronously, not through a run record.
   it('refuses to accept a run when no folder exists to file into', async () => {
+    env.GMAIL_WRITE_ENABLED = true;
     mocks.userLabelCount.mockResolvedValue(0);
 
     await expect(service().start('user-1')).rejects.toMatchObject({
@@ -292,6 +360,18 @@ describe('accepting a run over HTTP', () => {
       statusCode: 409,
     });
     expect(mocks.activityStart).not.toHaveBeenCalled();
+  });
+
+  /**
+   * "Somewhere to file into" is a precondition of filing and of nothing else. With the export off
+   * a run classifies and stops, and folders are computed from `message_facets` — so requiring a
+   * `user_labels` row would refuse every run on an account that never mirrored into Gmail, which
+   * is now the default account.
+   */
+  it('accepts a classification-only run on an account with no folder rows at all', async () => {
+    mocks.userLabelCount.mockResolvedValue(0);
+
+    await expect(service().start('user-1')).resolves.toMatchObject({ runId: 'activity-run-1' });
   });
 
   it('does not start a second filing run while one is in flight', async () => {

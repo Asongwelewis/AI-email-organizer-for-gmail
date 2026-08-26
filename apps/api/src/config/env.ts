@@ -56,6 +56,19 @@ const environmentSchema = z
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+    /**
+     * Whether MailMind may write labels into the mailbox at all.
+     *
+     * Off by default, because the PWA is the product and Gmail is the source, not the store. The
+     * deep link that opens a message addresses it by id and resolves whether it is filed, archived
+     * or still in the inbox, so it has never needed a label — labelling buys organisation visible
+     * inside the Gmail app, and costs 150 nested labels in the sidebar and one `messages.modify`
+     * per message per run.
+     *
+     * The filing code is not gone. It is the export path for someone who does want their mail
+     * labelled in Gmail, and this is how they ask for it.
+     */
+    GMAIL_WRITE_ENABLED: booleanValue.default(false),
     // One planning call reads a sample of stored metadata. Depth, leaf count, and the minimum
     // messages per folder are structural invariants and live in the planner, not in config.
     TAXONOMY_SAMPLE_SIZE: z.coerce.number().int().min(20).max(2000).default(500),

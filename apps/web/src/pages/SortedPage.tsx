@@ -1,25 +1,35 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, ExternalLink, Search } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronRight, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { FolderTile } from '@web/components/app/FolderTile';
+import { MailList } from '@web/components/app/MailList';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
-import { formatTimestamp } from '@web/lib/format';
-import { gmailMessageUrl } from '@web/lib/gmailLink';
+import { formatCount } from '@web/lib/format';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
-import type { PivotNode } from '@web/types/facets';
+import {
+  PIVOT_PRESETS,
+  pivotOrderKey,
+  pivotOrderLabel,
+  type PivotFacet,
+  type PivotNode,
+} from '@web/types/facets';
 
 /**
- * The folder view, read straight from the facets.
+ * The folder view, read straight from the facets — and now every ordering of them at once.
  *
- * It used to read `user_labels` and ask for the mail in a folder by row id — an endpoint that was
- * never built, so opening a folder 404'd and Gmail's own labels were doing all the organising.
- * Now the tree is `buildPivot` over `message_facets` and a folder's contents are the messages
- * matching its combination, so none of this depends on a folder row or on anything ever having
- * been written to Gmail.
+ * It used to read `user_labels` and ask for the mail in a folder by row id, an endpoint that was
+ * never built. Then it read one ordering: the canonical one, the only one that could exist,
+ * because a message carries one MailMind label and no more.
+ *
+ * That limit was Gmail's. With Gmail out of the write path it is gone, and `buildPivot` is a pure
+ * function of `message_facets`, so `Netflix > Payment failed` and `Finance > Payment failed >
+ * Netflix` stopped being a choice. They are two views of the same rows: switching costs no
+ * reclassification, no Gmail call, and nothing to apply. The saved ordering is only which one this
+ * screen opens on.
  */
 
 /** One level at a time. Folders are nested by their parent's facet key. */
@@ -41,7 +51,20 @@ function trailTo(nodes: PivotNode[], facetKey: string | null): PivotNode[] {
   return trail;
 }
 
+/** `entity,intent` back into an ordering, ignoring anything that is not a facet. */
+function parseOrder(value: string | null): PivotFacet[] | null {
+  if (!value) return null;
+  const parsed = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(
+      (part): part is PivotFacet => part === 'entity' || part === 'domain' || part === 'intent',
+    );
+  return parsed.length > 0 ? parsed : null;
+}
+
 export function SortedPage() {
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const facetKey = params.get('folder');
   const [search, setSearch] = useState('');
@@ -50,16 +73,40 @@ export function SortedPage() {
     queryKey: queryKeys.pivotSettings,
     queryFn: () => api.getPivotSettings(),
   });
-  const order = settingsQuery.data?.canonicalPivot ?? [];
 
+  // The ordering lives in the URL, so a view is a link. The saved default is where the screen
+  // starts, not what it is limited to.
+  // Memoised because it is a dependency below, and a fresh `[]` on every render would rebuild the
+  // list of arrangements each time.
+  const saved = useMemo(
+    () => settingsQuery.data?.canonicalPivot ?? [],
+    [settingsQuery.data?.canonicalPivot],
+  );
+  const order = parseOrder(params.get('order')) ?? saved;
+
+  const minMessages = settingsQuery.data?.minMessages;
   const viewQuery = useQuery({
-    queryKey: queryKeys.pivotView(order),
-    queryFn: () => api.getPivotView(order, settingsQuery.data?.minMessages),
-    enabled: order.length > 0,
+    queryKey: [...queryKeys.pivotView(order), minMessages ?? null],
+    queryFn: () => api.getPivotView(order, minMessages),
+    /*
+     * The ordering can come from the URL, so it is known before the settings are. Waiting for them
+     * anyway keeps the floor out of the first request — otherwise a shared link fetches the tree
+     * once at the server default and again at the account's, and the two can differ.
+     */
+    enabled: order.length > 0 && !settingsQuery.isPending,
   });
   const connectionQuery = useQuery({
     queryKey: queryKeys.gmailConnection,
     queryFn: () => api.getGmailStatus(),
+  });
+
+  const saveDefault = useMutation({
+    mutationFn: () =>
+      api.setPivotSettings({
+        canonicalPivot: order,
+        ...(settingsQuery.data ? { minMessages: settingsQuery.data.minMessages } : {}),
+      }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.pivotSettings }),
   });
 
   const nodes = useMemo(() => viewQuery.data?.nodes ?? [], [viewQuery.data]);
@@ -79,9 +126,30 @@ export function SortedPage() {
 
   const openFolder = (key: string | null) => {
     setSearch('');
-    setParams(key ? { folder: key } : {}, { replace: false });
+    const next = new URLSearchParams(params);
+    if (key) next.set('folder', key);
+    else next.delete('folder');
+    setParams(next, { replace: false });
   };
 
+  /*
+   * A facet key names a combination in one particular ordering, so it means nothing in another.
+   * Switching therefore returns to the top rather than carrying a key that would resolve to no
+   * folder and show an empty screen.
+   */
+  const switchOrder = (next: PivotFacet[]) => {
+    setSearch('');
+    setParams({ order: pivotOrderKey(next) }, { replace: false });
+  };
+
+  // Whatever is saved belongs among the choices even when it is not one of the presets.
+  const orderings = useMemo(() => {
+    const presets = PIVOT_PRESETS.map((preset) => preset.order);
+    const known = new Set(presets.map(pivotOrderKey));
+    return saved.length > 0 && !known.has(pivotOrderKey(saved)) ? [saved, ...presets] : presets;
+  }, [saved]);
+
+  const isSaved = saved.length > 0 && pivotOrderKey(order) === pivotOrderKey(saved);
   const loading = settingsQuery.isPending || viewQuery.isPending;
 
   return (
@@ -99,6 +167,45 @@ export function SortedPage() {
           />
         </label>
       </header>
+
+      {/* Every arrangement of the same mail, side by side. None of them is the real one. */}
+      <nav className="ordering" aria-label="Folder arrangement">
+        {orderings.map((candidate) => {
+          const key = pivotOrderKey(candidate);
+          const isCurrent = key === pivotOrderKey(order);
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`ordering__option${isCurrent ? ' ordering__option--active' : ''}`}
+              aria-current={isCurrent ? 'true' : undefined}
+              onClick={() => switchOrder(candidate)}
+            >
+              <span className="ordering__label">{pivotOrderLabel(candidate)}</span>
+              {key === pivotOrderKey(saved) ? (
+                <span className="ordering__badge">
+                  <Check aria-hidden="true" strokeWidth={2} /> Default
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+      <p className="screen__hint">
+        Same mail, arranged differently. Switching changes nothing about your mailbox — these are
+        views of what your mail already says about itself.{' '}
+        {!isSaved && order.length > 0 ? (
+          <button
+            type="button"
+            className="button button--quiet"
+            disabled={saveDefault.isPending}
+            onClick={() => saveDefault.mutate()}
+          >
+            {saveDefault.isPending ? 'Saving…' : 'Make this my default'}
+          </button>
+        ) : null}
+      </p>
+      {saveDefault.isError ? <ErrorNotice error={saveDefault.error} /> : null}
 
       {trail.length > 0 && !term ? (
         <nav className="crumbs" aria-label="Folder path">
@@ -150,8 +257,8 @@ export function SortedPage() {
           />
         ) : (
           <EmptyState
-            title="No folders yet"
-            description="Your mail has not been sorted into facets yet, or every group is below the folder floor."
+            title="No folders at this arrangement"
+            description="Your mail has not been sorted into facets yet, or every group here is below the folder floor. Another arrangement above may have more."
             action={
               <Link className="button button--primary" to="/folders">
                 Shape my folders
@@ -178,6 +285,17 @@ export function SortedPage() {
 
       {term && visible.length === 0 && nodes.length > 0 ? (
         <EmptyState title="No folder matches" description={`Nothing is named like "${search}".`} />
+      ) : null}
+
+      {/* What this arrangement leaves out, so the tail is visible rather than merely absent. */}
+      {viewQuery.data && !current && !term ? (
+        <p className="plan-meta">
+          <span>{formatCount(viewQuery.data.nodes.length)} folders</span>
+          <span>{formatCount(viewQuery.data.unfiled.total)} still in the inbox</span>
+          <span>
+            {formatCount(viewQuery.data.unfiled.belowThreshold)} of them just below the floor
+          </span>
+        </p>
       ) : null}
 
       {current && !term ? (
@@ -227,28 +345,7 @@ function FolderMessages({
         {total} message{total === 1 ? '' : 's'} in {folder.leafName}
         {messages.length < total ? `, showing the newest ${messages.length}` : ''}
       </p>
-      <ul className="mail-list">
-        {messages.map((message) => (
-          <li key={message.id}>
-            {/* Straight into Gmail. MailMind never renders message bodies. The link addresses the
-                message by id, so it resolves whether or not the message carries any label. */}
-            <a
-              className="mail-row"
-              href={gmailMessageUrl(connectedEmail, message.gmailMessageId)}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              <span className="mail-row__from">{message.senderName ?? message.senderEmail}</span>
-              <span className="mail-row__subject">{message.subject ?? 'No subject'}</span>
-              <span className="mail-row__date">
-                {message.receivedAt ? formatTimestamp(message.receivedAt) : '—'}
-              </span>
-              <ExternalLink className="mail-row__open" aria-hidden="true" strokeWidth={1.5} />
-              <span className="sr-only">Open in Gmail</span>
-            </a>
-          </li>
-        ))}
-      </ul>
+      <MailList messages={messages} connectedEmail={connectedEmail} />
     </>
   );
 }

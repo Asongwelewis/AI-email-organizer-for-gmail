@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   view: vi.fn(),
   apply: vi.fn(),
   folderMessages: vi.fn(),
+  search: vi.fn(),
+  vocabulary: vi.fn(),
 }));
 
 vi.mock('../src/sessions/session.service.js', () => ({
@@ -70,6 +72,15 @@ describe('facet HTTP routes', () => {
     mocks.view.mockResolvedValue({ order: ['domain', 'intent'], nodes: [] });
     mocks.apply.mockResolvedValue({ rowsCreated: 2, gmailLabelsCreated: 1, orphaned: [] });
     mocks.folderMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
+    mocks.search.mockResolvedValue({
+      query: 'netflix',
+      filters: { entity: null, domain: null, intent: null },
+      order: ['entity', 'intent'],
+      results: [],
+      total: 0,
+      nextCursor: null,
+    });
+    mocks.vocabulary.mockResolvedValue({ entity: [], domain: [], intent: [] });
   });
 
   it('requires a session on every route', async () => {
@@ -82,6 +93,8 @@ describe('facet HTTP routes', () => {
       ['get', '/api/facets/pivot/plan'],
       ['get', '/api/facets/pivot/view'],
       ['get', '/api/facets/messages?facetKey=entity%3Dnetflix'],
+      ['get', '/api/facets/search?q=invoice'],
+      ['get', '/api/facets/vocabulary'],
       ['post', '/api/facets/classify'],
       ['post', '/api/facets/file'],
       ['post', '/api/facets/pivot/apply'],
@@ -236,6 +249,67 @@ describe('facet HTTP routes', () => {
 
     expect(response.status).toBe(400);
     expect(mocks.folderMessages).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Card 24. The promise is findability, and folders are only half of it: with Gmail's `label:`
+   * operator no longer the mechanism, the PWA needs its own find. A read, so no origin check and
+   * no quota — Postgres full text over metadata the sync already stored.
+   */
+  it('searches subject and sender across the whole mailbox', async () => {
+    const response = await request(app).get('/api/facets/search?q=payment%20failed&limit=25');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(mocks.search).toHaveBeenCalledWith('user-id', 'payment failed', {}, { limit: 25 });
+  });
+
+  /**
+   * The thing a Gmail label tree genuinely cannot do: one intent across every brand at once,
+   * because facets are orthogonal and a tree can only express one ordering of them.
+   */
+  it('filters by facet in any combination, with or without a phrase', async () => {
+    await request(app).get('/api/facets/search?intent=payment-failed');
+    expect(mocks.search).toHaveBeenCalledWith('user-id', null, { intent: 'payment-failed' }, {});
+
+    await request(app).get('/api/facets/search?q=renewal&entity=netflix&domain=finance');
+    expect(mocks.search).toHaveBeenCalledWith(
+      'user-id',
+      'renewal',
+      { entity: 'netflix', domain: 'finance' },
+      {},
+    );
+  });
+
+  it('carries a cursor and an ordering through so results page and locate themselves', async () => {
+    const cursor = '11111111-1111-4111-8111-111111111111';
+    await request(app).get(
+      `/api/facets/search?q=invoice&cursor=${cursor}&order=domain,intent,entity`,
+    );
+
+    expect(mocks.search).toHaveBeenCalledWith(
+      'user-id',
+      'invoice',
+      {},
+      { cursor, order: ['domain', 'intent', 'entity'] },
+    );
+  });
+
+  // A malformed filter must be a 400, not a query that matches nothing and reads as "no such mail".
+  it('refuses a facet value that is not one', async () => {
+    for (const query of ['entity=Netflix%20Inc', 'intent=payment_failed', 'order=entity,sender']) {
+      const response = await request(app).get(`/api/facets/search?${query}`);
+      expect(response.status).toBe(400);
+    }
+    expect(mocks.search).not.toHaveBeenCalled();
+  });
+
+  it('serves the filter vocabulary without caching it', async () => {
+    const response = await request(app).get('/api/facets/vocabulary');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(mocks.vocabulary).toHaveBeenCalledWith('user-id');
   });
 
   /**

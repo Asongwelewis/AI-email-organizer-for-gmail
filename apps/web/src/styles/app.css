@@ -440,6 +440,17 @@
   color: var(--app-ink-soft);
 }
 
+/*
+ * Where a hit sits. Search shows it — "it was under Finance all along" is half of what the person
+ * was actually asking — and a folder listing does not, because it is already the answer.
+ */
+.mail-row__folder {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+  opacity: 0.85;
+}
+
 .mail-row__open {
   display: none;
   width: 1rem;
@@ -1268,4 +1279,132 @@
   background: var(--surface-inset);
   color: var(--ink);
   font: inherit;
+}
+
+/* ------------------------------------------------------------- arrangements */
+
+/**
+ * Every ordering of the facets, side by side.
+ *
+ * One used to be canonical because a message carries one Gmail label and no more. That was Gmail's
+ * constraint, not the product's, so none of these is the real one — they are the same rows read in
+ * a different order, and switching costs nothing.
+ */
+.ordering {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.ordering__option {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+  cursor: pointer;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  transition:
+    color 160ms ease-out,
+    border-color 160ms ease-out,
+    background 160ms ease-out;
+}
+
+.ordering__option:hover {
+  color: var(--app-ink);
+  border-color: var(--accent-soft);
+}
+
+/* Selection is carried by the border and the weight, not by colour alone. */
+.ordering__option--active {
+  font-weight: 600;
+  color: var(--app-ink);
+  background: var(--surface-elevated);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.ordering__badge {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-ink-soft);
+}
+
+.ordering__badge svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* ------------------------------------------------------------ facet filters */
+
+.facet-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin: 0.25rem 0 0;
+}
+
+.facet-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.facet-filter__label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-ink-soft);
+}
+
+.facet-filter select {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: inherit;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+}
+
+.facet-filter select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ------------------------------------------------------------------ export */
+
+/**
+ * Mirroring the folders into Gmail. Collapsed, because it is optional and off by default: the app
+ * is the folder view, and a Gmail label buys organisation only inside the Gmail app.
+ */
+.export {
+  padding: 0.9rem 1rem;
+  margin-top: 0.5rem;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.export summary {
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.export > * + * {
+  margin-top: 0.6rem;
 }

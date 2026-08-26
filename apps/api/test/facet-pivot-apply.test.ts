@@ -39,6 +39,7 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 
+const { env } = await import('../src/config/env.js');
 const { PivotService } = await import('../src/features/labels/pivot.service.js');
 
 const ACCOUNT = '11111111-1111-4111-8111-111111111111';
@@ -124,6 +125,9 @@ function service() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Apply is the only step here that creates anything in a mailbox, so it is opt-in and off by
+  // default. This suite is about what it does once someone has asked for it.
+  env.GMAIL_WRITE_ENABLED = true;
   mocks.pivotSettingsUpsert.mockResolvedValue({
     canonical_pivot: ['entity', 'intent'],
     min_messages: 5,
@@ -154,6 +158,31 @@ beforeEach(() => {
  * between those two, because writing by path is what quietly turns one folder into two.
  */
 describe('applying the canonical pivot', () => {
+  /**
+   * Card 21. `plan` and `view` stay open — they are pure functions of the facet rows, and the
+   * PWA's folders are built from them. Only the step that creates labels in a real mailbox is
+   * gated, and it refuses before it writes a single `user_labels` row.
+   */
+  it('refuses to create anything in a mailbox unless the export was turned on', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+
+    await expect(service().apply(ACCOUNT, USER)).rejects.toMatchObject({
+      code: 'GMAIL_WRITE_DISABLED',
+      statusCode: 503,
+    });
+    expect(mocks.ensureLabel).not.toHaveBeenCalled();
+    expect(mocks.userLabelUpsert).not.toHaveBeenCalled();
+  });
+
+  it('still plans the tree with the export off, because planning writes nothing', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+
+    const plan = await service().plan(ACCOUNT);
+
+    expect(plan.changes.length).toBeGreaterThan(0);
+    expect(mocks.ensureLabel).not.toHaveBeenCalled();
+  });
+
   it('creates a folder for a combination nothing has materialised yet', async () => {
     const result = await service().apply(ACCOUNT, USER);
 

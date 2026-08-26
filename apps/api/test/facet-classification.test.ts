@@ -81,6 +81,13 @@ function facetRule(input: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  /*
+   * Set here rather than inherited. This suite used to pass only because a sibling test file
+   * wrote GEMINI_API_KEY onto `process.env`, which every file in the same worker shares — so the
+   * whole suite silently depended on file ordering, and any change that shifted it turned twenty
+   * tests red for a reason that had nothing to do with the code.
+   */
+  env.GEMINI_API_KEY = 'test-gemini-key';
   mocks.stateUpsert.mockResolvedValue({});
   mocks.stateUpdateMany.mockResolvedValue({ count: 1 });
   mocks.patternFindMany.mockResolvedValue([]);

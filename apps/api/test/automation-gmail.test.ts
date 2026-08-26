@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createGmailClient: vi.fn(),
   findLabel: vi.fn(),
   upsertLabels: vi.fn(),
+  findAccount: vi.fn(),
 }));
 
 vi.mock('../src/integrations/gmail/gmail.client.js', () => ({
@@ -11,7 +12,10 @@ vi.mock('../src/integrations/gmail/gmail.client.js', () => ({
   withGmailRetry: (operation: () => Promise<unknown>) => operation(),
 }));
 vi.mock('../src/database/prisma.js', () => ({
-  prisma: { gmail_labels: { findFirst: mocks.findLabel } },
+  prisma: {
+    gmail_labels: { findFirst: mocks.findLabel },
+    connected_google_accounts: { findUnique: mocks.findAccount },
+  },
 }));
 vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
   gmailRepository: { upsertLabels: mocks.upsertLabels },
@@ -19,8 +23,42 @@ vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
 
 import { AutomationGmailService } from '../src/features/automation/automation-gmail.service.js';
 
+const MODIFY = 'https://www.googleapis.com/auth/gmail.modify';
+const READONLY = 'https://www.googleapis.com/auth/gmail.readonly';
+
 describe('AutomationGmailService', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Card 25. Every write here needs the restricted scope, and this suite is about mailboxes
+    // that granted it; the refusal when one did not is its own test below.
+    mocks.findAccount.mockResolvedValue({ granted_scopes: [MODIFY] });
+  });
+
+  /**
+   * Card 25. `GMAIL_WRITE_ENABLED` says whether this deployment offers the label export;
+   * `gmail.modify` says whether this person granted it. The second cannot be turned on from a
+   * config file, and finding it out here beats a 403 from Google four thousand messages into a
+   * filing run that has already half-moved the mailbox.
+   */
+  it('refuses every write on a mailbox connected for reading only', async () => {
+    mocks.findAccount.mockResolvedValue({ granted_scopes: [READONLY] });
+    mocks.findLabel.mockResolvedValue(null);
+    const service = new AutomationGmailService();
+
+    for (const attempt of [
+      () => service.ensureLabel('account-1', 'MailMind/Work'),
+      () => service.renameLabel('account-1', 'label-1', 'MailMind/Other'),
+      () => service.applyLabel('account-1', 'message-1', 'label-1'),
+      () => service.applyExclusiveLabel('account-1', 'message-1', 'label-1', []),
+    ]) {
+      await expect(attempt()).rejects.toMatchObject({
+        code: 'GMAIL_WRITE_SCOPE_MISSING',
+        statusCode: 403,
+      });
+    }
+    // It refuses before it builds a client, so nothing reached Google at all.
+    expect(mocks.createGmailClient).not.toHaveBeenCalled();
+  });
 
   it('creates a missing label once and applies it through messages.modify', async () => {
     const gmail = {

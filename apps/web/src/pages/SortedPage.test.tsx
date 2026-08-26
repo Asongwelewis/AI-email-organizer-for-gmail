@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getPivotSettings: vi.fn(),
+  setPivotSettings: vi.fn(),
   getPivotView: vi.fn(),
   getGmailStatus: vi.fn(),
   getFacetMessages: vi.fn(),
@@ -64,6 +65,10 @@ describe('SortedPage', () => {
       nodes: TREE,
       unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
       collapsed: 0,
+    });
+    mocks.setPivotSettings.mockResolvedValue({
+      canonicalPivot: ['entity', 'intent'],
+      minMessages: 5,
     });
     mocks.getGmailStatus.mockResolvedValue({ connected: true, email: 'ada@gmail.com' });
     mocks.getFacetMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
@@ -170,6 +175,52 @@ describe('SortedPage', () => {
       'href',
       '/folders',
     );
+  });
+
+  /**
+   * Card 23. One ordering was materialised because a message carries one MailMind label and no
+   * more — a Gmail constraint, not a product one. With Gmail out of the write path every ordering
+   * is available at once, and switching costs no reclassification and no remote call.
+   */
+  it('offers the orderings side by side and switches between them on read', async () => {
+    renderScreen(<SortedPage />, '/sorted');
+    await screen.findByText('Career');
+
+    await userEvent.click(screen.getByRole('button', { name: /Brand › What it wants/ }));
+
+    await waitFor(() => expect(mocks.getPivotView).toHaveBeenCalledWith(['entity', 'intent'], 5));
+    // Nothing was applied and nothing was saved: an arrangement is a question, not a change.
+    expect(mocks.setPivotSettings).not.toHaveBeenCalled();
+  });
+
+  // An ordering in the URL is what makes a view a link.
+  it('opens on the ordering the link names rather than the saved one', async () => {
+    renderScreen(<SortedPage />, '/sorted?order=intent,entity');
+
+    await waitFor(() => expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5));
+    expect(mocks.getPivotView).not.toHaveBeenCalledWith(['domain', 'intent'], 5);
+  });
+
+  // `facet_pivot_settings` stays the remembered default — which arrangement this screen opens on.
+  it('remembers an arrangement as the default when asked', async () => {
+    renderScreen(<SortedPage />, '/sorted?order=entity,intent');
+    await screen.findByText('Career');
+
+    await userEvent.click(await screen.findByRole('button', { name: /make this my default/i }));
+
+    await waitFor(() =>
+      expect(mocks.setPivotSettings).toHaveBeenCalledWith({
+        canonicalPivot: ['entity', 'intent'],
+        minMessages: 5,
+      }),
+    );
+  });
+
+  it('offers no default button on the arrangement that already is one', async () => {
+    renderScreen(<SortedPage />, '/sorted');
+    await screen.findByText('Career');
+
+    expect(screen.queryByRole('button', { name: /make this my default/i })).not.toBeInTheDocument();
   });
 
   it('surfaces the API error code inline when folders cannot be loaded', async () => {

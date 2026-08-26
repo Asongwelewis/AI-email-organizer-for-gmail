@@ -58,6 +58,38 @@ const messagesQuery = z
   })
   .strict();
 
+/**
+ * A facet value as it is spelled everywhere else: lowercase, hyphen-separated, bounded. Checking
+ * the shape here means a malformed filter is a 400 rather than a query that quietly matches
+ * nothing and reads to the person as "you have no mail like that".
+ */
+const facetValue = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'not a facet value');
+
+/**
+ * `?q=payment&intent=payment-failed&order=domain,intent`. Every part is optional here; the service
+ * is what refuses a search that constrains nothing, because "a phrase or at least one facet" is a
+ * rule about the search and not about the shape of the query string.
+ */
+const searchQuery = z
+  .object({
+    q: z.string().max(200).optional(),
+    entity: facetValue.optional(),
+    domain: facetValue.optional(),
+    intent: facetValue.optional(),
+    order: z
+      .string()
+      .transform((value) => value.split(',').map((part) => part.trim()))
+      .pipe(pivotOrder)
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    cursor: z.string().uuid().optional(),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -134,6 +166,37 @@ export class FacetsController {
 
   async apply(request: Request, response: Response): Promise<void> {
     response.json(await facetsService.apply(request.auth!.user.id));
+  }
+
+  /**
+   * Subject and sender across the whole mailbox, narrowed by any combination of facets, with the
+   * folder each hit sits in attached. No model call and no Gmail call.
+   */
+  async search(request: Request, response: Response): Promise<void> {
+    noStore(response);
+    const query = parse(searchQuery, request.query);
+    response.json(
+      await facetsService.search(
+        request.auth!.user.id,
+        query.q ?? null,
+        {
+          ...(query.entity === undefined ? {} : { entity: query.entity }),
+          ...(query.domain === undefined ? {} : { domain: query.domain }),
+          ...(query.intent === undefined ? {} : { intent: query.intent }),
+        },
+        {
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+          ...(query.order === undefined ? {} : { order: query.order as PivotFacet[] }),
+        },
+      ),
+    );
+  }
+
+  /** What there is to filter by, and how much mail sits behind each value. */
+  async vocabulary(request: Request, response: Response): Promise<void> {
+    noStore(response);
+    response.json(await facetsService.vocabulary(request.auth!.user.id));
   }
 }
 

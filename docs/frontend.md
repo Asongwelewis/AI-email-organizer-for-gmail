@@ -111,14 +111,20 @@ Unknown routes redirect to `/`.
 
 ### Protected routes
 
-Three screens, and only three. Everything you _watch_ happen was removed; what remains are the
-screens where a decision gets made. All of them render inside `ProtectedRoute` and `AppShell`:
+Everything you _watch_ happen was removed; what remains are the screens where a decision gets made
+or a message gets found. All of them render inside `ProtectedRoute` and `AppShell`:
 
 | Route       | Purpose                                                                    |
 | ----------- | -------------------------------------------------------------------------- |
-| `/sorted`   | The approved folder tree as tiles; drill in and open a message in Gmail    |
+| `/sorted`   | The folders, in any arrangement of the facets; drill in and open in Gmail  |
+| `/find`     | Search subject and sender across the mailbox, filtered by facet            |
+| `/folders`  | Shape an arrangement, preview its tree, keep it as the default             |
+| `/review`   | Decide the filings held back for a person                                  |
 | `/approve`  | Review a proposed folder tree and approve what you keep                    |
 | `/activity` | Run records, newest first, with state, progress, stop reasons, error codes |
+
+`/setup` is reachable but deliberately absent from the navigation: it is a path you walk once,
+linked to from wherever an account turns out not to be ready.
 
 `/dashboard/*` and `/settings/*` redirect to `/sorted`, `/labels` to `/approve`, and `/automation`
 to `/activity`. Unknown routes redirect to `/`.
@@ -185,13 +191,22 @@ Login does not grant Gmail access. Gmail authorization is a separate, user-initi
 out clears query data and redirects to login. Disconnecting Gmail invalidates both user and Gmail
 connection queries.
 
-## The three screens
+## The screens
 
 ### Sorted
 
-`GET /api/labels` returns the approved tree flat, with `parentId` and `depth`; the grid renders one
-level at a time and the breadcrumb walks back up. The open folder is held in the `?folder=` search
-parameter, so the browser's back button and an installed app's back gesture both work.
+`GET /api/facets/pivot/view` returns the tree flat, with `parentFacetKey` and `depth`; the grid
+renders one level at a time and the breadcrumb walks back up. The open folder is held in the
+`?folder=` search parameter, so the browser's back button and an installed app's back gesture both
+work.
+
+**Every arrangement, not one canonical one.** A folder is a facet combination, and `buildPivot` is
+a pure function of the facet rows, so `Netflix > Payment failed` and `Finance > Payment failed >
+Netflix` are two views of the same mail. The ordering is held in `?order=`, which is what makes a
+view a link; switching costs no reclassification and no remote call, and returns to the top level
+because a facet key names a combination in one ordering only. `facet_pivot_settings` remains the
+remembered default — which arrangement the screen opens on, and the only one that can be mirrored
+into Gmail.
 
 Each tile takes its colour from a hash of the folder's path, never from its position in the grid.
 Sorting, filtering, or adding a folder must not repaint the rest: a folder you have learned to find
@@ -208,6 +223,30 @@ decide whether it lands:
   nothing.
 - `?authuser=<connected email>`, not `/u/0/` — the `/u/N` index is per-browser-profile ordering, so
   with several Google accounts signed in `/u/0/` is whichever happens to be first.
+
+### Find
+
+`GET /api/facets/search`, over subject and sender across the whole mailbox, with any combination of
+facet filters. Query and filters live in the URL, so a search worth keeping is a link, and typing
+is debounced because the interesting searches here are half-remembered sentences rather than words.
+
+The facet filters are the part a Gmail label tree cannot do: `intent=payment-failed` across every
+brand at once is a question no single tree can be arranged to answer. Every hit carries the folder
+it sits in — "it was under Finance all along" is half of what was being asked — and, like Sorted,
+opens the message in Gmail rather than rendering it.
+
+Nothing here spends anything: no model call, no Gmail call, just Postgres full text over metadata
+the sync already stored.
+
+### Folders
+
+Reorder the facets, set the folder floor, and preview the tree the arrangement produces — all
+computed on read. Saving decides which arrangement Sorted opens on and nothing else.
+
+Mirroring into Gmail is a collapsed, optional section, because it is opt-in on the server and off
+by default. Only the saved arrangement can be mirrored: a message wears one Gmail label and no
+more, which is the constraint that used to make "canonical" a real word here. A refusal comes back
+as `GMAIL_WRITE_DISABLED` and is rendered as a setting rather than a failure.
 
 ### Approve
 

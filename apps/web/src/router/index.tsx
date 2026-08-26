@@ -12,6 +12,7 @@ import { LoginPage } from '@web/pages/LoginPage';
 import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
 import { ActivityPage } from '@web/pages/ActivityPage';
 import { ApprovePage } from '@web/pages/ApprovePage';
+import { FindPage } from '@web/pages/FindPage';
 import { SortedPage } from '@web/pages/SortedPage';
 import { SetupPage } from '@web/pages/SetupPage';
 import { ReviewPage } from '@web/pages/ReviewPage';
@@ -41,6 +42,7 @@ const publicRoutes: RouteObject[] = [
 const appRoutes: RouteObject[] = [
   { path: '/setup', element: <SetupPage /> },
   { path: '/sorted', element: <SortedPage /> },
+  { path: '/find', element: <FindPage /> },
   { path: '/folders', element: <PivotPage /> },
   { path: '/review', element: <ReviewPage /> },
   { path: '/approve', element: <ApprovePage /> },

@@ -87,6 +87,20 @@ export function SetupPage() {
     },
   });
 
+  /*
+   * Card 25. Google's grants are cumulative per client, so asking for less does not take the wider
+   * scope back — an account connected before the read-only downgrade keeps `gmail.modify` until
+   * the grant is revoked and made again. Revoking is exactly what disconnecting does, so narrowing
+   * is a disconnect followed by a fresh connect rather than a new endpoint.
+   */
+  const narrowMutation = useMutation({
+    mutationFn: () => api.disconnectGmail(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.gmailConnection });
+      window.location.assign(getBackendRedirectUrl('/integrations/google/connect'));
+    },
+  });
+
   const classifyMutation = useMutation({
     mutationFn: () => api.classifyFacets(),
     onSuccess: () => {
@@ -122,7 +136,7 @@ export function SetupPage() {
           description={
             connection?.requiresReauthentication
               ? 'Your Gmail access expired. Reconnect to carry on.'
-              : 'MailMind reads message headers only — never the body of an email, and never an attachment.'
+              : 'MailMind asks for read-only access and reads message headers only — never the body of an email, and never an attachment.'
           }
         >
           <a
@@ -172,6 +186,33 @@ export function SetupPage() {
         </Step>
       </ol>
 
+      {/*
+        MailMind cannot write to a mailbox it only reads, and it no longer needs to. Holding an
+        unused permission to alter someone's mail is worth offering to give back rather than
+        quietly keeping.
+      */}
+      {connection?.holdsUnusedWriteScope ? (
+        <div className="notice" role="status">
+          <div className="notice__body">
+            <p className="notice__title">MailMind can still change your mail</p>
+            <p className="notice__message">
+              This mailbox was connected when MailMind wrote labels into Gmail, so it still holds
+              permission to alter and delete your mail. It does not use it. Narrowing reconnects you
+              with read-only access — your folders are built here and are unaffected.
+            </p>
+          </div>
+          <button
+            className="button button--quiet"
+            type="button"
+            disabled={narrowMutation.isPending}
+            onClick={() => narrowMutation.mutate()}
+          >
+            {narrowMutation.isPending ? 'Narrowing…' : 'Narrow to read-only'}
+          </button>
+        </div>
+      ) : null}
+
+      {narrowMutation.isError ? <ErrorNotice error={narrowMutation.error} /> : null}
       {syncMutation.isError ? <ErrorNotice error={syncMutation.error} /> : null}
       {classifyMutation.isError ? <ErrorNotice error={classifyMutation.error} /> : null}
 
