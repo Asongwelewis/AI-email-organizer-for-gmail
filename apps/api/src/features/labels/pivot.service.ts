@@ -55,6 +55,8 @@ export interface PivotApplyResult extends PivotPlan {
   rowsKept: number;
   gmailLabelsCreated: number;
   gmailLabelsReused: number;
+  /** Folders whose combination survived a change in how one of its values is spelled. */
+  gmailLabelsRenamed: number;
 }
 
 function parsePivot(values: string[], fallback: PivotFacet[]): PivotFacet[] {
@@ -199,6 +201,12 @@ export class PivotService {
       if (row.facet_key) idByFacetKey.set(row.facet_key, row.id);
     }
 
+    const rowByFacetKey = new Map(
+      existing.filter((row) => row.facet_key).map((row) => [row.facet_key!, row]),
+    );
+    /** Folders whose combination is unchanged but whose spelling is not. */
+    const renamed: Array<{ from: string; to: string; gmailLabelId: string | null }> = [];
+
     for (const change of sorted) {
       const node = plan.changes.find((entry) => entry.facetKey === change.facetKey)!;
       const parentFacetKey = parentKeyOf(change.facetKey);
@@ -208,30 +216,63 @@ export class PivotService {
         continue;
       }
       const leafName = node.fullPath.split('/').at(-1)!;
-      const row = await prisma.user_labels.upsert({
-        where: {
-          connected_google_account_id_full_path: {
-            connected_google_account_id: accountId,
-            full_path: node.fullPath,
+      // The same normal form every other writer uses. Two spellings of "normalised" under one
+      // uniqueness index would let near-duplicate siblings both insert.
+      const spelling = {
+        leaf_name: leafName,
+        full_path: node.fullPath,
+        normalized_name: normalizeLabelForComparison(leafName),
+      };
+
+      // Identity is the facet key, not the path. Writing by path instead would meet an existing
+      // row's facet key on the unique index and fail the whole apply the first time a value's
+      // spelling changed — and a spelling change is the one thing a folder is allowed to survive.
+      const current = rowByFacetKey.get(change.facetKey);
+      let row;
+      if (current) {
+        if (current.full_path !== node.fullPath) {
+          renamed.push({
+            from: current.full_path,
+            to: node.fullPath,
+            gmailLabelId: current.gmail_label_id,
+          });
+        }
+        row = await prisma.user_labels.update({
+          where: { id: current.id },
+          data: { ...spelling, parent_id: parentId, depth: change.depth },
+        });
+      } else {
+        row = await prisma.user_labels.upsert({
+          where: {
+            connected_google_account_id_full_path: {
+              connected_google_account_id: accountId,
+              full_path: node.fullPath,
+            },
           },
-        },
-        create: {
-          connected_google_account_id: accountId,
-          parent_id: parentId,
-          depth: change.depth,
-          leaf_name: leafName,
-          full_path: node.fullPath,
-          // The same normal form every other writer uses. Two spellings of "normalised" under one
-          // uniqueness index would let near-duplicate siblings both insert.
-          normalized_name: normalizeLabelForComparison(leafName),
-          facet_key: change.facetKey,
-          source: 'AI_PROPOSED',
-        },
-        update: { facet_key: change.facetKey, parent_id: parentId, depth: change.depth },
-      });
+          create: {
+            connected_google_account_id: accountId,
+            parent_id: parentId,
+            depth: change.depth,
+            ...spelling,
+            facet_key: change.facetKey,
+            source: 'AI_PROPOSED',
+          },
+          update: { facet_key: change.facetKey, parent_id: parentId, depth: change.depth },
+        });
+      }
       idByFacetKey.set(change.facetKey, row.id);
       if (change.action === 'CREATE') rowsCreated += 1;
       else rowsKept += 1;
+    }
+
+    // A renamed folder keeps its Gmail label id, so the mail already under it stays under it.
+    // Creating a second label at the new spelling would strand every message beneath the old one,
+    // because deleting a Gmail label never unlabels the mail it carried.
+    let gmailLabelsRenamed = 0;
+    for (const rename of renamed) {
+      if (!rename.gmailLabelId) continue;
+      await this.gmail.renameLabel(accountId, rename.gmailLabelId, rename.to);
+      gmailLabelsRenamed += 1;
     }
 
     let gmailLabelsCreated = 0;
@@ -260,10 +301,18 @@ export class PivotService {
         rowsKept,
         gmailLabelsCreated,
         gmailLabelsReused,
+        gmailLabelsRenamed,
         orphanedLeftAlone: plan.orphaned.length,
       },
     });
-    return { ...plan, rowsCreated, rowsKept, gmailLabelsCreated, gmailLabelsReused };
+    return {
+      ...plan,
+      rowsCreated,
+      rowsKept,
+      gmailLabelsCreated,
+      gmailLabelsReused,
+      gmailLabelsRenamed,
+    };
   }
 
   async setPivot(accountId: string, order: PivotFacet[], minMessages?: number): Promise<void> {

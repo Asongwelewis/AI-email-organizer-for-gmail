@@ -188,14 +188,23 @@ also hold mail — only leaves exist in Gmail — so that mail stays in the inbo
 being pushed into an invented "Other" folder.
 
 `user_labels.facet_key` (`"entity=netflix|intent=payment-failed"`) is a folder's identity; the path
-is only how it is spelled. Re-applying a pivot matches on it, so **an existing folder keeps its row
-and its `gmail_label_id`** instead of being recreated. Folder names are unique among **siblings**
-rather than across the account, because a pivot repeats its lower levels by construction; Gmail's
-own requirement is full-path uniqueness, which `user_labels_account_path_unique_idx` enforces.
+is only how it is spelled. Both planning **and applying** match on it, so **an existing folder keeps
+its row and its `gmail_label_id`** instead of being recreated. That distinction is load-bearing:
+writing by path instead would meet the existing row's key on the partial unique index
+`user_labels_account_facet_key_unique_idx` and fail the whole apply the first time a value's
+spelling changed. A folder whose combination is unchanged but whose spelling is not is updated in
+place and its Gmail label **renamed**, which keeps the label id and therefore keeps the mail already
+under it; creating a second label at the new spelling would strand every message beneath the old
+one. A folder the tree planner created carries no facet key, so it is matched by path instead and
+adopted rather than duplicated.
 
-Apply only ever _creates_ leaf labels. It never deletes a label and never unlabels mail: folders
-that match no current combination are reported and left alone, because deleting a Gmail label does
-not unlabel the mail beneath it. `scripts/unapply-pivot.ts` reverses a pivot against a snapshot from
+Folder names are unique among **siblings** rather than across the account, because a pivot repeats
+its lower levels by construction; Gmail's own requirement is full-path uniqueness, which
+`user_labels_account_path_unique_idx` enforces.
+
+Apply only ever _creates_ leaf labels, or renames one it already owns. It never deletes a label and
+never unlabels mail: folders that match no current combination are reported and left alone, because
+deleting a Gmail label does not unlabel the mail beneath it. `scripts/unapply-pivot.ts` reverses a pivot against a snapshot from
 `scripts/backup-before-pivot.ts`.
 
 ### Filing through the pivot
