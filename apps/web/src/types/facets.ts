@@ -33,8 +33,11 @@ export interface PivotNode {
 export interface PivotView {
   order: PivotFacet[];
   nodes: PivotNode[];
-  /** Mail whose top facet is unknown, so it has no folder to go in and stays in the inbox. */
-  unfiled: number;
+  /**
+   * Mail that reached no folder, and why. The split matters when tuning the floor: mail below the
+   * threshold comes back by lowering it, mail with no facet value does not.
+   */
+  unfiled: { total: number; noFacetValue: number; belowThreshold: number };
   /** Combinations too small to deserve a folder; their mail files one level up. */
   collapsed: number;
 }
@@ -54,7 +57,7 @@ export interface PivotPlan {
    * alone: deleting a Gmail label does not unlabel the mail beneath it.
    */
   orphaned: Array<{ id: string; fullPath: string; gmailLabelId: string | null }>;
-  unfiled: number;
+  unfiled: { total: number; noFacetValue: number; belowThreshold: number };
   collapsed: number;
   totalMessages: number;
   gmailLabelsToCreate: number;

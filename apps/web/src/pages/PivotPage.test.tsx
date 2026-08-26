@@ -37,7 +37,7 @@ const view = (overrides = {}) => ({
       isLeaf: true,
     },
   ],
-  unfiled: 7,
+  unfiled: { total: 7, noFacetValue: 2, belowThreshold: 5 },
   collapsed: 3,
   ...overrides,
 });
@@ -73,6 +73,13 @@ describe('PivotPage', () => {
     expect(screen.getByText('What it wants')).toBeInTheDocument();
     expect(await screen.findByText('Payment failed')).toBeInTheDocument();
     expect(screen.getByText(/7 staying in the inbox/)).toBeInTheDocument();
+    /*
+     * `unfiled` is a breakdown, not a count. Rendering the object itself printed nothing useful,
+     * and the fixture agreed with the bug — which is why the split is asserted rather than the
+     * total alone. It is also what makes the floor tunable: mail below the threshold comes back
+     * by lowering it, mail with no facet value does not.
+     */
+    expect(screen.getByText(/5 of them just below the floor/)).toBeInTheDocument();
   });
 
   /**

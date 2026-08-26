@@ -242,7 +242,12 @@ export function PivotPage() {
           <p className="plan-meta">
             <span>{formatCount(viewQuery.data.nodes.length)} folders</span>
             <span>{formatCount(viewQuery.data.collapsed)} too small to be one</span>
-            <span>{formatCount(viewQuery.data.unfiled)} staying in the inbox</span>
+            <span>{formatCount(viewQuery.data.unfiled.total)} staying in the inbox</span>
+            {/* The split is what makes the floor tunable: mail below the threshold comes back by
+                lowering it, mail with no facet value does not. */}
+            <span>
+              {formatCount(viewQuery.data.unfiled.belowThreshold)} of them just below the floor
+            </span>
           </p>
         </>
       ) : null}

@@ -7,6 +7,7 @@
  *
  *   npm run pivot:facets --workspace @mailmind/api
  *   npm run pivot:facets --workspace @mailmind/api -- --alternate
+ *   npm run pivot:facets --workspace @mailmind/api -- --pivot domain,intent,entity
  *   npm run pivot:facets --workspace @mailmind/api -- --min 8
  *   npm run pivot:facets --workspace @mailmind/api -- --apply
  */
@@ -103,6 +104,27 @@ async function main(): Promise<void> {
       `Canonical pivot [${settings.canonicalPivot.join(' > ')}], ` +
       `folders below ${settings.minMessages} message(s) collapse.`,
   );
+  write();
+
+  /*
+   * The floor fragments hard as the pivot deepens: at three levels every leaf needs `min` messages
+   * for a whole domain/intent/entity triple, so most collapse back to two. Card 16 says to tune
+   * the threshold before applying, and tuning it one value per run is how nobody does it.
+   */
+  write('Folder count against the floor, for this ordering:');
+  write('─'.repeat(78));
+  for (const candidate of [2, 3, 5, 8, 12, 20]) {
+    const trial = buildPivot(messages, settings.canonicalPivot, { minMessages: candidate });
+    const leaves = trial.nodes.filter((node) => node.isLeaf).length;
+    const marker = candidate === settings.minMessages ? '→' : ' ';
+    write(
+      `${marker} min ${String(candidate).padStart(2)}  ` +
+        `${String(trial.nodes.length).padStart(4)} folders  ` +
+        `${String(leaves).padStart(4)} leaves  ` +
+        `${String(trial.unfiled.total).padStart(5)} in the inbox ` +
+        `(${trial.unfiled.belowThreshold} of them just below the floor)`,
+    );
+  }
   write();
 
   printTree('CANONICAL', buildPivot(messages, settings.canonicalPivot, settings));
