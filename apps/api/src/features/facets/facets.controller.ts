@@ -41,6 +41,23 @@ const viewQuery = z
   })
   .strict();
 
+/**
+ * `entity=netflix|intent=payment-failed`. Bounded and shape-checked here so a malformed key is a
+ * 400 rather than a query, and so the length of a facet value cannot be used to push work into
+ * the database.
+ */
+const messagesQuery = z
+  .object({
+    facetKey: z
+      .string()
+      .min(3)
+      .max(200)
+      .regex(/^[a-z]+=[^|]+(\|[a-z]+=[^|]+)*$/, 'not a facet key'),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    cursor: z.string().uuid().optional(),
+  })
+  .strict();
+
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -100,6 +117,18 @@ export class FacetsController {
         query.order as PivotFacet[] | undefined,
         query.minMessages,
       ),
+    );
+  }
+
+  /** The mail inside one folder, newest first. Metadata only, and no Gmail call. */
+  async folderMessages(request: Request, response: Response): Promise<void> {
+    noStore(response);
+    const query = parse(messagesQuery, request.query);
+    response.json(
+      await facetsService.folderMessages(request.auth!.user.id, query.facetKey, {
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+        ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+      }),
     );
   }
 

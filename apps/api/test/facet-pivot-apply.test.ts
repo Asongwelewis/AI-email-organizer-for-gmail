@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   pivotSettingsUpsert: vi.fn(),
   facetFindMany: vi.fn(),
+  facetCount: vi.fn(),
   gmailLabelFindMany: vi.fn(),
   userLabelFindMany: vi.fn(),
   userLabelUpsert: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock('../src/audit/audit.service.js', () => ({
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
     facet_pivot_settings: { upsert: mocks.pivotSettingsUpsert },
-    message_facets: { findMany: mocks.facetFindMany },
+    message_facets: { findMany: mocks.facetFindMany, count: mocks.facetCount },
     gmail_labels: { findMany: mocks.gmailLabelFindMany },
     user_labels: {
       findMany: mocks.userLabelFindMany,
@@ -128,6 +129,7 @@ beforeEach(() => {
     min_messages: 5,
   });
   mocks.facetFindMany.mockResolvedValue(netflixMail());
+  mocks.facetCount.mockResolvedValue(0);
   mocks.gmailLabelFindMany.mockResolvedValue([]);
   mocks.userLabelFindMany.mockResolvedValue([]);
   mocks.userLabelUpsert.mockImplementation(async ({ create }: { create: { full_path: string } }) =>
@@ -305,5 +307,93 @@ describe('the orderings that are never materialised', () => {
     expect(mocks.userLabelUpdate).not.toHaveBeenCalled();
     expect(mocks.ensureLabel).not.toHaveBeenCalled();
     expect(mocks.auditRecord).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The folder view reads facets directly. It must work with no `user_labels` row and with no
+ * `apply` ever having run — that is what makes the PWA the folder view rather than a reflection
+ * of what was written to Gmail.
+ */
+describe('the mail inside a folder', () => {
+  const row = (id: string) => ({
+    gmail_message_id: id,
+    entity: 'netflix',
+    domain: 'entertainment',
+    intent: 'payment-failed',
+    message: {
+      gmail_message_id: `g-${id}`,
+      subject: 'Your payment could not be processed',
+      sender_name: 'Netflix',
+      sender_email: 'info@netflix.com',
+      snippet: 'We were unable to charge your card.',
+      internal_date: new Date('2026-08-20T00:00:00.000Z'),
+      is_unread: true,
+    },
+  });
+
+  it('constrains on exactly the facets the key names', async () => {
+    mocks.facetFindMany.mockResolvedValue([row('a')]);
+    mocks.facetCount.mockResolvedValue(1);
+
+    const result = await service().folderMessages(ACCOUNT, 'entity=netflix|intent=payment-failed');
+
+    expect(mocks.facetFindMany.mock.calls[0]![0].where).toMatchObject({
+      connected_google_account_id: ACCOUNT,
+      entity: 'netflix',
+      intent: 'payment-failed',
+    });
+    // Newest first, and by id after that so a cursor never straddles two messages that arrived
+    // in the same second.
+    expect(mocks.facetFindMany.mock.calls[0]![0].orderBy).toEqual([
+      { message: { internal_date: 'desc' } },
+      { gmail_message_id: 'desc' },
+    ]);
+    expect(result.messages[0]).toMatchObject({
+      gmailMessageId: 'g-a',
+      subject: 'Your payment could not be processed',
+    });
+  });
+
+  // Opening a parent asks "everything under here", which is a different question from where the
+  // pivot placed each message. `entity=netflix` must not silently also filter by intent.
+  it('reads a parent folder as its whole subtree', async () => {
+    mocks.facetFindMany.mockResolvedValue([row('a')]);
+    mocks.facetCount.mockResolvedValue(1);
+
+    await service().folderMessages(ACCOUNT, 'entity=netflix');
+
+    const where = mocks.facetFindMany.mock.calls[0]![0].where;
+    expect(where.entity).toBe('netflix');
+    expect(where).not.toHaveProperty('intent');
+    expect(where).not.toHaveProperty('domain');
+  });
+
+  /**
+   * A key that constrains nothing would leave the where clause as the account alone and hand back
+   * the entire mailbox under one folder heading.
+   */
+  it('refuses a key that constrains nothing', async () => {
+    for (const key of ['', 'sender=netflix', 'notafacet=x']) {
+      await expect(service().folderMessages(ACCOUNT, key)).rejects.toMatchObject({
+        code: 'LABEL_VALIDATION_FAILED',
+      });
+    }
+    expect(mocks.facetFindMany).not.toHaveBeenCalled();
+  });
+
+  // One combination in the real mailbox holds 1,823 messages, so a folder has to page.
+  it('hands back a cursor only while there is another page', async () => {
+    mocks.facetCount.mockResolvedValue(3);
+    mocks.facetFindMany.mockResolvedValue([row('a'), row('b'), row('c')]);
+
+    const full = await service().folderMessages(ACCOUNT, 'entity=netflix', { limit: 2 });
+    expect(full.messages).toHaveLength(2);
+    expect(full.nextCursor).toBe('b');
+    expect(full.total).toBe(3);
+
+    mocks.facetFindMany.mockResolvedValue([row('a')]);
+    const last = await service().folderMessages(ACCOUNT, 'entity=netflix', { limit: 2 });
+    expect(last.nextCursor).toBeNull();
   });
 });

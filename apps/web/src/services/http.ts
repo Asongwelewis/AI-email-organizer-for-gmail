@@ -10,6 +10,7 @@ import type {
 } from '@web/types/auth';
 import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type {
+  FolderMessages,
   PivotApplyResult,
   PivotFacet,
   PivotPlan,
@@ -247,6 +248,24 @@ export const api = {
       params: {
         order: order.join(','),
         ...(minMessages === undefined ? {} : { minMessages }),
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * The mail inside one folder. Keyed by facet combination, not by a folder row, so it works
+   * whether or not a pivot was ever applied to Gmail.
+   */
+  async getFacetMessages(
+    facetKey: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<FolderMessages> {
+    const response = await http.get<FolderMessages>('/facets/messages', {
+      params: {
+        facetKey,
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       },
     });
     return response.data;

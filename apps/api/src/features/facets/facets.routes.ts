@@ -31,6 +31,11 @@ facetsRouter.put(
   asyncHandler((request, response) => facetsController.setSettings(request, response)),
 );
 facetsRouter.get(
+  '/messages',
+  classificationReadLimiter,
+  asyncHandler((request, response) => facetsController.folderMessages(request, response)),
+);
+facetsRouter.get(
   '/pivot/plan',
   classificationReadLimiter,
   asyncHandler((request, response) => facetsController.plan(request, response)),

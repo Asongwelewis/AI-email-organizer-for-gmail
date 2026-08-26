@@ -502,6 +502,35 @@ Any ordering at all, materialised or not — the same facet rows arranged differ
 `Finance > Payment failed > Netflix` are the same mail, reordered, with nothing reclassified. Both
 parameters are optional and fall back to the account's settings.
 
+### `GET /api/facets/messages?facetKey=entity%3Dnetflix%7Cintent%3Dpayment-failed`
+
+The mail inside one folder, newest first. A folder **is** a facet combination, so this is keyed by
+that combination rather than by a `user_labels` row — it works whether or not a pivot was ever
+applied to Gmail, which is what lets the PWA be the folder view rather than a reflection of one.
+
+**Subtree semantics.** `entity=netflix` returns every Netflix message, including the ones the pivot
+placed deeper under `Payment failed`. `buildPivot` puts a message at its deepest surviving leaf
+because a message wears one label; a person opening a parent folder is asking "everything under
+here", and that is what comes back.
+
+Metadata only — subject, sender, date, the stored snippet, and the Gmail id the deep link
+addresses. Never a body.
+
+```json
+{
+  "messages": [{ "id": "…", "gmailMessageId": "18f0abc", "subject": "…", "senderName": "…" }],
+  "nextCursor": "…",
+  "total": 1823
+}
+```
+
+`limit` defaults to 50 and caps at 200; `cursor` is the previous page's `nextCursor`. One
+combination in a real mailbox holds 1,823 messages, so a folder pages.
+
+`400 FACET_VALIDATION_FAILED` if the key is not a facet combination. A key constraining nothing
+would hand back the entire mailbox under a folder heading, so the shape is checked before it
+reaches a query.
+
 ### `POST /api/facets/pivot/apply`
 
 Writes the canonical pivot into `user_labels` and creates the missing **leaf** paths in Gmail.

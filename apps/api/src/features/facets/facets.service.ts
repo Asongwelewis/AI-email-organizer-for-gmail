@@ -155,6 +155,20 @@ export class FacetsService {
    * by the number of messages. It never deletes — folders that match no current combination come
    * back in `orphaned` for a person to decide about.
    */
+  /**
+   * The mail inside one folder. Reads `message_facets` directly, so it works whether or not a
+   * pivot was ever applied to Gmail — which is what lets the PWA be the folder view rather than a
+   * reflection of one.
+   */
+  async folderMessages(
+    userId: string,
+    facetKey: string,
+    options: { limit?: number; cursor?: string } = {},
+  ) {
+    const account = await this.accounts.activeAccountForUser(userId);
+    return this.pivots.folderMessages(account.id, facetKey, options);
+  }
+
   async apply(userId: string): Promise<PivotApplyResult> {
     const account = await this.accounts.activeAccountForUser(userId);
     return this.pivots.apply(account.id, userId);
