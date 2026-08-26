@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   plan: vi.fn(),
   view: vi.fn(),
   apply: vi.fn(),
+  folderMessages: vi.fn(),
 }));
 
 vi.mock('../src/sessions/session.service.js', () => ({
@@ -68,6 +69,7 @@ describe('facet HTTP routes', () => {
     mocks.plan.mockResolvedValue({ changes: [], orphaned: [], gmailLabelsToCreate: 0 });
     mocks.view.mockResolvedValue({ order: ['domain', 'intent'], nodes: [] });
     mocks.apply.mockResolvedValue({ rowsCreated: 2, gmailLabelsCreated: 1, orphaned: [] });
+    mocks.folderMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
   });
 
   it('requires a session on every route', async () => {
@@ -79,6 +81,7 @@ describe('facet HTTP routes', () => {
       ['get', '/api/facets/pivot'],
       ['get', '/api/facets/pivot/plan'],
       ['get', '/api/facets/pivot/view'],
+      ['get', '/api/facets/messages?facetKey=entity%3Dnetflix'],
       ['post', '/api/facets/classify'],
       ['post', '/api/facets/file'],
       ['post', '/api/facets/pivot/apply'],
@@ -184,6 +187,55 @@ describe('facet HTTP routes', () => {
 
     expect(response.status).toBe(400);
     expect(mocks.view).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The folder view reads from `message_facets`, not from `user_labels` and not from Gmail. That
+   * is what lets the PWA be the folder view rather than a reflection of one, and it is why the
+   * key is a facet combination rather than a folder row id.
+   */
+  it('lists the mail inside one folder', async () => {
+    const response = await request(app).get(
+      '/api/facets/messages?facetKey=entity%3Dnetflix%7Cintent%3Dpayment-failed&limit=25',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(mocks.folderMessages).toHaveBeenCalledWith(
+      'user-id',
+      'entity=netflix|intent=payment-failed',
+      { limit: 25 },
+    );
+  });
+
+  it('carries a cursor through so a big folder pages', async () => {
+    const cursor = '11111111-1111-4111-8111-111111111111';
+    await request(app).get(`/api/facets/messages?facetKey=entity%3Dnetflix&cursor=${cursor}`);
+
+    expect(mocks.folderMessages).toHaveBeenCalledWith('user-id', 'entity=netflix', { cursor });
+  });
+
+  /**
+   * A key that constrains nothing would hand back the entire mailbox under a folder heading, so
+   * the shape is checked before it ever reaches a query.
+   */
+  it('refuses a key that is not a facet combination', async () => {
+    for (const facetKey of ['netflix', 'entity=', '=netflix', 'entity=a|', 'DROP TABLE']) {
+      const response = await request(app).get(
+        `/api/facets/messages?facetKey=${encodeURIComponent(facetKey)}`,
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(mocks.folderMessages).not.toHaveBeenCalled();
+  });
+
+  it('refuses a limit outside the allowed range', async () => {
+    const response = await request(app).get(
+      '/api/facets/messages?facetKey=entity%3Dnetflix&limit=5000',
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.folderMessages).not.toHaveBeenCalled();
   });
 
   /**

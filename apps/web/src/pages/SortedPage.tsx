@@ -4,66 +4,85 @@ import { ChevronRight, ExternalLink, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
-import { FolderActions } from '@web/components/app/FolderActions';
 import { FolderTile } from '@web/components/app/FolderTile';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatTimestamp } from '@web/lib/format';
 import { gmailMessageUrl } from '@web/lib/gmailLink';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
-import type { UserLabel } from '@web/types/labels';
+import type { PivotNode } from '@web/types/facets';
 
-/** Folders are nested by parentId; the grid only ever shows one level at a time. */
-function childrenOf(labels: UserLabel[], parentId: string | null): UserLabel[] {
-  return labels
-    .filter((label) => label.parentId === parentId)
-    .sort((left, right) => left.leafName.localeCompare(right.leafName));
+/**
+ * The folder view, read straight from the facets.
+ *
+ * It used to read `user_labels` and ask for the mail in a folder by row id — an endpoint that was
+ * never built, so opening a folder 404'd and Gmail's own labels were doing all the organising.
+ * Now the tree is `buildPivot` over `message_facets` and a folder's contents are the messages
+ * matching its combination, so none of this depends on a folder row or on anything ever having
+ * been written to Gmail.
+ */
+
+/** One level at a time. Folders are nested by their parent's facet key. */
+function childrenOf(nodes: PivotNode[], parentFacetKey: string | null): PivotNode[] {
+  return nodes
+    .filter((node) => node.parentFacetKey === parentFacetKey)
+    .sort((left, right) => right.subtreeMessageCount - left.subtreeMessageCount);
 }
 
-function trailTo(labels: UserLabel[], folderId: string | null): UserLabel[] {
-  const byId = new Map(labels.map((label) => [label.id, label]));
-  const trail: UserLabel[] = [];
-  let current = folderId ? byId.get(folderId) : undefined;
+/** The path back to the top, built by walking parent keys. */
+function trailTo(nodes: PivotNode[], facetKey: string | null): PivotNode[] {
+  const byKey = new Map(nodes.map((node) => [node.facetKey, node]));
+  const trail: PivotNode[] = [];
+  let current = facetKey ? byKey.get(facetKey) : undefined;
   while (current) {
     trail.unshift(current);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
+    current = current.parentFacetKey ? byKey.get(current.parentFacetKey) : undefined;
   }
   return trail;
 }
 
 export function SortedPage() {
   const [params, setParams] = useSearchParams();
-  const folderId = params.get('folder');
+  const facetKey = params.get('folder');
   const [search, setSearch] = useState('');
 
-  const labelsQuery = useQuery({
-    queryKey: queryKeys.labels,
-    queryFn: () => api.getLabels(),
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.pivotSettings,
+    queryFn: () => api.getPivotSettings(),
+  });
+  const order = settingsQuery.data?.canonicalPivot ?? [];
+
+  const viewQuery = useQuery({
+    queryKey: queryKeys.pivotView(order),
+    queryFn: () => api.getPivotView(order, settingsQuery.data?.minMessages),
+    enabled: order.length > 0,
   });
   const connectionQuery = useQuery({
     queryKey: queryKeys.gmailConnection,
     queryFn: () => api.getGmailStatus(),
   });
 
-  const labels = useMemo(() => labelsQuery.data?.labels ?? [], [labelsQuery.data]);
-  const trail = useMemo(() => trailTo(labels, folderId), [labels, folderId]);
+  const nodes = useMemo(() => viewQuery.data?.nodes ?? [], [viewQuery.data]);
+  const trail = useMemo(() => trailTo(nodes, facetKey), [nodes, facetKey]);
   const current = trail.at(-1) ?? null;
   const term = search.trim().toLowerCase();
 
   // Searching looks through the whole tree, not just the level in view: a folder you remember by
   // name should not require retracing the path you filed it under.
   const visible = useMemo(() => {
-    const level = childrenOf(labels, current?.id ?? null);
+    const level = childrenOf(nodes, current?.facetKey ?? null);
     if (!term) return level;
-    return labels
-      .filter((label) => label.leafName.toLowerCase().includes(term))
-      .sort((left, right) => left.path.localeCompare(right.path));
-  }, [labels, current, term]);
+    return nodes
+      .filter((node) => node.leafName.toLowerCase().includes(term))
+      .sort((left, right) => left.fullPath.localeCompare(right.fullPath));
+  }, [nodes, current, term]);
 
-  const openFolder = (id: string | null) => {
+  const openFolder = (key: string | null) => {
     setSearch('');
-    setParams(id ? { folder: id } : {}, { replace: false });
+    setParams(key ? { folder: key } : {}, { replace: false });
   };
+
+  const loading = settingsQuery.isPending || viewQuery.isPending;
 
   return (
     <section className="screen">
@@ -87,7 +106,7 @@ export function SortedPage() {
             All folders
           </button>
           {trail.map((folder, index) => (
-            <span className="crumbs__step" key={folder.id}>
+            <span className="crumbs__step" key={folder.facetKey}>
               <ChevronRight aria-hidden="true" strokeWidth={1.5} />
               {index === trail.length - 1 ? (
                 <span aria-current="page">{folder.leafName}</span>
@@ -95,7 +114,7 @@ export function SortedPage() {
                 <button
                   type="button"
                   className="crumbs__link"
-                  onClick={() => openFolder(folder.id)}
+                  onClick={() => openFolder(folder.facetKey)}
                 >
                   {folder.leafName}
                 </button>
@@ -105,20 +124,19 @@ export function SortedPage() {
         </nav>
       ) : null}
 
-      {labelsQuery.isPending ? <LoadingState label="Loading folders" /> : null}
-      {labelsQuery.isError ? (
+      {loading ? <LoadingState label="Loading folders" /> : null}
+      {viewQuery.isError ? (
         <ErrorNotice
-          error={labelsQuery.error}
+          error={viewQuery.error}
           title="Folders could not be loaded"
-          onRetry={() => void labelsQuery.refetch()}
+          onRetry={() => void viewQuery.refetch()}
         />
       ) : null}
 
-      {labelsQuery.isSuccess && labels.length === 0 ? (
+      {!loading && nodes.length === 0 ? (
         /*
-         * This used to point at Approve, which is precisely where a fresh account got a 409: no
-         * Gmail connected and no mail synced. An empty screen has to name the step that is
-         * actually missing, so it sends people where the work is.
+         * An empty screen has to name the step that is actually missing. This used to point at
+         * Approve, which is where a fresh account got a 409.
          */
         connectionQuery.data && !connectionQuery.data.connected ? (
           <EmptyState
@@ -133,7 +151,7 @@ export function SortedPage() {
         ) : (
           <EmptyState
             title="No folders yet"
-            description="Your mail is read but not arranged. Choose how it should be grouped and apply it."
+            description="Your mail has not been sorted into facets yet, or every group is below the folder floor."
             action={
               <Link className="button button--primary" to="/folders">
                 Shape my folders
@@ -147,26 +165,23 @@ export function SortedPage() {
         <div className="tile-grid">
           {visible.map((folder) => (
             <FolderTile
-              key={folder.id}
+              key={folder.facetKey}
               name={folder.leafName}
-              path={folder.path}
-              count={folder.messageCount ?? null}
-              childCount={childrenOf(labels, folder.id).length}
-              onOpen={() => openFolder(folder.id)}
+              path={folder.fullPath}
+              count={folder.isLeaf ? folder.messageCount : folder.subtreeMessageCount}
+              childCount={childrenOf(nodes, folder.facetKey).length}
+              onOpen={() => openFolder(folder.facetKey)}
             />
           ))}
         </div>
       ) : null}
 
-      {term && visible.length === 0 && labels.length > 0 ? (
+      {term && visible.length === 0 && nodes.length > 0 ? (
         <EmptyState title="No folder matches" description={`Nothing is named like "${search}".`} />
       ) : null}
 
       {current && !term ? (
-        <>
-          <FolderActions folder={current} />
-          <FolderMessages folder={current} connectedEmail={connectionQuery.data?.email ?? null} />
-        </>
+        <FolderMessages folder={current} connectedEmail={connectionQuery.data?.email ?? null} />
       ) : null}
     </section>
   );
@@ -176,12 +191,12 @@ function FolderMessages({
   folder,
   connectedEmail,
 }: {
-  folder: UserLabel;
+  folder: PivotNode;
   connectedEmail: string | null;
 }) {
   const messagesQuery = useQuery({
-    queryKey: queryKeys.folderMessages(folder.id),
-    queryFn: () => api.getFolderMessages(folder.id),
+    queryKey: queryKeys.facetMessages(folder.facetKey),
+    queryFn: () => api.getFacetMessages(folder.facetKey),
   });
 
   if (messagesQuery.isPending) return <LoadingState label="Loading mail" />;
@@ -195,37 +210,45 @@ function FolderMessages({
     );
   }
 
-  const messages = messagesQuery.data.messages;
+  const { messages, total } = messagesQuery.data;
   if (messages.length === 0) {
     return (
       <EmptyState
-        title="Nothing filed here yet"
-        description="Mail lands in this folder the next time a filing run matches it."
+        title="Nothing here yet"
+        description="No message carries this combination of facets."
       />
     );
   }
 
   return (
-    <ul className="mail-list">
-      {messages.map((message) => (
-        <li key={message.id}>
-          {/* Straight into Gmail. MailMind never renders message bodies; it only files them. */}
-          <a
-            className="mail-row"
-            href={gmailMessageUrl(connectedEmail, message.gmailMessageId)}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            <span className="mail-row__from">{message.senderName ?? message.senderEmail}</span>
-            <span className="mail-row__subject">{message.subject ?? 'No subject'}</span>
-            <span className="mail-row__date">
-              {message.receivedAt ? formatTimestamp(message.receivedAt) : '—'}
-            </span>
-            <ExternalLink className="mail-row__open" aria-hidden="true" strokeWidth={1.5} />
-            <span className="sr-only">Open in Gmail</span>
-          </a>
-        </li>
-      ))}
-    </ul>
+    <>
+      {/* Opening a parent asks "everything under here", so the count is the whole subtree. */}
+      <p className="screen__hint">
+        {total} message{total === 1 ? '' : 's'} in {folder.leafName}
+        {messages.length < total ? `, showing the newest ${messages.length}` : ''}
+      </p>
+      <ul className="mail-list">
+        {messages.map((message) => (
+          <li key={message.id}>
+            {/* Straight into Gmail. MailMind never renders message bodies. The link addresses the
+                message by id, so it resolves whether or not the message carries any label. */}
+            <a
+              className="mail-row"
+              href={gmailMessageUrl(connectedEmail, message.gmailMessageId)}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              <span className="mail-row__from">{message.senderName ?? message.senderEmail}</span>
+              <span className="mail-row__subject">{message.subject ?? 'No subject'}</span>
+              <span className="mail-row__date">
+                {message.receivedAt ? formatTimestamp(message.receivedAt) : '—'}
+              </span>
+              <ExternalLink className="mail-row__open" aria-hidden="true" strokeWidth={1.5} />
+              <span className="sr-only">Open in Gmail</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

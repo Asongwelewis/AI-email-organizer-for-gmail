@@ -59,6 +59,46 @@ export interface PivotApplyResult extends PivotPlan {
   gmailLabelsRenamed: number;
 }
 
+export interface FolderMessage {
+  id: string;
+  /** Gmail's own id, which is what the deep link addresses. */
+  gmailMessageId: string;
+  subject: string | null;
+  senderName: string | null;
+  senderEmail: string | null;
+  snippet: string | null;
+  receivedAt: string | null;
+  isUnread: boolean;
+  entity: string | null;
+  domain: string | null;
+  intent: string | null;
+}
+
+/**
+ * Turns `entity=netflix|intent=payment-failed` into the facet columns it constrains.
+ *
+ * Only the three real facets are accepted, so a key naming anything else selects nothing rather
+ * than quietly widening to the whole mailbox — a malformed key must never return someone's entire
+ * inbox under a folder heading.
+ */
+function facetFilterFromKey(facetKey: string): Record<string, string> {
+  const filter: Record<string, string> = {};
+  for (const part of facetKey.split('|')) {
+    const separator = part.indexOf('=');
+    if (separator <= 0) continue;
+    const facet = part.slice(0, separator);
+    const value = part.slice(separator + 1);
+    if (!value) continue;
+    if ((PIVOT_FACETS as readonly string[]).includes(facet)) filter[facet] = value;
+  }
+  // A key that constrains nothing would leave the where clause as the account alone and hand back
+  // the entire mailbox under one folder heading. Refuse it instead.
+  if (Object.keys(filter).length === 0) {
+    throw new AppError('LABEL_VALIDATION_FAILED', 'That is not a folder.', 400);
+  }
+  return filter;
+}
+
 function parsePivot(values: string[], fallback: PivotFacet[]): PivotFacet[] {
   const parsed = values.filter((value): value is PivotFacet =>
     (PIVOT_FACETS as readonly string[]).includes(value),
@@ -92,6 +132,82 @@ export class PivotService {
       domain: row.domain,
       intent: row.intent,
     }));
+  }
+
+  /**
+   * The mail inside one folder of a pivot, newest first.
+   *
+   * A folder is a facet combination — `entity=netflix|intent=payment-failed` — and this reads the
+   * messages matching it straight out of `message_facets`. It depends on no `user_labels` row and
+   * on no `apply` ever having run, which is the point: the folder view is a projection of the
+   * facets, not a reading-back of what was written to Gmail.
+   *
+   * **Subtree semantics.** Opening `entity=netflix` returns every Netflix message, including the
+   * ones the pivot placed deeper under `Payment failed`. `buildPivot` puts a message at its
+   * deepest surviving leaf because a message wears one label; a person clicking a parent folder is
+   * asking a different question, and "everything under here" is the answer they mean.
+   *
+   * Metadata only, exactly as everywhere else: subject, sender, date, a stored snippet and the
+   * Gmail id the deep link needs. No body, ever.
+   */
+  async folderMessages(
+    accountId: string,
+    facetKey: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ messages: FolderMessage[]; nextCursor: string | null; total: number }> {
+    const where = {
+      connected_google_account_id: accountId,
+      ...facetFilterFromKey(facetKey),
+    };
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+    const [total, rows] = await Promise.all([
+      prisma.message_facets.count({ where }),
+      prisma.message_facets.findMany({
+        where,
+        // Newest first, and by id after that so the cursor never straddles two messages that
+        // arrived in the same second.
+        orderBy: [{ message: { internal_date: 'desc' } }, { gmail_message_id: 'desc' }],
+        take: limit + 1,
+        ...(options.cursor ? { cursor: { gmail_message_id: options.cursor }, skip: 1 } : {}),
+        select: {
+          gmail_message_id: true,
+          entity: true,
+          domain: true,
+          intent: true,
+          message: {
+            select: {
+              gmail_message_id: true,
+              subject: true,
+              sender_name: true,
+              sender_email: true,
+              snippet: true,
+              internal_date: true,
+              is_unread: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const page = rows.slice(0, limit);
+    return {
+      total,
+      // One row beyond the page proves there is more, without a second count.
+      nextCursor: rows.length > limit ? (page.at(-1)?.gmail_message_id ?? null) : null,
+      messages: page.map((row) => ({
+        id: row.gmail_message_id,
+        gmailMessageId: row.message.gmail_message_id,
+        subject: row.message.subject,
+        senderName: row.message.sender_name,
+        senderEmail: row.message.sender_email,
+        snippet: row.message.snippet,
+        receivedAt: row.message.internal_date?.toISOString() ?? null,
+        isUnread: row.message.is_unread,
+        entity: row.entity,
+        domain: row.domain,
+        intent: row.intent,
+      })),
+    };
   }
 
   /**

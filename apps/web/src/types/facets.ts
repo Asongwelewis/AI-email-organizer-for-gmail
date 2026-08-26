@@ -22,6 +22,8 @@ export interface PivotSettings {
 
 export interface PivotNode {
   facetKey: string;
+  /** Null at the top level. Walking these is how a breadcrumb is built. */
+  parentFacetKey: string | null;
   fullPath: string;
   leafName: string;
   depth: number;
@@ -69,4 +71,27 @@ export interface PivotApplyResult extends PivotPlan {
   gmailLabelsCreated: number;
   gmailLabelsReused: number;
   gmailLabelsRenamed: number;
+}
+
+/** One message inside a folder. Metadata only — the body stays in Gmail. */
+export interface FolderMessage {
+  id: string;
+  /** Gmail's own id, which is what the deep link addresses. */
+  gmailMessageId: string;
+  subject: string | null;
+  senderName: string | null;
+  senderEmail: string | null;
+  snippet: string | null;
+  receivedAt: string | null;
+  isUnread: boolean;
+  entity: string | null;
+  domain: string | null;
+  intent: string | null;
+}
+
+export interface FolderMessages {
+  messages: FolderMessage[];
+  /** Present while another page exists. One combination holds 1,823 messages. */
+  nextCursor: string | null;
+  total: number;
 }

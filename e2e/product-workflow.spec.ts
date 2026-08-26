@@ -84,12 +84,36 @@ async function apiMock(route: Route) {
       backfill: {},
     },
     '/api/facets/pivot': { canonicalPivot: ['entity', 'intent'], minMessages: 5 },
+    // The Sorted screen renders this tree now, not `/api/labels` — a folder is a facet
+    // combination, and its contents come from `/api/facets/messages`.
     '/api/facets/pivot/view': {
-      order: ['entity', 'intent'],
-      nodes: [],
-      unfiled: 0,
+      order: ['domain', 'intent'],
+      nodes: [
+        {
+          facetKey: 'domain=career',
+          parentFacetKey: null,
+          fullPath: 'MailMind/Job hunt',
+          leafName: 'Job hunt',
+          depth: 1,
+          messageCount: 0,
+          subtreeMessageCount: 40,
+          isLeaf: false,
+        },
+        {
+          facetKey: 'domain=career|intent=application-received',
+          parentFacetKey: 'domain=career',
+          fullPath: 'MailMind/Job hunt/Applications sent',
+          leafName: 'Applications sent',
+          depth: 2,
+          messageCount: 25,
+          subtreeMessageCount: 25,
+          isLeaf: true,
+        },
+      ],
+      unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
       collapsed: 0,
     },
+    '/api/facets/messages': { messages: [], nextCursor: null, total: 0 },
   };
   const response = responses[path];
   if (response === undefined) {

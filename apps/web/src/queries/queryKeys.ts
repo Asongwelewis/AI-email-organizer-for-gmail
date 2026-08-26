@@ -11,4 +11,5 @@ export const queryKeys = {
   pivotSettings: ['facets', 'pivot'] as const,
   pivotPlan: ['facets', 'pivot', 'plan'] as const,
   pivotView: (order: string[]) => ['facets', 'pivot', 'view', order.join(',')] as const,
+  facetMessages: (facetKey: string) => ['facets', 'messages', facetKey] as const,
 };
