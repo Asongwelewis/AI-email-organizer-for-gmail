@@ -48,7 +48,10 @@ async function main(): Promise<void> {
         `${result.staleLabelsRemoved} stale label(s) removed from mail.`,
     );
   } else {
-    write('Dry run. Decisions were recorded; Gmail was not called. Re-run with --apply.');
+    // A dry run writes NOTHING — not a run row, not an action row, not a label. This line used
+    // to claim decisions were recorded, which was true before that was fixed and has been a lie
+    // since; believing it would mean expecting a review queue that does not exist.
+    write('Dry run. Nothing was written and Gmail was not called. Re-run with --apply.');
   }
 }
 

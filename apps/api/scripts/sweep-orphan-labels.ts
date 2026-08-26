@@ -14,9 +14,15 @@
  *   1. strip the orphaned label from every message that still carries it, in batches;
  *   2. only then delete the Gmail label itself.
  *
- * An orphan is a Gmail label under `MailMind/` that no `user_labels` row names by `full_path`. A
- * folder the current pivot produced is therefore never an orphan, and neither is a parent: only
- * leaves exist in Gmail, so a branch has no label to sweep.
+ * Two things count as orphaned, and the first version of this script only caught one of them:
+ *
+ *   1. a Gmail label under `MailMind/` that no `user_labels` row names — the stage-3 leftovers;
+ *   2. a folder row that matches no combination in the CURRENT pivot — the planner-era tree.
+ *
+ * The second is the one card 12 actually named (`Finance/Transactions/Failed payments`), and it
+ * was being missed precisely because those folders still have rows: `apply` reports them and
+ * deliberately leaves them alone, because removing a folder is a decision for a person rather
+ * than a side effect of re-running a pivot. This script is where that person decides.
  *
  * Dry run by default. Nothing is touched without `--apply`.
  *
@@ -24,6 +30,7 @@
  *   npm run sweep:labels --workspace @mailmind/api -- --apply
  */
 import { prisma } from '../src/database/prisma.js';
+import { pivotService } from '../src/features/labels/pivot.service.js';
 import { createGmailClient, withGmailRetry } from '../src/integrations/gmail/gmail.client.js';
 
 const apply = process.argv.slice(2).includes('--apply');
@@ -43,25 +50,25 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [labels, folders] = await Promise.all([
+  const [labels, plan] = await Promise.all([
     prisma.gmail_labels.findMany({
       where: { connected_google_account_id: account.id, name: { startsWith: 'MailMind/' } },
       select: { gmail_label_id: true, name: true },
     }),
-    prisma.user_labels.findMany({
-      where: { connected_google_account_id: account.id },
-      select: { full_path: true },
-    }),
+    pivotService.plan(account.id),
   ]);
-  const claimed = new Set(folders.map((folder) => folder.full_path));
-  const orphans = labels.filter((label) => label.name && !claimed.has(label.name));
+
+  // Folders the current pivot still produces. Everything else under MailMind/ is dead.
+  const live = new Set(plan.changes.map((change) => change.fullPath));
+  const orphanRowIds = new Map(plan.orphaned.map((row) => [row.fullPath, row.id]));
+  const orphans = labels.filter((label) => label.name && !live.has(label.name));
 
   if (orphans.length === 0) {
     write('No orphaned MailMind labels. Every label in Gmail is a folder the pivot still makes.');
     return;
   }
 
-  write(`${orphans.length} orphaned MailMind label(s), against ${claimed.size} live folder(s):`);
+  write(`${orphans.length} orphaned MailMind label(s), against ${live.size} live folder(s):`);
   const gmail = await createGmailClient(account.id);
 
   for (const orphan of orphans) {
@@ -112,6 +119,14 @@ async function main(): Promise<void> {
     await prisma.gmail_labels.deleteMany({
       where: { connected_google_account_id: account.id, gmail_label_id: orphan.gmail_label_id },
     });
+    // A planner-era folder also has a row to remove, or the next pivot would adopt it straight
+    // back. The tree cascades, so removing a branch removes what hung beneath it.
+    const rowId = orphan.name ? orphanRowIds.get(orphan.name) : undefined;
+    if (rowId) {
+      await prisma.user_labels.deleteMany({
+        where: { connected_google_account_id: account.id, id: rowId },
+      });
+    }
     write(`    swept`);
   }
 
