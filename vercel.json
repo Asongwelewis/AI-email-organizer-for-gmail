@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm exec cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs npm run build --workspace @mailmind/web",
+  "buildCommand": "npm run build:web",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
