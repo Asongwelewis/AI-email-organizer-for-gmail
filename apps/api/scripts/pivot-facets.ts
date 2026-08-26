@@ -128,7 +128,9 @@ async function main(): Promise<void> {
   write();
 
   printTree('CANONICAL', buildPivot(messages, settings.canonicalPivot, settings));
-  if (showAlternate) {
+  // Once the canonical ordering IS the alternate one, printing both prints the same tree twice.
+  const alternateDiffers = ALTERNATE_PIVOT.join(',') !== settings.canonicalPivot.join(',');
+  if (showAlternate && alternateDiffers) {
     printTree(
       'ALTERNATE (computed on read, never written to Gmail)',
       buildPivot(messages, ALTERNATE_PIVOT, settings),
