@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --force",
+    "audit:production": "node scripts/audit-production.mjs",
     "prepare": "node .husky/install.mjs"
   },
   "devDependencies": {

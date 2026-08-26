@@ -50,8 +50,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # A dated, reasoned allowlist rather than a bare `npm audit`. One unfixable transitive
+      # advisory used to fail this step, and because it is the first, every step after it reported
+      # "skipped" — so lint, tests and the build had not actually run for three commits.
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm run audit:production
 
       - name: Prepare database roles used by the migrations
         run: |
