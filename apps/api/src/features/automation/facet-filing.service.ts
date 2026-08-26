@@ -126,7 +126,7 @@ export class FacetFilingService {
     accountId: string,
     userId: string,
     options: FilingOptions = {},
-  ): Promise<FilingCounters & { pivot: PivotResult }> {
+  ): Promise<FilingCounters & { pivot: PivotResult; runId: string | null }> {
     const counters = emptyCounters();
     const now = new Date();
     const token = randomUUID();
@@ -305,7 +305,7 @@ export class FacetFilingService {
           pivot: pivot.order.join('>'),
         },
       });
-      return { ...counters, pivot };
+      return { ...counters, pivot, runId };
     } finally {
       // The lease expires on its own; failing to release it must not replace the real error.
       try {

@@ -542,6 +542,31 @@ export class AutomationService {
       // call, so mail that IS classified belongs in its folder tonight rather than tomorrow.
       const filed = await this.filing.fileAccount(accountId, userId);
 
+      /*
+       * What classification spent goes onto the run row filing opened, so one run is one row.
+       *
+       * Nothing else records it. `status().usageToday` sums these columns across today's runs,
+       * and the classifier's own daily cap reads the same sum — so leaving them unwritten would
+       * both blank the usage panel and hand every run of the day a fresh full allowance.
+       */
+      if (filed.runId) {
+        await prisma.automation_runs.update({
+          where: { id: filed.runId },
+          data: {
+            trigger,
+            ai_classified_count: classified.modelDecided,
+            pattern_reused_count: classified.ruleDecided,
+            provider_call_count: classified.providerCalls,
+            input_tokens: classified.usage.inputTokens,
+            cached_input_tokens: classified.usage.cachedInputTokens,
+            output_tokens: classified.usage.outputTokens,
+            estimated_cost_microusd: classified.costMicrousd,
+            stopped_reason: classified.stoppedReason,
+            last_error_code: classified.lastErrorCode,
+          },
+        });
+      }
+
       const stoppedReason = classified.stoppedReason;
       const lastErrorCode = classified.lastErrorCode;
       const failed = classified.failed + filed.failed;
@@ -557,7 +582,8 @@ export class AutomationService {
       });
       return {
         success: status === 'COMPLETED',
-        runId: null,
+        // The run row filing opened, now carrying both halves. The Activity screen links to it.
+        runId: filed.runId,
         status,
         stoppedReason,
         lastErrorCode,

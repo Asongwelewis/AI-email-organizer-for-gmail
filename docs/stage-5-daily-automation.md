@@ -153,6 +153,8 @@ watch:
 | `DAILY_BUDGET_REACHED` waits for the next scheduled hour, not the tick     | The token budgets are daily and cumulative; a retry would reach the same wall |
 | The `retry_at` a stopped run writes is one a later tick selects on         | Each half can pass on its own while the join between them is broken           |
 | A hard failure closes the run `FAILED` and releases the lease              | A stuck lease locks out every later tick                                      |
+| Classification spends against what today already cost                      | Several runs a day would otherwise each take a fresh full allowance           |
+| What classification spent is written onto the run row filing opened        | Nothing else records it, and both the usage panel and the daily cap read it   |
 | Only mail with no action row is read, newest first                         | A run interrupted mid-flight resumes instead of re-classifying and re-billing |
 
 What these cannot establish is that three consecutive nights actually ran: that needs elapsed time

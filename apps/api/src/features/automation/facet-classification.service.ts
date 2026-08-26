@@ -177,6 +177,23 @@ export class FacetClassificationService {
     }
 
     try {
+      /*
+       * The token and cost caps are daily and cumulative since 00:00 UTC, not per run — the
+       * scheduler can start several runs in a day after a backoff, and each one taking a fresh
+       * full allowance would multiply the ceiling by however many times it retried. The retired
+       * taxonomy engine did this accounting; when it went, the accounting had to come here.
+       */
+      const spentToday = await prisma.automation_runs.aggregate({
+        where: {
+          connected_google_account_id: accountId,
+          started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
+        },
+        _sum: { input_tokens: true, output_tokens: true, estimated_cost_microusd: true },
+      });
+      const inputTokensBefore = spentToday._sum.input_tokens ?? 0;
+      const outputTokensBefore = spentToday._sum.output_tokens ?? 0;
+      const costBefore = spentToday._sum.estimated_cost_microusd ?? 0;
+
       const messages = await this.unclassifiedMessages(accountId, options.limit);
       counters.messagesSeen = messages.length;
       const rules = await this.facetRules(accountId);
@@ -238,12 +255,14 @@ export class FacetClassificationService {
           ) / 4,
         );
         const remainingOutputTokens =
-          env.AUTOMATION_MAX_OUTPUT_TOKENS - counters.usage.outputTokens;
+          env.AUTOMATION_MAX_OUTPUT_TOKENS - outputTokensBefore - counters.usage.outputTokens;
         const outputTokenReserve = Math.min(2000, remainingOutputTokens);
         if (
-          counters.usage.inputTokens + roughTokens > env.AUTOMATION_MAX_INPUT_TOKENS ||
+          inputTokensBefore + counters.usage.inputTokens + roughTokens >
+            env.AUTOMATION_MAX_INPUT_TOKENS ||
           remainingOutputTokens < batch.length * MIN_OUTPUT_TOKENS_PER_MESSAGE ||
-          counters.costMicrousd +
+          costBefore +
+            counters.costMicrousd +
             estimatedCostMicroUsd({
               inputTokens: roughTokens,
               cachedInputTokens: 0,

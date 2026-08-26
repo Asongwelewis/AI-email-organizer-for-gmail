@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   actionFindFirst: vi.fn(),
   actionCreate: vi.fn(),
   actionUpdate: vi.fn(),
+  runUpdate: vi.fn(),
   messageUpdate: vi.fn(),
   userLabelFindMany: vi.fn(),
   userLabelFindFirst: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock('../src/database/prisma.js', () => ({
       create: mocks.actionCreate,
       update: mocks.actionUpdate,
     },
+    automation_runs: { update: mocks.runUpdate },
     gmail_labels: { findMany: mocks.gmailLabelFindMany },
     gmail_message_metadata: { update: mocks.messageUpdate, count: vi.fn().mockResolvedValue(0) },
     user_labels: {
@@ -118,6 +120,7 @@ const filed = (overrides: Record<string, unknown> = {}) => ({
   labelsReused: 3,
   staleLabelsRemoved: 1,
   pivot: { nodes: [], order: ['entity', 'intent'], unfiled: 0, collapsed: 0 },
+  runId: 'automation-run-1',
   ...overrides,
 });
 
@@ -142,6 +145,7 @@ beforeEach(() => {
   mocks.classifyAccount.mockResolvedValue(classified());
   mocks.fileAccount.mockResolvedValue(filed());
   mocks.auditRecord.mockResolvedValue(undefined);
+  mocks.runUpdate.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -201,6 +205,31 @@ describe('a filing run', () => {
 
     expect(mocks.fileAccount).toHaveBeenCalled();
     expect(result).toMatchObject({ status: 'PARTIAL', stoppedReason: 'DAILY_BUDGET_REACHED' });
+  });
+
+  /**
+   * One run, one row. Nothing else records what classification spent: `status().usageToday` sums
+   * these columns across today's runs, and the classifier's own daily cap reads the same sum. Left
+   * unwritten they would blank the usage panel AND hand every run of the day a full allowance.
+   */
+  it('records what classification spent onto the run row filing opened', async () => {
+    const result = await service().run('user-1');
+
+    expect(mocks.runUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'automation-run-1' },
+        data: expect.objectContaining({
+          provider_call_count: 1,
+          input_tokens: 120,
+          output_tokens: 40,
+          estimated_cost_microusd: 2000,
+          ai_classified_count: 6,
+          pattern_reused_count: 4,
+        }),
+      }),
+    );
+    // And the activity run links to it, so a reader can get from an ending to its cost.
+    expect(result.runId).toBe('automation-run-1');
   });
 
   // Each facet service takes the same account-scoped lease itself, so a run holding one while it

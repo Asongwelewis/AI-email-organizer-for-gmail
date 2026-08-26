@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   patternUpdate: vi.fn(),
   patternUpdateMany: vi.fn(),
   facetUpsert: vi.fn(),
+  runAggregate: vi.fn(),
   classify: vi.fn(),
 }));
 
@@ -30,9 +31,11 @@ vi.mock('../src/database/prisma.js', () => ({
       updateMany: mocks.patternUpdateMany,
     },
     message_facets: { upsert: mocks.facetUpsert },
+    automation_runs: { aggregate: mocks.runAggregate },
   },
 }));
 
+const { env } = await import('../src/config/env.js');
 const { entityFor } = await import('../src/features/label-discovery/entity.js');
 const { resolveFacetRules, matchesRule, stableSubjectPhrase } =
   await import('../src/features/label-discovery/routing-rules.js');
@@ -83,6 +86,10 @@ beforeEach(() => {
   mocks.patternUpdate.mockResolvedValue({});
   mocks.patternUpdateMany.mockResolvedValue({ count: 0 });
   mocks.facetUpsert.mockResolvedValue({});
+  // Nothing spent yet today, so a run gets the whole allowance.
+  mocks.runAggregate.mockResolvedValue({
+    _sum: { input_tokens: 0, output_tokens: 0, estimated_cost_microusd: 0 },
+  });
   mocks.messageFindMany.mockResolvedValue([]);
 });
 
@@ -503,6 +510,32 @@ describe('the facet classification pass', () => {
     expect(counters.failed).toBe(1);
     expect(counters.modelDecided).toBe(1);
     expect(counters.stoppedReason).toBeNull();
+  });
+
+  /**
+   * The caps are daily and cumulative since 00:00 UTC, not per run. The retired taxonomy engine
+   * did this accounting, and when it went the accounting had to come here — otherwise every run
+   * the scheduler starts after a backoff takes a fresh full allowance and the ceiling is however
+   * many times it retried, multiplied.
+   */
+  it('spends against what today already cost, not against an empty budget', async () => {
+    mocks.runAggregate.mockResolvedValue({
+      _sum: {
+        input_tokens: 0,
+        // Today has already spent all but a sliver of the output allowance.
+        output_tokens: env.AUTOMATION_MAX_OUTPUT_TOKENS - 10,
+        estimated_cost_microusd: 0,
+      },
+    });
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'Anything at all', sender: 'someone@example.com' }),
+    ]);
+
+    const counters = await service([]).classifyAccount(ACCOUNT);
+
+    expect(mocks.classify).not.toHaveBeenCalled();
+    expect(counters.stoppedReason).toBe('DAILY_BUDGET_REACHED');
+    expect(mocks.runAggregate.mock.calls[0]![0].where.started_at.gte.getUTCHours()).toBe(0);
   });
 
   it('refuses to run while the account is already leased', async () => {

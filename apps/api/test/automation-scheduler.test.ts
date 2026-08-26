@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     stateUpsert: vi.fn(),
     stateUpdateMany: vi.fn(),
     runUpdateMany: vi.fn(),
+    runUpdate: vi.fn(),
     runCreate: vi.fn(),
     runFindUnique: vi.fn(),
     runAggregate: vi.fn(),
@@ -94,6 +95,7 @@ vi.mock('../src/database/prisma.js', () => ({
     automation_states: { upsert: mocks.stateUpsert, updateMany: mocks.stateUpdateMany },
     automation_runs: {
       updateMany: mocks.runUpdateMany,
+      update: mocks.runUpdate,
       create: mocks.runCreate,
       findUnique: mocks.runFindUnique,
       aggregate: mocks.runAggregate,
@@ -350,6 +352,7 @@ describe('an unattended run and how it ends', () => {
     labelsReused: 2,
     staleLabelsRemoved: 1,
     pivot: { nodes: [], order: ['entity', 'intent'], unfiled: 0, collapsed: 0 },
+    runId: 'automation-run-1',
     ...overrides,
   });
 
@@ -373,6 +376,7 @@ describe('an unattended run and how it ends', () => {
     env.AUTOMATION_ENABLED = true;
     env.GEMINI_API_KEY = 'test-gemini-key';
     mocks.stateUpsert.mockResolvedValue({});
+    mocks.runUpdate.mockResolvedValue({});
     mocks.incrementalSync.mockResolvedValue(undefined);
     mocks.initialSync.mockResolvedValue(undefined);
     mocks.classifyAccount.mockResolvedValue(classified());
