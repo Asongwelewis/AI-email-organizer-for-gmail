@@ -160,6 +160,15 @@ itself the checkpoint — a run stopped by a spent quota resumes exactly where i
 message is ever classified twice. **It makes no Gmail call at all**: turning a facet combination
 into a folder is the pivot's job.
 
+The checkpoint is keyed on `prompt_version` and on an `input_hash` over the message fields a
+decision is derived from, listed once as `HASHED_MESSAGE_FIELDS`. A run reads never-classified mail
+first; if that does not fill the run, the remainder is spent re-checking existing decisions against
+the input they were made from, newest-synced first, and re-queueing any that no longer match. Sync
+upserts `subject` and `sender_email` on every pass, so without that check a corrected subject would
+keep the facets chosen from text the message no longer carries. Anything new the classifier is
+given to read belongs in `HASHED_MESSAGE_FIELDS` as well, or the checkpoint will call a decision
+current that was made without ever seeing the field.
+
 Routing rules resolve facets as well as folders. `facet_domain` and `facet_intent` are nullable, so
 rules written before facets existed keep working, and `label_name`/`label_path` are nullable, so a
 rule that resolves only to a facet does not have to name a folder that does not exist yet. The two
