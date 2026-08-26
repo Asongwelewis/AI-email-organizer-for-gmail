@@ -16,6 +16,8 @@ import {
   type FacetEvidenceMessage,
   type FacetValue,
 } from '../src/features/label-discovery/facet-vocabulary.js';
+import { facetVocabularyRepository } from '../src/features/label-discovery/facet-vocabulary.repository.js';
+import { APPROVED_FACET_VOCABULARY } from '../src/features/label-discovery/facets.js';
 import { emailIdentity } from '../src/features/label-discovery/label-normalization.js';
 import { labelsRepository } from '../src/features/labels/labels.repository.js';
 
@@ -103,7 +105,12 @@ async function main(): Promise<void> {
   );
   write();
 
-  const proposal = await geminiFacetVocabularyGrounder.ground({ messages });
+  // A vocabulary belongs to a mailbox now, so grounding needs to be told which one it is
+  // measuring. This account's approved set, or the starter set when it has never approved one.
+  const approved = await facetVocabularyRepository.approved(account.id);
+  const vocabulary =
+    approved.domain.length > 0 && approved.intent.length > 0 ? approved : APPROVED_FACET_VOCABULARY;
+  const proposal = await geminiFacetVocabularyGrounder.ground({ messages, vocabulary });
   write(
     `Sampled ${proposal.sample.sampled} messages across ${proposal.sample.senderDomains} sender ` +
       `domains: ${proposal.sample.fromUnfiled} unfiled, ${proposal.sample.fromFiled} filed. ` +

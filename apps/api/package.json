@@ -22,7 +22,8 @@
     "unapply:pivot": "tsx scripts/unapply-pivot.ts",
     "sweep:labels": "tsx scripts/sweep-orphan-labels.ts",
     "file:facets": "tsx scripts/file-facets.ts",
-    "report:facets": "tsx scripts/report-facets.ts"
+    "report:facets": "tsx scripts/report-facets.ts",
+    "eval:facets": "tsx scripts/eval-facets.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

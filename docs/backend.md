@@ -94,6 +94,26 @@ Session lifetime and rate-limit controls:
   `503 GMAIL_WRITE_DISABLED`, and the daily run classifies without filing. Turning it on is how
   someone asks for the export.
 
+### Measuring the classifier
+
+`npm run eval:facets --workspace @mailmind/api` scores the facet classifier against a labelled set
+checked in at `apps/api/test/fixtures/golden-set.json`, and prints precision and recall per value,
+a confusion matrix, the reliability curve, and a threshold sweep.
+
+The threshold sweep is the point. `AUTOMATION_CONFIDENCE_THRESHOLD` decides how much mail a person
+has to review by hand — 916 messages on the real mailbox — and it was picked without ever being
+measured. Each row of the sweep says what filing unattended at that bar would file, how much of
+that would be wrong, and how many correct decisions it would send to a reviewer anyway.
+
+The labels are a **person's**. `npm run eval:facets --workspace @mailmind/api -- --draw 300` writes
+a stratified, unlabelled draw — round-robin across facet combinations, so rare values are not
+crowded out by the two that dominate a mailbox — for a human to fill in. Labelling with a second
+model, or accepting the classifier's own answers, measures agreement rather than correctness.
+
+A run is gated on the vocabulary: a label is only meaningful relative to the set of values it was
+chosen from, so `vocabularyFingerprint` in the fixture is checked against the account's current one
+and a mismatch refuses rather than scoring against labels that no longer mean the same thing.
+
 ### Gmail scope
 
 The connect flow asks for **`gmail.readonly`**. `gmail.modify` is a Google _restricted_ scope — it

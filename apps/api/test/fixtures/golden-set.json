@@ -1,0 +1,15 @@
+{
+  "labelledBy": "REPLACE ME — the person who assigned these labels",
+  "labelledAt": "2026-08-26",
+  "entries": [
+    {
+      "gmailMessageId": "REPLACE-coursera-course-email",
+      "subject": "Data engineering's got interesting 🙂",
+      "senderEmail": "no-reply@m.learn.coursera.org",
+      "snippet": "Your new course starts on Monday.",
+      "expectedDomain": "education",
+      "expectedIntent": "newsletter",
+      "note": "Test case #1. This sat in Finance/Transactions/Failed payments under the retired taxonomy planner — a folder only that planner could have spelled. senderHost is learn.coursera.org, which is education whatever the message turns out to be about; the subject alone said nothing, which is why the snippet was added in card 15."
+    }
+  ]
+}
