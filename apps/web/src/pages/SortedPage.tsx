@@ -4,6 +4,7 @@ import { ChevronRight, ExternalLink, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
+import { FolderActions } from '@web/components/app/FolderActions';
 import { FolderTile } from '@web/components/app/FolderTile';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatTimestamp } from '@web/lib/format';
@@ -162,7 +163,10 @@ export function SortedPage() {
       ) : null}
 
       {current && !term ? (
-        <FolderMessages folder={current} connectedEmail={connectionQuery.data?.email ?? null} />
+        <>
+          <FolderActions folder={current} />
+          <FolderMessages folder={current} connectedEmail={connectionQuery.data?.email ?? null} />
+        </>
       ) : null}
     </section>
   );

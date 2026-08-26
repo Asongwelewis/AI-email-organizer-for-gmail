@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { AutomationPanel } from '@web/components/app/AutomationPanel';
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount, formatDuration, formatTimestamp, humanizeCode } from '@web/lib/format';
@@ -42,6 +43,8 @@ export function ActivityPage() {
       <p className="screen__lede">
         Every sync, planning pass and filing run, newest first, with the reason it ended.
       </p>
+
+      <AutomationPanel />
 
       {runsQuery.isPending ? <LoadingState label="Loading runs" /> : null}
       {runsQuery.isError ? (

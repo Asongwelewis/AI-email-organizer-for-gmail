@@ -1193,3 +1193,79 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-tertiary);
 }
+
+/* ------------------------------------------------------- automation panel */
+
+/* Is it still running on its own, when does it come back, and what has today cost. The daily
+   budgets are cumulative since 00:00 UTC, which is why usage sits beside the next run time. */
+.automation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.automation-panel__headline {
+  margin: 0;
+  font-weight: 600;
+}
+
+.automation-panel__retry {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.automation-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.automation-panel__stats dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-tertiary);
+}
+
+.automation-panel__stats dd {
+  margin: 0.125rem 0 0;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.automation-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* --------------------------------------------------------- folder actions */
+
+.folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.folder-actions__rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.folder-actions__rename input {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  font: inherit;
+}

@@ -46,6 +46,50 @@ async function apiMock(route: Route) {
       plan: null,
     },
     '/api/activity/runs': { runs: [] },
+    '/api/automation/status': {
+      gmailConnected: true,
+      requiresReauthentication: false,
+      enabled: true,
+      running: false,
+      nextRunAt: '2026-08-26T02:00:00.000Z',
+      retryAt: null,
+      lastErrorCode: null,
+      lastRun: null,
+      usageToday: {
+        providerCalls: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        estimatedCostMicrousd: 0,
+        messagesLabeled: 0,
+      },
+      pendingReviewCount: 0,
+      approvedLabelCount: 1,
+      labelsReady: true,
+      backlogRemaining: 0,
+    },
+    '/api/automation/review': { items: [] },
+    '/api/gmail/sync/status': {
+      status: 'IDLE',
+      initialSyncCompleted: true,
+      lastSuccessfulSyncAt: '2026-08-25T00:00:00.000Z',
+      lastErrorCode: null,
+      nextRetryAt: null,
+      totalGmailMessages: 120,
+      syncedMessages: 120,
+      classifiedMessages: 120,
+      unprocessedMessages: 0,
+      messageCount: 120,
+      syncRunning: false,
+      backfill: {},
+    },
+    '/api/facets/pivot': { canonicalPivot: ['entity', 'intent'], minMessages: 5 },
+    '/api/facets/pivot/view': {
+      order: ['entity', 'intent'],
+      nodes: [],
+      unfiled: 0,
+      collapsed: 0,
+    },
   };
   const response = responses[path];
   if (response === undefined) {
@@ -122,9 +166,12 @@ test('the setup path exists and gates its steps in order', async ({ page }) => {
   await page.goto('/setup');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Set up' })).toBeVisible();
-  // This account is already connected, so step one is behind it and reading the mailbox is next.
+  // This account is connected and already synced, so the first two steps are behind it and only
+  // the last one offers an action — which is the gating this screen exists to do.
   await expect(page.getByText('Connect Gmail')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Start reading/i })).toBeVisible();
+  await expect(page.getByText('Read the mailbox')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Sort my mail/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Start reading/i })).toHaveCount(0);
 });
 
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {
@@ -153,7 +200,20 @@ test('every surviving page renders without console or page errors', async ({ pag
   page.on('pageerror', (error) => failures.push(`pageerror: ${error.message}`));
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
 
-  for (const route of ['/', '/login', '/sorted', '/approve', '/activity', '/privacy', '/terms']) {
+  // Every screen, including the three restored in card 14 — a page that logs a 404 because
+  // nothing serves a call it makes is exactly the silent breakage this test exists to catch.
+  for (const route of [
+    '/',
+    '/login',
+    '/setup',
+    '/sorted',
+    '/folders',
+    '/review',
+    '/approve',
+    '/activity',
+    '/privacy',
+    '/terms',
+  ]) {
     await page.goto(route);
     await expect(page.locator('h1').first()).toBeVisible();
   }
