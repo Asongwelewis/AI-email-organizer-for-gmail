@@ -269,6 +269,20 @@ against its total, duration, per-kind counters, and the reason it ended. `STOPPE
 its own state rather than as a failure: the run did what it could and quit for a stated reason,
 such as the daily Gemini budget. The list polls every two seconds only while a run is `RUNNING`.
 
+## Running it as an installed app
+
+`npm run pwa` builds the SPA against a local API and serves it on `http://localhost:5173`, which is
+the origin `WEB_APP_URL` and the OAuth callbacks already point at. Run `npm run dev:api` beside it.
+
+The build step matters: `devOptions.enabled` is false, so `npm run dev` serves no service worker and
+a browser will not offer to install it. `vite preview` serves the real build, and `localhost` counts
+as a secure context, so the install control appears there.
+
+In Chrome or Edge, the install icon sits at the right-hand end of the address bar (or ⋮ → Cast, save
+and share → Install). The manifest asks for `display: standalone` and opens on `/sorted`, so it gets
+its own window with no browser chrome — the same shape as an app added to a phone's home screen. In
+Safari 17+ it is File → Add to Dock.
+
 ## Installable app
 
 `vite-plugin-pwa` generates the manifest and service worker.
