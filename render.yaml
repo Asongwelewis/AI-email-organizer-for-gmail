@@ -2,11 +2,19 @@ services:
   - type: web
     name: ai-email-organizer-for-gmail
     runtime: node
+    # `--include=dev` is load-bearing. Every tool this build runs — typescript, tsc-alias, prisma,
+    # tsx, cross-env, @sentry/cli — is a devDependency, and npm omits those whenever NODE_ENV is
+    # production. Without the flag, setting NODE_ENV below silently installs none of them and the
+    # build dies before it compiles a line.
+    #
+    # `npm run build:api` rather than `npm exec ... --workspace @mailmind/api`: npm exec parses
+    # that flag as its own wherever it appears, and runs the whole command from apps/api, where the
+    # root-relative release script does not exist. It is the same bug that failed every Vercel
+    # deployment for twenty attempts.
     buildCommand: >-
-      npm ci &&
+      npm ci --include=dev &&
       npm run prisma:generate --workspace @mailmind/api &&
-      npm exec cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs
-      npm run build --workspace @mailmind/api
+      npm run build:api
     preDeployCommand: npm exec --workspace @mailmind/api -- prisma migrate deploy
     startCommand: npm run start --workspace @mailmind/api
     healthCheckPath: /health

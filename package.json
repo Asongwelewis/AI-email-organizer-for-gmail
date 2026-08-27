@@ -14,6 +14,7 @@
     "build": "node scripts/with-app-version.mjs npm run build:workspaces",
     "build:workspaces": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
     "build:web": "cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs npm run build --workspace @mailmind/web",
+    "build:api": "cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs npm run build --workspace @mailmind/api",
     "test": "node --test scripts/app-version.test.mjs && npm test --workspace @mailmind/api && npm test --workspace @mailmind/web",
     "test:e2e": "node e2e/run-e2e.mjs",
     "lint": "eslint .",
