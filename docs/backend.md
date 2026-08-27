@@ -96,8 +96,18 @@ Session lifetime and rate-limit controls:
 
 ### Rate limiting
 
-Every limiter is backed by `rate_limit_hits` in Postgres, so counters hold across API instances and
-across restarts. The window is part of the primary key rather than a value inside the row: a new
+The limiters that guard **authentication, a quota, or a mailbox write** are backed by
+`rate_limit_hits` in Postgres, so their counters hold across API instances and across restarts.
+Reads and progress polling stay in memory.
+
+That split is measured rather than assumed. Against the deployed API on 27 Aug 2026 a database
+round trip costs 100–150ms — Render and Supabase are not co-located — while the upsert itself is
+about 2ms, so the whole cost is the trip. Paying it on `activityPollLimiter`, which a client hits
+every two seconds for the length of a run, would add 150ms and one row written per poll to protect
+a budget that exists only to stop a client hammering itself. Paying it on the OAuth limiters buys a
+real guard, because with N instances a per-instance limit is really N times the limit. Narrowing
+the shared set also narrows what a database outage can take down: a brute-force guard failing
+closed is correct, a folder list failing closed is not. The window is part of the primary key rather than a value inside the row: a new
 window is a new row, so two instances incrementing the same client both land on one atomic
 `on conflict do update` instead of racing over a count they each read a moment earlier. Expired
 rows are swept opportunistically, because an expired row is already invisible to the increment path.
