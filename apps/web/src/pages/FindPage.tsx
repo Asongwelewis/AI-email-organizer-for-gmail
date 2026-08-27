@@ -62,13 +62,17 @@ export function FindPage() {
     const entity = params.get('entity');
     const domain = params.get('domain');
     const intent = params.get('intent');
+    const unread = params.get('unread') === 'true';
     return {
       ...(entity ? { entity } : {}),
       ...(domain ? { domain } : {}),
       ...(intent ? { intent } : {}),
+      ...(unread ? { unread } : {}),
     };
   }, [params]);
-  const active = Boolean(query.trim() || filters.entity || filters.domain || filters.intent);
+  const active = Boolean(
+    query.trim() || filters.entity || filters.domain || filters.intent || filters.unread,
+  );
 
   useEffect(() => {
     const next = new URLSearchParams(params);
@@ -151,6 +155,24 @@ export function FindPage() {
             </select>
           </label>
         ))}
+        {/*
+          Unread on its own is a whole search: "what has arrived that I have not read", newest
+          first, each hit carrying the folder it landed in. It needs no phrase, which is why the
+          API treats it as a constraint in its own right.
+        */}
+        <button
+          type="button"
+          className={`button${filters.unread ? ' button--primary' : ''}`}
+          aria-pressed={filters.unread === true}
+          onClick={() => {
+            const next = new URLSearchParams(params);
+            if (filters.unread) next.delete('unread');
+            else next.set('unread', 'true');
+            setParams(next, { replace: false });
+          }}
+        >
+          Only new mail
+        </button>
         {active ? (
           <button type="button" className="button button--quiet" onClick={clear}>
             Clear
@@ -169,7 +191,7 @@ export function FindPage() {
       {!active ? (
         <EmptyState
           title="Search your whole mailbox"
-          description="Type part of a subject or a sender, or pick a filter. Nothing is sent anywhere — this reads the mail MailMind has already seen."
+          description="Type part of a subject or a sender, pick a filter, or press Only new mail to see everything unread, newest first, with the folder it landed in."
           action={
             <Link className="button button--quiet" to="/sorted">
               Browse folders instead
@@ -196,7 +218,8 @@ export function FindPage() {
         ) : (
           <>
             <p className="screen__hint">
-              {formatCount(total)} message{total === 1 ? '' : 's'}
+              {formatCount(total)} {filters.unread ? 'unread ' : ''}message{total === 1 ? '' : 's'}
+              {', newest first'}
               {hits.length < total ? `, showing the newest ${formatCount(hits.length)}` : ''}
             </p>
             {/* Every hit carries the folder it sits in: "it was under Finance all along" is half

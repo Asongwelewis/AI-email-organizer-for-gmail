@@ -298,6 +298,7 @@ export const api = {
         ...(filters.entity ? { entity: filters.entity } : {}),
         ...(filters.domain ? { domain: filters.domain } : {}),
         ...(filters.intent ? { intent: filters.intent } : {}),
+        ...(filters.unread ? { unread: 'true' } : {}),
         ...(options.order?.length ? { order: options.order.join(',') } : {}),
         ...(options.limit === undefined ? {} : { limit: options.limit }),
         ...(options.cursor === undefined ? {} : { cursor: options.cursor }),

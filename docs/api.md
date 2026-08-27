@@ -599,6 +599,11 @@ The address is split on punctuation on both sides of the match, so `netflix` fin
 `english`: the vocabulary is brand names, order numbers and subject lines, and stemming _Coursera_
 buys nothing while costing exact matches.
 
+`unread=true` narrows to mail still unread in Gmail, and is a **whole search on its own** — no
+phrase, no facet needed. That is the "what has arrived that I have not seen" question, answered
+newest first with the folder each message landed in. It reads `is_unread` from the mailbox mirror,
+so reading something in Gmail drops it from the results on the next sync.
+
 `limit` defaults to 50 and caps at 200; `cursor` is the previous page's `nextCursor`.
 
 `400 FACET_VALIDATION_FAILED` when the query constrains nothing — a search with neither a phrase

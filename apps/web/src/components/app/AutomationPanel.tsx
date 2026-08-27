@@ -13,6 +13,21 @@ import { api } from '@web/services/http';
  * the interface. The daily budgets are cumulative since 00:00 UTC, which is exactly why today's
  * usage belongs next to the next run time rather than buried in a run record.
  */
+/**
+ * Why automation is off, said precisely.
+ *
+ * Three separate things switch it off and the screen used to blame the first one for all of them,
+ * which sends someone to change a setting that was already correct — and leaves the real cause
+ * untouched while they wonder why nothing happened.
+ */
+const DISABLED_REASONS: Record<string, string> = {
+  AUTOMATION_DISABLED: 'AUTOMATION_ENABLED is false on the server, so nothing runs unattended.',
+  AUTOMATION_NOT_CONFIGURED:
+    'GEMINI_API_KEY is not set on the server, so there is nothing to classify with. Automation stays off until it is.',
+  ACCOUNT_PAUSED: 'Automation is paused for this account.',
+  UNKNOWN: 'Automation is off on the server.',
+};
+
 export function AutomationPanel() {
   const queryClient = useQueryClient();
 
@@ -64,7 +79,7 @@ export function AutomationPanel() {
         ) : null}
         {!status.enabled ? (
           <p className="automation-panel__retry">
-            AUTOMATION_ENABLED is false on the server, so nothing runs unattended.
+            {DISABLED_REASONS[status.disabledReason ?? 'UNKNOWN']}
           </p>
         ) : null}
       </div>

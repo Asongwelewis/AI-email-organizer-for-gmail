@@ -166,6 +166,19 @@ describe('searching the mailbox', () => {
   });
 
   /**
+   * "What has arrived that I have not read" is a whole question on its own — no phrase, no facet —
+   * and it is the one a person asks most often. Newest first, each hit carrying its folder.
+   */
+  it('answers unread on its own, with no phrase and no facet', async () => {
+    await service().search(ACCOUNT, null, { unread: true });
+
+    const sql = sqlOf(mocks.queryRaw.mock.calls[0]!);
+    expect(sql).toContain('m.is_unread = true');
+    // No facet filter, so mail that was never classified is still findable.
+    expect(sql).toContain('left join public.message_facets');
+  });
+
+  /**
    * A search constraining nothing is not a search — it is the mailbox — and answering it under a
    * "results" heading would misrepresent what was found.
    */

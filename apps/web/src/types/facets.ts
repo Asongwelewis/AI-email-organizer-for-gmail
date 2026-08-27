@@ -139,11 +139,13 @@ export interface SearchFilters {
   entity?: string;
   domain?: string;
   intent?: string;
+  /** Only mail still unread in Gmail. On its own it answers "what arrived that I have not seen". */
+  unread?: boolean;
 }
 
 export interface SearchResults {
   query: string | null;
-  filters: { entity: string | null; domain: string | null; intent: string | null };
+  filters: { entity: string | null; domain: string | null; intent: string | null; unread: boolean };
   order: PivotFacet[];
   results: SearchHit[];
   total: number;

@@ -287,6 +287,18 @@ export class AutomationService {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
       enabled: (settings?.enabled ?? env.AUTOMATION_ENABLED) && Boolean(env.GEMINI_API_KEY),
+      /*
+       * WHY it is off, not just that it is. Three different things switch automation off — the
+       * deployment flag, this account's own setting, and a missing Gemini key — and a screen that
+       * names only the first sends someone to change a variable that was already correct.
+       */
+      disabledReason: !env.AUTOMATION_ENABLED
+        ? ('AUTOMATION_DISABLED' as const)
+        : !env.GEMINI_API_KEY
+          ? ('AUTOMATION_NOT_CONFIGURED' as const)
+          : settings?.enabled === false
+            ? ('ACCOUNT_PAUSED' as const)
+            : null,
       running: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
       nextRunAt: state?.next_run_at?.toISOString() ?? null,
       retryAt: state?.retry_at?.toISOString() ?? null,

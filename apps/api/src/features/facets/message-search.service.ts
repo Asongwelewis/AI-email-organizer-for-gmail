@@ -39,6 +39,8 @@ export interface SearchFilters {
   entity?: string;
   domain?: string;
   intent?: string;
+  /** Only mail still unread in Gmail. On its own it is "what arrived that I have not seen". */
+  unread?: boolean;
 }
 
 export interface SearchHit {
@@ -62,7 +64,7 @@ export interface SearchHit {
 
 export interface SearchResult {
   query: string | null;
-  filters: { entity: string | null; domain: string | null; intent: string | null };
+  filters: { entity: string | null; domain: string | null; intent: string | null; unread: boolean };
   order: PivotFacet[];
   results: SearchHit[];
   total: number;
@@ -123,7 +125,7 @@ export class MessageSearchService {
     options: { limit?: number; cursor?: string; order?: PivotFacet[] } = {},
   ): Promise<SearchResult> {
     const trimmed = query?.trim() ?? '';
-    if (!trimmed && !filters.entity && !filters.domain && !filters.intent) {
+    if (!trimmed && !filters.entity && !filters.domain && !filters.intent && !filters.unread) {
       throw new AppError(
         'FACET_VALIDATION_FAILED',
         'A search needs a phrase or at least one facet.',
@@ -141,6 +143,12 @@ export class MessageSearchService {
         Prisma.sql`${SEARCHABLE} @@ websearch_to_tsquery('simple', ${searchTerms(trimmed)})`,
       );
     }
+    /*
+     * Unread on its own is a legitimate whole search: "what has arrived that I have not read",
+     * newest first, each hit carrying the folder it landed in. It reads the mailbox mirror, so
+     * reading something in Gmail drops it from these results on the next sync.
+     */
+    if (filters.unread) conditions.push(Prisma.sql`m.is_unread = true`);
     // Facet filters are equality against a closed vocabulary, so they narrow rather than search.
     if (filters.entity) conditions.push(Prisma.sql`f.entity = ${filters.entity}`);
     if (filters.domain) conditions.push(Prisma.sql`f.domain = ${filters.domain}`);
@@ -198,6 +206,7 @@ export class MessageSearchService {
         entity: filters.entity ?? null,
         domain: filters.domain ?? null,
         intent: filters.intent ?? null,
+        unread: filters.unread === true,
       },
       order: folders.order,
       total: Number(counted[0]?.total ?? 0n),

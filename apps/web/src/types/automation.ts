@@ -28,6 +28,8 @@ export interface AutomationStatus {
   gmailConnected: boolean;
   requiresReauthentication: boolean;
   enabled: boolean;
+  /** Which of the three switches is off, so the screen can name the right one. */
+  disabledReason?: 'AUTOMATION_DISABLED' | 'AUTOMATION_NOT_CONFIGURED' | 'ACCOUNT_PAUSED' | null;
   running: boolean;
   nextRunAt: string | null;
   retryAt?: string | null;
