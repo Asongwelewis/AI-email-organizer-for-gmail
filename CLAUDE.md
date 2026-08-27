@@ -136,6 +136,10 @@ applies labels via `messages.modify`, and its apply is _exclusive_ — the new l
 other MailMind label comes off in the same call, so a re-filed message never wears two;
 `automation.service` applies one on a reviewer's approval, through the same exclusive path; the
 labels feature and `pivot.service` create/rename leaf paths on confirm, rename, and pivot apply.
+**Every one of those three checks `GMAIL_WRITE_ENABLED` itself** — the flag is not a property of
+one entry point. With the export off, a reviewer's approval and a folder confirm both still record
+their decision in MailMind and write nothing to the mailbox; what they must never do is write a
+label id into `gmail_message_metadata.label_ids`, which mirrors what Gmail actually holds.
 Deleting a label never unlabels mail, so a pivot never deletes folders — it reports the ones that no
 longer match and leaves them alone. `npm run sweep:labels` is the deliberate exception, and it
 strips a label from its mail before deleting it. Nothing else may mutate Gmail.

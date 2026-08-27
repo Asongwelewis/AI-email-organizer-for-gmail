@@ -149,7 +149,10 @@ needs it.
 
 Two separate questions, both of which must be yes before anything is written to a mailbox: does
 this **deployment** offer the export (`GMAIL_WRITE_ENABLED`), and did this **person** grant it
-(`gmail.modify` in `granted_scopes`). The second cannot be turned on from a config file.
+(`gmail.modify` in `granted_scopes`). The first is checked at each of the five places that write —
+filing, pivot apply, reviewer approval, folder confirm and folder rename — rather than at one
+entry point, because a mailbox connected before the scope downgrade still holds `gmail.modify` and
+would otherwise sail through the second check on a path that forgot the first. The second cannot be turned on from a config file.
 `AutomationGmailService` is the single choke point every Gmail write passes through and checks it
 before the first remote call, so a filing run refuses up front with `403 GMAIL_WRITE_SCOPE_MISSING`
 rather than dying part-way and leaving a mailbox half in one tree and half in another.

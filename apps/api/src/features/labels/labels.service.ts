@@ -219,8 +219,14 @@ export class LabelsService {
       created.push(label);
     }
 
-    // Gmail work happens outside the database writes so a partial failure stays resumable.
-    for (const node of selected) {
+    /*
+     * Gmail work happens outside the database writes so a partial failure stays resumable — and
+     * only when the export is on. The approved tree is `user_labels`; mirroring it into Gmail's
+     * own sidebar is the opt-in half, exactly as it is for `pivotService.apply`. With the export
+     * off the rows are created and `gmail_label_id` stays null, which is what every read path
+     * already expects.
+     */
+    for (const node of env.GMAIL_WRITE_ENABLED ? selected : []) {
       if (!node.is_leaf) continue;
       const label = labelByPlanNodeId.get(node.id);
       if (!label || label.gmail_label_id) continue;
@@ -299,7 +305,9 @@ export class LabelsService {
       );
     }
 
-    for (const label of created) {
+    // Same as the plan path: the folder exists in MailMind either way, and only the mirror is
+    // opt-in.
+    for (const label of env.GMAIL_WRITE_ENABLED ? created : []) {
       if (label.gmail_label_id) continue;
       const remote = await this.gmail.ensureLabel(account.id, label.full_path);
       await this.repository.setGmailLabelId(label.id, remote.id);
@@ -332,7 +340,7 @@ export class LabelsService {
     const descendants = await this.repository.descendantsOf(label);
     const oldPath = label.full_path;
     const newPath = `${oldPath.slice(0, oldPath.lastIndexOf('/'))}/${safeName}`;
-    for (const affected of [label, ...descendants]) {
+    for (const affected of env.GMAIL_WRITE_ENABLED ? [label, ...descendants] : []) {
       if (!affected.gmail_label_id) continue;
       await this.gmail.renameLabel(
         account.id,
