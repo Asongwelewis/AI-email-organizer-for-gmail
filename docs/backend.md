@@ -143,7 +143,14 @@ that would be wrong, and how many correct decisions it would send to a reviewer 
 The labels are a **person's**. `npm run eval:facets --workspace @mailmind/api -- --draw 300` writes
 a stratified, unlabelled draw — round-robin across facet combinations, so rare values are not
 crowded out by the two that dominate a mailbox — for a human to fill in. Labelling with a second
-model, or accepting the classifier's own answers, measures agreement rather than correctness.
+model, or accepting the classifier's own answers, measures agreement rather than correctness. A run
+against a set nobody has labelled yet is refused rather than scored, because it would spend a model
+call per batch to measure nothing.
+
+**A golden set never goes in the repository.** It is a readable extract of a real mailbox — 300
+subject lines and sender addresses — and this repository is public, so it defaults to the gitignored
+`backups/golden-set/golden-set.json`. `apps/api/test/fixtures/golden-set.example.json` shows the
+shape and carries the one case the card names; that is the only part safe to check in.
 
 A run is gated on the vocabulary: a label is only meaningful relative to the set of values it was
 chosen from, so `vocabularyFingerprint` in the fixture is checked against the account's current one

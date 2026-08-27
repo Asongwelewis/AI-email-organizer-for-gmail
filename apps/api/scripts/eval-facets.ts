@@ -8,15 +8,20 @@
  *
  * Two modes, because the labels are a person's and no script can produce them:
  *
- *   npm run eval:facets --workspace @mailmind/api -- --draw 300 > golden-set.json
+ *   npm run eval:facets --workspace @mailmind/api -- --draw 300 > ../../backups/golden-set/golden-set.json
  *     A stratified, UNLABELLED draw from the mailbox. Fill in expectedDomain and expectedIntent
- *     by hand, save it as test/fixtures/golden-set.json, and it becomes the fixture.
+ *     by hand, and it becomes the set this measures against.
  *
  *   npm run eval:facets --workspace @mailmind/api
- *     Runs the classifier over the fixture and reports. One Gemini call per batch; writes nothing.
+ *     Runs the classifier over that set and reports. One Gemini call per batch; writes nothing.
  *
  * Labelling with a second model, or accepting the classifier's own answers, would measure
  * agreement rather than correctness — which is the mistake this exists to stop.
+ *
+ * **The set holds real subject lines and real sender addresses**, so it defaults to the gitignored
+ * `backups/` directory and must never be committed — this repository is public, and a golden set is
+ * a readable extract of somebody's mailbox. `test/fixtures/golden-set.example.json` shows the shape
+ * and carries the one case the card names; it is the only part safe to check in.
  */
 import { fileURLToPath } from 'node:url';
 
@@ -51,7 +56,8 @@ const has = (name: string) => args.includes(name);
 
 const email = flag('--email');
 const fixturePath =
-  flag('--set') ?? fileURLToPath(new URL('../test/fixtures/golden-set.json', import.meta.url));
+  flag('--set') ??
+  fileURLToPath(new URL('../../../backups/golden-set/golden-set.json', import.meta.url));
 const batchSize = Number(flag('--batch') ?? 20);
 
 const write = (line = '') => process.stdout.write(`${line}\n`);
@@ -137,7 +143,8 @@ async function draw(limit: number): Promise<void> {
   );
   process.stderr.write(
     `Drew ${picked.length} messages across ${keys.length} facet combinations.\n` +
-      'Fill in expectedDomain and expectedIntent by hand before using this as a fixture.\n',
+      'Fill in expectedDomain and expectedIntent by hand before measuring against it.\n' +
+      'Keep it in backups/ — it is a readable extract of a real mailbox, and this repo is public.\n',
   );
 }
 
@@ -221,6 +228,21 @@ async function evaluate(): Promise<void> {
       `REFUSED: these labels were assigned under vocabulary ${set.vocabularyFingerprint}, and this ` +
         'mailbox now uses a different one. Re-label, or evaluate against the vocabulary they were ' +
         'assigned under.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  /*
+   * A set nobody has labelled yet is the state a fresh `--draw` leaves behind, and scoring against
+   * it would spend a Gemini call per batch to measure the classifier against nothing. Refuse, and
+   * say which file to go and fill in.
+   */
+  if (coverage.unlabelled === coverage.entries) {
+    write();
+    write(
+      `REFUSED: none of the ${coverage.entries} rows are labelled yet. Fill in expectedDomain and ` +
+        `expectedIntent in ${fixturePath} first — scoring against an unlabelled draw measures ` +
+        'nothing and spends a model call per batch doing it.',
     );
     process.exitCode = 1;
     return;
