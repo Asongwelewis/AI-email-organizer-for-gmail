@@ -6,7 +6,13 @@ import {
   scrubSentryEvent,
   scrubSentrySpan,
 } from '../src/observability/sentryPrivacy.js';
-import { captureApiException, closeSentry, isSentryEnabled } from '../src/observability/sentry.js';
+import {
+  captureApiException,
+  closeSentry,
+  isSentryEnabled,
+  shouldReportToSentry,
+} from '../src/observability/sentry.js';
+import { AppError } from '../src/errors/AppError.js';
 
 describe('API Sentry privacy', () => {
   it('removes Gmail and OAuth request data before an event leaves the process', () => {
@@ -122,5 +128,47 @@ describe('API Sentry disabled state', () => {
     expect(isSentryEnabled()).toBe(false);
     expect(captureApiException(new Error('not sent'), { operation: 'test' })).toBeUndefined();
     await expect(closeSentry()).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Two real tickets arrived saying "Gemini is not configured" — a 503 thrown on purpose by a
+ * precondition check, on a deployment where the operator had not set an API key. Nothing had gone
+ * wrong; the screen already showed the code. Reporting those files a fresh issue on every click of
+ * a disabled button, and with the Gmail export off by default that is a steady drip.
+ */
+describe('what reaches Sentry', () => {
+  it('ignores a refusal that comes from how the deployment is configured', () => {
+    for (const code of [
+      'AUTOMATION_NOT_CONFIGURED',
+      'AUTOMATION_DISABLED',
+      'GMAIL_WRITE_DISABLED',
+      'PROVIDER_NOT_CONFIGURED',
+    ] as const) {
+      expect(shouldReportToSentry(new AppError(code, 'not a fault', 503))).toBe(false);
+    }
+  });
+
+  /**
+   * The distinction that matters: Gemini breaking is also a 503, and it IS worth being told about.
+   * Filtering by status alone cannot tell those apart, which is why the rule reads the code.
+   */
+  it('still reports a provider failure, which is a fault wearing the same status', () => {
+    expect(shouldReportToSentry(new AppError('PROVIDER_UNAVAILABLE', 'Gemini is down.', 503))).toBe(
+      true,
+    );
+    expect(shouldReportToSentry(new AppError('DATABASE_UNAVAILABLE', 'No database.', 500))).toBe(
+      true,
+    );
+  });
+
+  it('leaves everything a caller can fix out of Sentry, and keeps unknown failures in', () => {
+    // A 4xx is the caller's problem and was never reported.
+    expect(shouldReportToSentry(new AppError('LABEL_NOT_FOUND', 'No such folder.', 404))).toBe(
+      false,
+    );
+    // Something with no usable status is assumed to be a fault rather than assumed to be fine.
+    expect(shouldReportToSentry(new Error('unexpected') as never)).toBe(true);
+    expect(shouldReportToSentry({ statusCode: 'nonsense' })).toBe(true);
   });
 });
