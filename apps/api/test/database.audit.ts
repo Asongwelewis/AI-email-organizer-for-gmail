@@ -332,7 +332,7 @@ try {
            ,'activity_run_kind', 'activity_run_state'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
-           ,'facet_source'
+           ,'facet_source', 'facet_vocabulary_status'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
