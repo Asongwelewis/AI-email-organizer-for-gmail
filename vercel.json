@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run build:web",
+  "installCommand": "npm install --include=dev",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
