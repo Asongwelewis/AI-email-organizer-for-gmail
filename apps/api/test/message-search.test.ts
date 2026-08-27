@@ -100,8 +100,14 @@ beforeEach(() => {
       message: { is_unread: true },
     },
   ]);
-  // First call counts, second selects the page.
-  mocks.queryRaw.mockResolvedValueOnce([{ total: 1n }]).mockResolvedValueOnce([row()]);
+  // First call counts, second selects the page, third groups the whole match set by facet
+  // combination so the folder breakdown is over every match rather than the page in hand.
+  mocks.queryRaw
+    .mockResolvedValueOnce([{ total: 1n }])
+    .mockResolvedValueOnce([row()])
+    .mockResolvedValueOnce([
+      { entity: 'netflix', domain: 'finance', intent: 'payment-failed', n: 1n },
+    ]);
 });
 
 /**
@@ -109,6 +115,19 @@ beforeEach(() => {
  * half remember, found across the whole mailbox rather than one folder at a time.
  */
 describe('searching the mailbox', () => {
+  /**
+   * A flat list of messages is a worse mailbox than the one a person already has, so the answer
+   * leads with where the mail is. The breakdown is counted over the whole match set rather than
+   * the page in hand, or the numbers would climb as more pages loaded.
+   */
+  it('says which folders hold the matches, counted over all of them', async () => {
+    const result = await service().search(ACCOUNT, 'payment failed', {});
+
+    expect(result.folders).toEqual([
+      expect.objectContaining({ leafName: 'Payment failed', count: 1 }),
+    ]);
+  });
+
   it('finds a message by a fragment of its subject and says which folder it is in', async () => {
     const result = await service().search(ACCOUNT, 'payment failed', {});
 
@@ -205,7 +224,10 @@ describe('searching the mailbox', () => {
     mocks.queryRaw.mockReset();
     mocks.queryRaw
       .mockResolvedValueOnce([{ total: 3n }])
-      .mockResolvedValueOnce([row(), row({ id: 'b' }), row({ id: 'c' })]);
+      .mockResolvedValueOnce([row(), row({ id: 'b' }), row({ id: 'c' })])
+      .mockResolvedValueOnce([
+        { entity: 'netflix', domain: 'finance', intent: 'payment-failed', n: 3n },
+      ]);
 
     const result = await service().search(ACCOUNT, 'invoice', {}, { limit: 2 });
 

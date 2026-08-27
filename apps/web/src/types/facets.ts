@@ -143,11 +143,21 @@ export interface SearchFilters {
   unread?: boolean;
 }
 
+/** A folder holding some of the matches, counted over the whole result set rather than one page. */
+export interface SearchFolderGroup {
+  facetKey: string | null;
+  fullPath: string | null;
+  leafName: string;
+  count: number;
+}
+
 export interface SearchResults {
   query: string | null;
   filters: { entity: string | null; domain: string | null; intent: string | null; unread: boolean };
   order: PivotFacet[];
   results: SearchHit[];
+  /** Which folders the matches live in, largest first. */
+  folders: SearchFolderGroup[];
   total: number;
   nextCursor: string | null;
 }

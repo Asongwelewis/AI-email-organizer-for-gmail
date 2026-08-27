@@ -30,6 +30,14 @@ import { FACET_LABELS, type PivotFacet, type SearchFilters } from '@web/types/fa
 /** The filterable facets, in the order they read as a sentence: brand, area, intent. */
 const FILTERS: PivotFacet[] = ['entity', 'domain', 'intent'];
 
+/** `MailMind/Career/Job match` reads as `Career / Job match`. */
+function readableFolder(fullPath: string): string {
+  return fullPath
+    .replace(/^MailMind\//, '')
+    .split('/')
+    .join(' / ');
+}
+
 /** `payment-failed` reads as `Payment failed`, the same way a folder name does. */
 function readableValue(value: string): string {
   const spaced = value.replace(/-+/g, ' ');
@@ -103,6 +111,28 @@ export function FindPage() {
   const pages = resultsQuery.data?.pages ?? [];
   const hits = pages.flatMap((page) => page.results);
   const total = pages[0]?.total ?? 0;
+  // Counted server-side over the whole match set, so it does not shift as more pages load.
+  const folderGroups = pages[0]?.folders ?? [];
+  const openGroup = params.get('group');
+
+  /*
+   * A flat list of messages is a worse mailbox than the one you already have. So the answer leads
+   * with where the mail is — "your new mail is in these four folders" — and the messages only
+   * appear once a folder is chosen. Picking one filters in the browser: the page is already here,
+   * and the whole point is to move between folders without waiting.
+   */
+  const visibleHits = openGroup
+    ? hits.filter((hit) => (hit.folder?.facetKey ?? '') === openGroup)
+    : hits;
+  const openFolderName =
+    folderGroups.find((group) => (group.facetKey ?? '') === openGroup)?.leafName ?? null;
+
+  const openFolderGroup = (facetKey: string | null) => {
+    const next = new URLSearchParams(params);
+    if (facetKey === null) next.delete('group');
+    else next.set('group', facetKey);
+    setParams(next, { replace: false });
+  };
 
   const setFilter = (facet: PivotFacet, value: string) => {
     const next = new URLSearchParams(params);
@@ -222,9 +252,51 @@ export function FindPage() {
               {', newest first'}
               {hits.length < total ? `, showing the newest ${formatCount(hits.length)}` : ''}
             </p>
-            {/* Every hit carries the folder it sits in: "it was under Finance all along" is half
-                of what a person was actually asking. */}
-            <MailList messages={hits} connectedEmail={connectionQuery.data?.email ?? null} />
+            {/*
+              Where the mail is, before what it is. Each group counts the whole result set rather
+              than the page in hand, so the numbers do not climb as more pages load.
+            */}
+            {folderGroups.length > 0 ? (
+              <nav className="find-groups" aria-label="Folders holding these results">
+                <button
+                  type="button"
+                  className={`find-group${openGroup === null ? ' find-group--active' : ''}`}
+                  onClick={() => openFolderGroup(null)}
+                >
+                  <span className="find-group__name">Everything</span>
+                  <span className="find-group__count">{formatCount(total)}</span>
+                </button>
+                {folderGroups.map((group) => (
+                  <button
+                    key={group.facetKey ?? 'none'}
+                    type="button"
+                    className={`find-group${openGroup === (group.facetKey ?? '') ? ' find-group--active' : ''}`}
+                    onClick={() => openFolderGroup(group.facetKey ?? '')}
+                  >
+                    <span className="find-group__name">
+                      {group.fullPath ? readableFolder(group.fullPath) : group.leafName}
+                    </span>
+                    <span className="find-group__count">{formatCount(group.count)}</span>
+                  </button>
+                ))}
+              </nav>
+            ) : null}
+
+            {openFolderName ? (
+              <p className="screen__hint">
+                Showing the loaded mail in {openFolderName}.{' '}
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  onClick={() => openFolderGroup(null)}
+                >
+                  Show every folder
+                </button>
+              </p>
+            ) : null}
+
+            {/* Every hit still carries its folder, so a message read on its own says where it is. */}
+            <MailList messages={visibleHits} connectedEmail={connectionQuery.data?.email ?? null} />
             {resultsQuery.hasNextPage ? (
               <div className="screen__actions">
                 <button
