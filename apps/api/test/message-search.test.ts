@@ -85,8 +85,20 @@ beforeEach(() => {
   });
   // The mailbox `buildPivot` runs over, so a hit has a folder to be located in.
   mocks.facetFindMany.mockResolvedValue([
-    { gmail_message_id: 'g-1', entity: 'netflix', domain: 'finance', intent: 'payment-failed' },
-    { gmail_message_id: 'g-2', entity: 'netflix', domain: 'finance', intent: 'payment-failed' },
+    {
+      gmail_message_id: 'g-1',
+      entity: 'netflix',
+      domain: 'finance',
+      intent: 'payment-failed',
+      message: { is_unread: false },
+    },
+    {
+      gmail_message_id: 'g-2',
+      entity: 'netflix',
+      domain: 'finance',
+      intent: 'payment-failed',
+      message: { is_unread: true },
+    },
   ]);
   // First call counts, second selects the page.
   mocks.queryRaw.mockResolvedValueOnce([{ total: 1n }]).mockResolvedValueOnce([row()]);

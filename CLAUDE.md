@@ -101,6 +101,12 @@ carries one MailMind label and no more, which is a Gmail limit rather than a pro
 `gmail_label_id`. Folder names are unique among **siblings**, not per account: a pivot repeats its
 lower levels by construction.
 
+**A folder says where the new mail is.** `buildPivot` counts unread mail per node twice: its own,
+and its whole subtree. The subtree number is what a folder tile shows, because unread mail three
+levels down is still mail nobody has seen and a parent that stayed quiet about it would send a
+person hunting. It is read from `gmail_message_metadata.is_unread`, so it tracks Gmail rather than
+anything MailMind decided.
+
 **Findability is folders plus search.** `GET /api/facets/search` matches subject and sender across
 the whole mailbox with Postgres full text (`simple`, and the sender address split on punctuation on
 both sides of the match), narrowed by any combination of `entity`, `domain` and `intent`, with the

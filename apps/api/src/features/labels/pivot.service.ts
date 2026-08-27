@@ -125,13 +125,22 @@ export class PivotService {
   async facetedMessages(accountId: string): Promise<FacetedMessage[]> {
     const rows = await prisma.message_facets.findMany({
       where: { connected_google_account_id: accountId },
-      select: { gmail_message_id: true, entity: true, domain: true, intent: true },
+      select: {
+        gmail_message_id: true,
+        entity: true,
+        domain: true,
+        intent: true,
+        // Read straight from the mailbox mirror, so a folder's unread badge tracks Gmail rather
+        // than anything MailMind decided. Reading a message in Gmail clears it on the next sync.
+        message: { select: { is_unread: true } },
+      },
     });
     return rows.map((row) => ({
       id: row.gmail_message_id,
       entity: row.entity,
       domain: row.domain,
       intent: row.intent,
+      unread: row.message.is_unread,
     }));
   }
 

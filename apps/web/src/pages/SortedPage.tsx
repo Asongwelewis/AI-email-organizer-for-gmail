@@ -277,6 +277,7 @@ export function SortedPage() {
               path={folder.fullPath}
               count={folder.isLeaf ? folder.messageCount : folder.subtreeMessageCount}
               childCount={childrenOf(nodes, folder.facetKey).length}
+              unreadCount={folder.subtreeUnreadCount}
               onOpen={() => openFolder(folder.facetKey)}
             />
           ))}

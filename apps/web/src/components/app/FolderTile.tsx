@@ -9,10 +9,25 @@ export interface FolderTileProps {
   path: string;
   count: number | null;
   childCount: number;
+  /**
+   * Unread mail under this folder, counted through the whole subtree.
+   *
+   * The point of the tile is answering "where is the new mail" without opening anything, so a
+   * parent has to carry what is unread beneath it — unread mail three levels down is still mail
+   * you have not seen, and a folder that stayed silent about it would send you hunting.
+   */
+  unreadCount?: number;
   onOpen: () => void;
 }
 
-export function FolderTile({ name, path, count, childCount, onOpen }: FolderTileProps) {
+export function FolderTile({
+  name,
+  path,
+  count,
+  childCount,
+  unreadCount = 0,
+  onOpen,
+}: FolderTileProps) {
   const color = folderColor(path);
   const Icon = childCount > 0 ? FolderOpen : Folder;
 
@@ -30,7 +45,9 @@ export function FolderTile({ name, path, count, childCount, onOpen }: FolderTile
     >
       <span className="folder-tile__top">
         <Icon className="folder-tile__icon" aria-hidden="true" strokeWidth={1.5} />
-        {childCount > 0 ? (
+        {unreadCount > 0 ? (
+          <span className="folder-tile__unread">{formatCount(unreadCount)} new</span>
+        ) : childCount > 0 ? (
           <span className="folder-tile__children">
             {childCount} {childCount === 1 ? 'folder' : 'folders'}
           </span>
@@ -42,6 +59,7 @@ export function FolderTile({ name, path, count, childCount, onOpen }: FolderTile
       <span className="folder-tile__name">{name}</span>
       <span className="sr-only">
         {count === null ? 'Message count unavailable' : `${count} messages`}
+        {unreadCount > 0 ? `, ${unreadCount} unread` : ''}
       </span>
     </button>
   );

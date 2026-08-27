@@ -37,6 +37,8 @@ export interface FacetedMessage {
   entity: string | null;
   domain: string | null;
   intent: string | null;
+  /** Unread in Gmail. Absent is treated as read, so a caller that does not ask still works. */
+  unread?: boolean;
 }
 
 export interface PivotNode {
@@ -54,6 +56,15 @@ export interface PivotNode {
   messageCount: number;
   /** Messages in this folder and everything beneath it. */
   subtreeMessageCount: number;
+  /**
+   * Unread mail, counted the same two ways.
+   *
+   * This is what makes a folder tile answer "is there anything new in here" without opening it,
+   * and the subtree number is the one a collapsed parent needs — unread mail three levels down is
+   * still unread mail you have not seen.
+   */
+  unreadCount: number;
+  subtreeUnreadCount: number;
   isLeaf: boolean;
 }
 
@@ -118,7 +129,7 @@ export function buildPivot(
 
   // The deepest prefix of the ordering each message has values for. A message with no intent still
   // has an entity, so it belongs one level up rather than nowhere.
-  const tuples: string[][] = [];
+  const tuples: Array<{ values: string[]; unread: boolean }> = [];
   let noFacetValue = 0;
   for (const message of messages) {
     const values: string[] = [];
@@ -133,15 +144,17 @@ export function buildPivot(
       noFacetValue += 1;
       continue;
     }
-    tuples.push(values);
+    tuples.push({ values, unread: message.unread === true });
   }
 
   // Cumulative count for every prefix: a folder's size is its whole subtree, not just its own mail.
   const subtreeCounts = new Map<string, number>();
-  for (const values of tuples) {
+  const subtreeUnread = new Map<string, number>();
+  for (const { values, unread } of tuples) {
     for (let depth = 1; depth <= values.length; depth += 1) {
       const key = keyOf(trimmed, values.slice(0, depth));
       subtreeCounts.set(key, (subtreeCounts.get(key) ?? 0) + 1);
+      if (unread) subtreeUnread.set(key, (subtreeUnread.get(key) ?? 0) + 1);
     }
   }
   const survives = (key: string) => (subtreeCounts.get(key) ?? 0) >= minMessages;
@@ -149,8 +162,9 @@ export function buildPivot(
   // Place each message at the deepest surviving prefix of its own tuple. A prefix that does not
   // survive collapses into its parent, and the placement walk is what performs that collapse.
   const ownCounts = new Map<string, number>();
+  const ownUnread = new Map<string, number>();
   let belowThreshold = 0;
-  for (const values of tuples) {
+  for (const { values, unread } of tuples) {
     let placed: string | null = null;
     for (let depth = 1; depth <= values.length; depth += 1) {
       const key = keyOf(trimmed, values.slice(0, depth));
@@ -162,6 +176,7 @@ export function buildPivot(
       continue;
     }
     ownCounts.set(placed, (ownCounts.get(placed) ?? 0) + 1);
+    if (unread) ownUnread.set(placed, (ownUnread.get(placed) ?? 0) + 1);
   }
 
   const nodes = new Map<string, PivotNode>();
@@ -190,6 +205,8 @@ export function buildPivot(
       fullPath: `${LABEL_ROOT}/${path}`,
       messageCount: ownCounts.get(key) ?? 0,
       subtreeMessageCount: subtreeCounts.get(key) ?? 0,
+      unreadCount: ownUnread.get(key) ?? 0,
+      subtreeUnreadCount: subtreeUnread.get(key) ?? 0,
       isLeaf: true,
     });
   }
@@ -205,6 +222,9 @@ export function buildPivot(
     if (node.isLeaf) continue;
     strandedOnBranches += node.messageCount;
     node.messageCount = 0;
+    // Its own mail moved to the inbox, so its own unread count goes with it. The subtree number
+    // is untouched: the unread mail under this branch is still under it.
+    node.unreadCount = 0;
   }
 
   const ordered = [...nodes.values()].sort(

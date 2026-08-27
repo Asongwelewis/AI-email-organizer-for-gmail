@@ -73,6 +73,13 @@ export default defineConfig(({ mode }) => {
           start_url: '/sorted',
           scope: '/',
           display: 'standalone',
+          /*
+           * Borderless where the browser allows it. `window-controls-overlay` hands the title-bar
+           * strip to the page, so an installed copy has no separate chrome above it and reads as
+           * an application window rather than a browser without tabs. `standalone` is the fallback
+           * for anything that does not support it, which is why it is still declared above.
+           */
+          display_override: ['window-controls-overlay', 'standalone'],
           orientation: 'portrait',
           // The dark window ground from theme.css. A manifest colour is fixed at install time, so
           // it follows the app's default theme rather than the viewer's current one.

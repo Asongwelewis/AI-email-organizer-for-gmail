@@ -379,6 +379,19 @@
   opacity: 0.75;
 }
 
+/*
+ * Unread mail under this folder. Sits where the child-folder count would, because "there are four
+ * new things in here" is the more useful of the two the moment it is true.
+ */
+.folder-tile__unread {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--surface-window);
+  background: hsl(var(--tile-hue) 70% 62%);
+  border-radius: 999px;
+}
+
 .folder-tile__count {
   margin-top: auto;
   font-family: var(--font-display);
@@ -1279,6 +1292,46 @@
   background: var(--surface-inset);
   color: var(--ink);
   font: inherit;
+}
+
+/* --------------------------------------------------------- installed window */
+
+/**
+ * The installed app, with the title bar handed to the page.
+ *
+ * Only applies when the browser actually granted `window-controls-overlay`; in a tab, or in a
+ * plain standalone window, none of this exists and the layout is untouched. The reserved strip is
+ * whatever the OS left free of its own buttons, so the drag region never sits under the close
+ * button — `env(titlebar-area-*)` is the browser telling us where that is.
+ */
+@media (display-mode: window-controls-overlay) {
+  .shell {
+    padding-top: env(titlebar-area-height, 0px);
+  }
+
+  /*
+   * Without a title bar there is nothing left to grab, so the strip beside the window controls
+   * becomes the handle. Buttons inside it opt back out, or they would be undraggable dead zones
+   * that also refuse to click.
+   */
+  .shell::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: env(titlebar-area-x, 0px);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, 0px);
+    background: var(--surface-window);
+    -webkit-app-region: drag;
+    app-region: drag;
+    z-index: 10;
+  }
+
+  .shell button,
+  .shell a {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
 }
 
 /* ------------------------------------------------------------- arrangements */

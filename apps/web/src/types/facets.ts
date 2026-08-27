@@ -57,6 +57,9 @@ export interface PivotNode {
   depth: number;
   messageCount: number;
   subtreeMessageCount: number;
+  /** Unread mail in this exact folder, and in everything beneath it. */
+  unreadCount: number;
+  subtreeUnreadCount: number;
   isLeaf: boolean;
 }
 
