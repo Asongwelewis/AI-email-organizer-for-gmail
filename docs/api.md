@@ -784,6 +784,48 @@ The same object for one run, or `404 ACTIVITY_RUN_NOT_FOUND` when it belongs to 
 | `ACTIVITY_VALIDATION_FAILED` | 400    | The limit or run id is not valid. |
 | `ACTIVITY_RUN_NOT_FOUND`     | 404    | No such run for this account.     |
 
+## Feedback
+
+### `POST /api/feedback`
+
+The only unauthenticated write in the API. It exists so somebody who was handed the link — and who
+may well have bounced off the app before making an account — can report that it is broken.
+
+No session is required, and a session is not consulted for permission: when one happens to be
+present the row is attributed to that user, and a missing, expired or revoked session is not an
+error. What authentication would normally carry is carried by two other guards instead: the
+trusted-`Origin` check, and a deliberately small shared rate limit of five per window.
+
+```json
+{
+  "kind": "PROBLEM",
+  "message": "Reconnecting Gmail does not clear GMAIL_REAUTH_REQUIRED on the Sorted screen.",
+  "contact": "someone@example.com",
+  "page": "/sorted"
+}
+```
+
+`kind` is one of `PROBLEM`, `IDEA`, `PRAISE`, `OTHER`. `message` is 10-4000 characters. `contact`
+is optional and omitting it is a real choice — it means no reply is wanted. `page` is a **route**;
+anything carrying a query string is rejected, because ours hold facet values, search phrases and
+message ids.
+
+Answers `201 {"received": true}`. The row id is deliberately not returned.
+
+The body is strict: an unrecognized key is a `400` rather than an ignored field. Nothing beyond
+these four values is stored — no IP address, no user agent, no referrer.
+
+| Code                         | Status | Meaning                                            |
+| ---------------------------- | ------ | -------------------------------------------------- |
+| `FEEDBACK_VALIDATION_FAILED` | 400    | Too short, too long, unknown key, or a bad `page`. |
+| `CSRF_ORIGIN_INVALID`        | 403    | The submitting origin is not trusted.              |
+| `RATE_LIMIT_EXCEEDED`        | 429    | Five per window, counted across API instances.     |
+
+There is no `GET`. This system has no admin role — every authenticated person is an equal user of
+their own mailbox — so an authenticated read would let anyone who signed in list everybody's
+feedback, including contact addresses left in the expectation of a private reply. The operator
+reads submissions with `npm run feedback --workspace @mailmind/api`.
+
 ## Privacy boundary
 
 API response examples use fabricated identifiers and values. The implemented Gmail sync consumes a

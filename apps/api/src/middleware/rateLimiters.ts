@@ -78,3 +78,12 @@ export const activityPollLimiter = limiter(
   'per-instance',
 );
 export const labelsMutationLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));
+
+/**
+ * The only limiter in front of an unauthenticated write, and the smallest.
+ *
+ * Shared, without hesitation: with the counter per-instance, the cost of getting past it is a
+ * retry until the load balancer picks a different process. Five per window is generous for a
+ * person with something to say and tedious for anything filling the table.
+ */
+export const feedbackLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 5));

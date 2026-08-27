@@ -24,6 +24,7 @@
     "file:facets": "tsx scripts/file-facets.ts",
     "report:facets": "tsx scripts/report-facets.ts",
     "eval:facets": "tsx scripts/eval-facets.ts",
+    "feedback": "tsx scripts/read-feedback.ts",
     "rederive:entities": "tsx scripts/rederive-entities.ts"
   },
   "dependencies": {

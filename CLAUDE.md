@@ -161,6 +161,16 @@ approved tree, applied through an _additive_ `messages.modify` — is gone. Two 
 same table and the same labels could always undo each other, and the retired one was the one
 running unattended.
 
+**One public write, and it is the feedback form.** `POST /api/feedback` is the only route in the
+API that does not require a session, because the people best placed to say the app is confusing are
+the ones who never made an account. A session is attributed when one is present and its absence is
+never an error; the guards are the trusted-`Origin` check and a shared five-per-window limit. The
+row holds what was typed, the kind, an optional reply address and a **route** — never a query
+string, since ours carry facet values, search phrases and message ids — and nothing that was
+collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
+authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
+The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one
 database. External calls (Google, Gemini) happen _outside_ database transactions so partial work

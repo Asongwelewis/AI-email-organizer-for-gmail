@@ -21,6 +21,7 @@ import type {
   SearchResults,
 } from '@web/types/facets';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
+import type { FeedbackInput } from '@web/types/feedback';
 import type {
   ApprovePlanInput,
   ConfirmLabelInput,
@@ -333,6 +334,17 @@ export const api = {
   async getActivityRun(runId: string): Promise<ActivityRun> {
     const response = await http.get<ActivityRun>(`/activity/runs/${runId}`);
     return response.data;
+  },
+
+  /**
+   * The one call that works signed out — it is for whoever was handed the link.
+   *
+   * `skipAuthRefresh`, because the interceptor's job is to rescue a request that failed on an
+   * expired session, and this one never had a session to expire. Without it a visitor's 4xx would
+   * fire a pointless refresh attempt and report the refresh's failure instead of the real problem.
+   */
+  async sendFeedback(input: FeedbackInput): Promise<void> {
+    await http.post('/feedback', input, { skipAuthRefresh: true });
   },
 };
 

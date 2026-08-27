@@ -10,6 +10,7 @@ import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
 import { DataDeletionPage } from '@web/pages/DataDeletionPage';
+import { FeedbackPage } from '@web/pages/FeedbackPage';
 import { PrivacyPolicy } from '@web/pages/PrivacyPolicy';
 import { SupportPage } from '@web/pages/SupportPage';
 import { TermsOfService } from '@web/pages/TermsOfService';
@@ -47,6 +48,12 @@ const publicRoutes: RouteObject[] = [
   { path: '/privacy', element: <PrivacyPolicy /> },
   { path: '/terms', element: <TermsOfService /> },
   { path: '/support', element: <SupportPage /> },
+  /*
+   * Public, and it has to be: the people whose opinion is most worth having are the ones who
+   * bounced off the app before making an account. It is also, until the operator details in
+   * `legal-contact.ts` are filled in, the only working way to reach whoever runs this deployment.
+   */
+  { path: '/feedback', element: <FeedbackPage /> },
   { path: '/data-deletion', element: <DataDeletionPage /> },
 ];
 

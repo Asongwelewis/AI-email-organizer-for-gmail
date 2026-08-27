@@ -14,6 +14,7 @@ const applicationTables = [
   'connected_google_accounts',
   'facet_pivot_settings',
   'facet_vocabularies',
+  'feedback',
   'gmail_labels',
   'gmail_message_metadata',
   'gmail_sync_runs',
@@ -55,6 +56,7 @@ const requiredIndexes = [
   'connected_google_accounts_user_id_idx',
   'facet_vocabularies_account_status_idx',
   'facet_vocabularies_account_value_unique_idx',
+  'feedback_created_at_idx',
   'gmail_labels_account_label_unique_idx',
   'gmail_labels_account_managed_idx',
   'gmail_labels_account_name_unique_idx',
@@ -128,7 +130,8 @@ try {
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
         'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
-        'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
+        'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
+        'feedback'
       )
     order by c.relname
   `;
@@ -168,7 +171,8 @@ try {
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
       'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
-      'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
+      'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
+      'feedback'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -208,6 +212,7 @@ try {
         'connected_google_accounts_user_id_idx',
         'facet_vocabularies_account_status_idx',
         'facet_vocabularies_account_value_unique_idx',
+        'feedback_created_at_idx',
         'gmail_labels_account_label_unique_idx',
         'gmail_labels_account_managed_idx',
         'gmail_labels_account_name_unique_idx',
@@ -332,7 +337,7 @@ try {
            ,'activity_run_kind', 'activity_run_state'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
-           ,'facet_source', 'facet_vocabulary_status'
+           ,'facet_source', 'facet_vocabulary_status', 'feedback_kind'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
@@ -363,12 +368,12 @@ try {
   // than absorbed. The cost is that every schema change must update them here — which is the point,
   // but it also means a stale number reads as a real failure: these three had drifted several
   // migrations behind before the facet work began.
-  assert(summary?.enum_count === 20n, 'all twenty enum types must exist');
-  assert(summary.foreign_key_count === 30n, 'all thirty foreign keys must exist');
+  assert(summary?.enum_count === 21n, 'all twenty-one enum types must exist');
+  assert(summary.foreign_key_count === 31n, 'all thirty-one foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
   assert(
-    summary.migration_count === 22n,
-    'exactly twenty-two intended Prisma migrations must be applied',
+    summary.migration_count === 23n,
+    'exactly twenty-three intended Prisma migrations must be applied',
   );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');

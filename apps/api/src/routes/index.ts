@@ -9,6 +9,7 @@ import { activityRouter } from '@api/features/activity/activity.routes.js';
 import { automationRouter } from '@api/features/automation/automation.routes.js';
 import { labelsRouter } from '@api/features/labels/labels.routes.js';
 import { facetsRouter } from '@api/features/facets/facets.routes.js';
+import { feedbackRouter } from '@api/features/feedback/feedback.routes.js';
 
 export const apiRouter = Router();
 
@@ -24,3 +25,5 @@ apiRouter.use('/labels', labelsRouter);
 apiRouter.use('/facets', facetsRouter);
 apiRouter.use('/automation', automationRouter);
 apiRouter.use('/activity', activityRouter);
+// Public on purpose: someone who was handed the link has no session and is still worth hearing.
+apiRouter.use('/feedback', feedbackRouter);

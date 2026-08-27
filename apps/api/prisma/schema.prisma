@@ -355,6 +355,7 @@ model users {
   oauth_states               oauth_states[]
   sessions                   sessions[]
   automation_message_actions automation_message_actions[]
+  feedback                   feedback[]
 
   @@index([created_at(sort: Desc)])
   @@index([status])
@@ -740,4 +741,35 @@ model facet_pivot_settings {
 enum facet_source {
   RULE
   MODEL
+}
+
+/// What somebody wrote in the feedback form, and deliberately nothing else about them.
+///
+/// The one table in this schema a stranger can write to, which is why it holds so little: no IP,
+/// no user agent, no referrer. `contact` is filled in only by someone who wants an answer, and the
+/// row is deleted with the account when a signed-in person wrote it.
+model feedback {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind       feedback_kind @default(OTHER)
+  message    String
+  /// Optional. Blank means they did not want a reply, not that we failed to capture one.
+  contact    String?
+  /// The route they were on when they wrote. A path, never a query string — those carry facets,
+  /// search phrases, and message ids.
+  page       String?
+  /// Set when a signed-in person submits, null for a visitor. Anonymous feedback is the point of
+  /// the feature, so this is nullable rather than a reason to refuse the write.
+  user_id    String?       @db.Uuid
+  created_at DateTime      @default(now()) @db.Timestamptz(6)
+  users      users?        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at(sort: Desc)], map: "feedback_created_at_idx")
+}
+
+/// Why they wrote. Four buckets, because a free-text category is a category nobody can sort by.
+enum feedback_kind {
+  PROBLEM
+  IDEA
+  PRAISE
+  OTHER
 }

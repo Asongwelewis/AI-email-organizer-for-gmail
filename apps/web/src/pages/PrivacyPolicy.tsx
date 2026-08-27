@@ -61,6 +61,14 @@ export function PrivacyPolicy() {
         </strong>{' '}
         This is not a promise about restraint; it is what the request to Gmail asks for.
       </p>
+      <p>
+        Separately, if you use the <Link to="/feedback">feedback form</Link>, MailMind stores what
+        you typed, which of the four kinds you picked, and the route you were on. It stores an email
+        address only if you enter one, and leaving that blank is a real choice: nothing else is
+        recorded either way — not your IP address, not your browser, not where you came from. You do
+        not need an account to send feedback, and if you have one it is attached so a reply can find
+        you.
+      </p>
 
       <h2>What it is used for</h2>
       <p>
@@ -110,6 +118,11 @@ export function PrivacyPolicy() {
         from. Deleting your account deletes it. Audit records of security-relevant events —
         sign-ins, permission changes, deletions — are kept without your identifier attached, which
         is what lets us show that a deletion happened without holding on to you afterwards.
+      </p>
+      <p>
+        Feedback sent while signed in is deleted with your account. Feedback sent without an account
+        has nothing to attach it to, so it stays — it is what you wrote and, if you left one, the
+        address you asked to be answered at.
       </p>
 
       <h2>Deleting your data</h2>
