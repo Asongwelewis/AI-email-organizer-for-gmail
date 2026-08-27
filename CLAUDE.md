@@ -166,6 +166,12 @@ an expiring account-scoped DB lease and writes checkpoints, so multiple API inst
 database. External calls (Google, Gemini) happen _outside_ database transactions so partial work
 stays durable and resumable.
 
+**One motion rhythm on the public pages.** `apps/web/src/lib/motion.ts` owns the durations, easing
+and stagger, and `useReveal`/`useEntrance` return **nothing at all** under
+`prefers-reduced-motion` — a CSS media query cannot reach a transform driven by JavaScript, so an
+animation added outside these hooks runs regardless of the system setting. Transform and opacity
+only.
+
 **Frontend state.** TanStack Query owns server state with retries and refetch-on-focus disabled by
 default; feature hooks poll every 2s only while a run is active. `AuthProvider` treats
 `GET /api/auth/me` as source of truth. The Axios client attempts one shared session refresh on 401,
