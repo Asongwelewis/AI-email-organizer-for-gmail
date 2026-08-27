@@ -10,7 +10,7 @@ export function sessionCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     secure: isProduction ? true : env.COOKIE_SECURE,
-    sameSite: isProduction ? 'none' : env.COOKIE_SAME_SITE,
+    sameSite: env.COOKIE_SAME_SITE,
     path: '/',
     ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
     maxAge: env.REFRESH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,

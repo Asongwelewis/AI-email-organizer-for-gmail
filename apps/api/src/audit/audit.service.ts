@@ -1,4 +1,5 @@
 import { logger } from '@api/config/logger.js';
+import { captureApiException } from '@api/observability/sentry.js';
 import { auditRepository, type AuditInput } from '@api/repositories/audit.repository.js';
 
 export class AuditService {
@@ -6,6 +7,7 @@ export class AuditService {
     try {
       await auditRepository.create(input);
     } catch (error) {
+      captureApiException(error, { operation: 'audit_write', audit_action: input.action });
       logger.error(
         {
           errorType: error instanceof Error ? error.name : 'UnknownError',

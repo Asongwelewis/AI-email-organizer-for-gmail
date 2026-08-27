@@ -261,19 +261,24 @@ Creates missing managed Gmail labels and synchronizes label metadata.
 
 ### `POST /api/gmail/sync/initial`
 
-Runs a configuration-bounded initial metadata sync.
+**Accepts** a full initial metadata sync and returns `202`. The backfill walks every page of the
+mailbox, which no browser will hold a request open for, so the client polls
+`GET /api/activity/runs/:id` from here.
 
 ```json
 {
-  "success": true,
-  "messagesExamined": 250,
-  "messagesUpserted": 250,
-  "messagesDeleted": 0,
-  "labelsUpserted": 14,
-  "checkpointHistoryId": "123456",
-  "messageCount": 250
+  "runId": "00000000-0000-4000-8000-000000000030",
+  "state": "RUNNING",
+  "kind": "GMAIL_INITIAL_SYNC",
+  "startedAt": "2026-08-20T02:00:00.000Z",
+  "alreadyRunning": false
 }
 ```
+
+`alreadyRunning: true` means this call joined a backfill already in flight instead of starting a
+second one. Progress arrives on the run record as `processedCount` / `totalCount`, and on
+`GET /api/gmail/sync/status` as the `backfill` block. The sync is resumable either way: leases and
+per-page checkpoints mean a dropped connection or a restarted server loses no work.
 
 ### `POST /api/gmail/sync/incremental`
 
@@ -281,332 +286,402 @@ Applies changes after the saved Gmail history checkpoint. Uses the same response
 Returns `409 GMAIL_INITIAL_SYNC_REQUIRED` without an initial checkpoint or
 `409 GMAIL_HISTORY_EXPIRED` when a new initial sync is needed.
 
-## Classification
+## Labels
 
-All endpoints require a session. Mutations require trusted Origin. Classification operates on
-stored metadata and creates recommendations only.
+All endpoints require a session; mutations require a trusted Origin. The approved folder tree is the
+only vocabulary automation may use, and nothing is created in Gmail until the user confirms a plan.
 
-Categories:
+### `GET /api/labels`
 
-`PRIMARY`, `WORK`, `FINANCE`, `RECEIPTS`, `ORDERS`, `TRAVEL`, `EDUCATION`, `NEWSLETTERS`,
-`PROMOTIONS`, `SOCIAL`, `NOTIFICATIONS`, `SECURITY`, `SUPPORT`, `PERSONAL`, `SPAM_SUSPECTED`,
-`OTHER`.
-
-Recommended actions:
-
-`KEEP_IN_INBOX`, `ARCHIVE_RECOMMENDED`, `REVIEW_REQUIRED`, `IMPORTANT_RECOMMENDED`,
-`MUTE_RECOMMENDED`, `UNSUBSCRIBE_CANDIDATE`.
-
-### `GET /api/classification/status`
-
-Returns provider state, counts, latest run, distributions, and version identifiers.
+Returns the approved folder tree plus the plan awaiting review, if any. Sends `Cache-Control:
+no-store`. Labels are flat with `parentId`/`depth`; `path` is the joined ancestor chain and
+`fullPath` prefixes it with `MailMind/`.
 
 ```json
 {
-  "enabled": true,
-  "provider": "external",
-  "model": "configured-model",
-  "running": false,
-  "activeRunId": null,
-  "classifiedCount": 120,
-  "reviewRequiredCount": 8,
-  "lastClassifiedAt": "2026-07-23T20:00:00.000Z",
-  "lastErrorCode": null,
-  "latestRun": {
-    "id": "00000000-0000-4000-8000-000000000010",
-    "status": "COMPLETED",
-    "requestedMessageCount": 20,
-    "processedMessageCount": 20,
-    "reusedResultCount": 5,
-    "ruleClassifiedCount": 10,
-    "aiClassifiedCount": 5,
-    "reviewRequiredCount": 2,
-    "failedCount": 0
-  },
-  "categoryDistribution": { "WORK": 30, "RECEIPTS": 15 },
-  "recommendationDistribution": { "KEEP_IN_INBOX": 30 },
-  "versions": {
-    "classifier": "version-string",
-    "prompt": "version-string",
-    "taxonomy": "version-string"
+  "maxLabels": 40,
+  "maxDepth": 3,
+  "labels": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "parentId": null,
+      "depth": 1,
+      "leafName": "Job hunt",
+      "fullPath": "MailMind/Job hunt",
+      "path": "Job hunt",
+      "isLeaf": false,
+      "rationale": "Job search mail arrives from many unrelated senders.",
+      "source": "AI_PROPOSED",
+      "gmailLabelId": null,
+      "createdAt": "2026-08-20T09:00:00.000Z"
+    }
+  ],
+  "plan": null
+}
+```
+
+Only leaves carry a `gmailLabelId`: Gmail nesting is cosmetic, so `MailMind/Job hunt/Applications
+sent` is one Gmail label whose name contains slashes, and the intermediate rows exist only here.
+
+### `POST /api/labels/propose`
+
+Samples up to `TAXONOMY_SAMPLE_SIZE` stored messages, spends one Gemini call to design the tree,
+validates the result, and stores it as the account's pending plan. **Creates nothing in Gmail.**
+Returns the same shape as `GET /api/labels`, with `plan` populated:
+
+```json
+{
+  "plan": {
+    "id": "00000000-0000-4000-8000-000000000020",
+    "status": "PENDING",
+    "model": "gemini-flash-lite-latest",
+    "promptVersion": "mailmind-taxonomy-planner-v1",
+    "sampledMessageCount": 500,
+    "analyzedMessageCount": 596,
+    "leafCount": 18,
+    "warnings": [
+      "Dropped \"Job hunt/Offers\": it is a state folder with no subject pattern present in the sample."
+    ],
+    "createdAt": "2026-08-20T09:00:00.000Z",
+    "nodes": [
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "parentId": "00000000-0000-4000-8000-000000000020",
+        "depth": 2,
+        "kind": "TOPIC",
+        "name": "Applications sent",
+        "fullPath": "MailMind/Job hunt/Applications sent",
+        "path": "Job hunt/Applications sent",
+        "rationale": "Confirmations that an application reached a company.",
+        "estimatedMessageCount": 25,
+        "matchedMessageCount": 12,
+        "rolledUpMessageCount": 18,
+        "isLeaf": false,
+        "gmailLabelPath": null,
+        "rules": [{ "kind": "SENDER_DOMAIN", "value": "greenhouse.io", "matchedMessageCount": 6 }]
+      }
+    ]
   }
 }
 ```
 
-### `GET /api/classification/results`
+`estimatedMessageCount` is the planner's estimate for the whole mailbox; `matchedMessageCount` is
+what this node's own rules actually matched in the sample, and `rolledUpMessageCount` includes its
+subtree. `warnings` lists every node and rule the validator rejected, so the review shows what the
+model asked for and did not get.
 
-Cursor-paginated results. Query parameters:
+A new proposal supersedes the previous pending plan and never touches approved folders or Gmail.
 
-| Parameter           | Rules                                                             |
-| ------------------- | ----------------------------------------------------------------- |
-| `category`          | One category listed above                                         |
-| `recommendedAction` | One recommended action listed above                               |
-| `requiresReview`    | `true` or `false`                                                 |
-| `status`            | `PENDING`, `COMPLETED`, `FAILED`, `NEEDS_REVIEW`, or `SUPERSEDED` |
-| `cursor`            | Result UUID returned as `nextCursor`                              |
-| `limit`             | Integer 1–50; default 20                                          |
+| Code                             | Status | Meaning                                               |
+| -------------------------------- | ------ | ----------------------------------------------------- |
+| `GMAIL_ACCOUNT_NOT_CONNECTED`    | 409    | Gmail is not connected for this user.                 |
+| `LABEL_PROPOSAL_ALREADY_RUNNING` | 409    | A proposal or automation run holds the account lease. |
+| `LABEL_PROPOSAL_NOT_ENOUGH_MAIL` | 422    | Too little synchronized mail to plan from.            |
+| `LABEL_PLAN_EMPTY`               | 422    | No proposed folder survived validation.               |
+| `PROVIDER_INVALID_RESPONSE`      | 502    | The model returned an unusable taxonomy.              |
+
+### `POST /api/labels/confirm`
+
+Either approves a proposed tree:
+
+```json
+{ "planId": "00000000-0000-4000-8000-000000000020" }
+```
+
+Omit `nodeIds` to approve the whole tree, or pass a subset - selecting a node implicitly selects the
+ancestors it needs. Approval writes each node to `user_labels`, creates **only the leaves** in Gmail
+at their full path, and installs the plan's routing rules into `learned_classification_patterns` so
+automation can file matching mail with no model call.
+
+Or creates folders by hand:
 
 ```json
 {
+  "labels": [
+    { "leafName": "Money in", "source": "USER_CREATED" },
+    {
+      "leafName": "Applications sent",
+      "parentId": "00000000-0000-4000-8000-000000000010",
+      "source": "USER_CREATED"
+    }
+  ]
+}
+```
+
+Each name is validated with the preserved normalization rules: 2-60 characters, no slashes or
+control characters, no reserved Gmail name, and nothing generic. Names too similar to each other or
+to an already approved folder are rejected. Returns the same shape as `GET /api/labels`.
+
+| Code                        | Status | Meaning                                               |
+| --------------------------- | ------ | ----------------------------------------------------- |
+| `LABEL_VALIDATION_FAILED`   | 400    | The request body matches neither accepted shape.      |
+| `LABEL_NAME_INVALID`        | 400    | A name is generic, malformed, reserved, or too deep.  |
+| `LABEL_SET_EMPTY`           | 400    | No labels were supplied.                              |
+| `LABEL_DUPLICATE`           | 409    | Two names are too similar to keep both.               |
+| `LABEL_LIMIT_REACHED`       | 409    | Approval would exceed `AUTOMATION_MAX_LABELS` leaves. |
+| `LABEL_PLAN_NOT_FOUND`      | 404    | No such plan for this account.                        |
+| `LABEL_PLAN_NOT_PENDING`    | 409    | That plan was already reviewed.                       |
+| `LABEL_PLAN_NODE_NOT_FOUND` | 404    | A selected node is not part of that plan.             |
+
+### `PATCH /api/labels/:id`
+
+Body `{ "leafName": "Job search" }`. Renames the folder in MailMind and rewrites the path of every
+folder beneath it. Because a Gmail label's name is its whole path, every descendant that exists in
+Gmail is renamed too. Rejects a name that collides with another approved folder (409).
+
+### `DELETE /api/labels/:id`
+
+Removes MailMind's record so automation stops using the folder, along with its descendants. The
+Gmail labels and every message already filed under them are left untouched.
+
+```json
+{ "success": true, "gmailLabelRetained": true, "removedDescendants": 2 }
+```
+
+### `DELETE /api/auth/me`
+
+Deletes the account and everything stored about it. Requires a session and a trusted Origin, and
+clears the session cookie in the same response.
+
+Google's restricted-scope policy requires this to exist and to be reachable in-app; `/data-deletion`
+in the SPA is the page that calls it, and it is public so it can be linked from a privacy policy and
+from the Cloud Console.
+
+What happens, in order: every connected Google account's tokens are revoked **with Google first**,
+so no live grant is left behind; `audit_logs` rows are detached rather than deleted, because the
+record that an account existed and was deleted is the evidence the deletion happened; then the
+`users` row is deleted and the schema's cascades take the connected accounts, message metadata,
+facets, folders, rules and runs with it.
+
+Revocation is best-effort by design. If Google is unreachable the deletion still proceeds — refusing
+would leave someone who asked to be forgotten in the database because a third party had an outage.
+
+```json
+{ "success": true, "connectedAccounts": 1 }
+```
+
+## Facets and the pivot
+
+A message carries three orthogonal facets, and a folder tree is a **view** of them. These routes
+operate that pipeline: classify mail into facets, choose which ordering is materialised, preview
+any ordering, and project the canonical one onto Gmail.
+
+Every route requires a session. The two that spend a quota and the two that write take the
+trusted-Origin check.
+
+### `POST /api/facets/classify`
+
+**202.** Classifies mail that has no facets yet, or whose facets were derived from input that has
+since changed. Thousands of paced Gemini calls, so it answers with a run id to poll at
+`GET /api/activity/runs/:id` rather than holding the request.
+
+```json
+{ "runId": "…", "state": "RUNNING", "kind": "FACET_CLASSIFICATION", "alreadyRunning": false }
+```
+
+Resumable by construction: the `message_facets` row is the checkpoint, so a run stopped by a spent
+quota picks up where it left off and no message is classified twice.
+
+### `POST /api/facets/file`
+
+**202.** Projects stored facets onto Gmail through the canonical pivot. **Opt-in, and off by
+default** — `503 GMAIL_WRITE_DISABLED` unless `GMAIL_WRITE_ENABLED` is set. Spends **no tokens and
+makes no model call** — the classification is already stored — so re-filing after a pivot or
+threshold change costs one Gmail call per message and not a single re-classification. The apply is
+exclusive: the new label goes on and every other MailMind label comes off in the same
+`messages.modify`.
+
+### `GET /api/facets/pivot`
+
+The account's canonical ordering and the folder floor.
+
+```json
+{ "canonicalPivot": ["entity", "intent"], "minMessages": 5 }
+```
+
+### `PUT /api/facets/pivot`
+
+Changes which ordering is canonical. **Writes nothing to Gmail** — the tree only moves when
+`apply` is called, which is what makes trying an ordering out safe.
+
+```json
+{ "canonicalPivot": ["domain", "intent", "entity"], "minMessages": 8 }
+```
+
+`400 FACET_VALIDATION_FAILED` if the ordering is empty, names a facet twice, or names something
+that is not `entity`, `domain` or `intent`. A pivot is an order of **distinct** facets: repeating
+one is not a deeper tree, it is the same level twice.
+
+### `GET /api/facets/pivot/plan`
+
+What applying the canonical pivot would do, without doing it. Every node with `KEEP` or `CREATE`,
+the folders that match no current combination (`orphaned`), and how many Gmail labels would be
+created. Nothing is written and Gmail is not called.
+
+### `GET /api/facets/pivot/view?order=domain,intent,entity&minMessages=3`
+
+Any ordering at all, materialised or not — the same facet rows arranged differently, computed from
+`message_facets` with no Gmail call and no model call. `Netflix > Payment failed` and
+`Finance > Payment failed > Netflix` are the same mail, reordered, with nothing reclassified. Both
+parameters are optional and fall back to the account's settings.
+
+### `GET /api/facets/messages?facetKey=entity%3Dnetflix%7Cintent%3Dpayment-failed`
+
+The mail inside one folder, newest first. A folder **is** a facet combination, so this is keyed by
+that combination rather than by a `user_labels` row — it works whether or not a pivot was ever
+applied to Gmail, which is what lets the PWA be the folder view rather than a reflection of one.
+
+**Subtree semantics.** `entity=netflix` returns every Netflix message, including the ones the pivot
+placed deeper under `Payment failed`. `buildPivot` puts a message at its deepest surviving leaf
+because a message wears one label; a person opening a parent folder is asking "everything under
+here", and that is what comes back.
+
+Metadata only — subject, sender, date, the stored snippet, and the Gmail id the deep link
+addresses. Never a body.
+
+```json
+{
+  "messages": [{ "id": "…", "gmailMessageId": "18f0abc", "subject": "…", "senderName": "…" }],
+  "nextCursor": "…",
+  "total": 1823
+}
+```
+
+`limit` defaults to 50 and caps at 200; `cursor` is the previous page's `nextCursor`. One
+combination in a real mailbox holds 1,823 messages, so a folder pages.
+
+`400 FACET_VALIDATION_FAILED` if the key is not a facet combination. A key constraining nothing
+would hand back the entire mailbox under a folder heading, so the shape is checked before it
+reaches a query.
+
+### `GET /api/facets/search?q=payment%20failed&intent=payment-failed&entity=netflix`
+
+Subject and sender across the **whole mailbox**, narrowed by any combination of facets. No model
+call and no Gmail call — Postgres full text over metadata the sync already stored, so there is no
+body here to search and there never will be.
+
+`intent=payment-failed` on its own is the thing a Gmail label tree genuinely cannot do: one intent
+across every brand at once, because facets are orthogonal and a tree can only express one ordering
+of them. `q` on its own searches mail that has never been classified too, which is exactly the mail
+a person is most likely to be hunting for.
+
+```json
+{
+  "query": "payment failed",
+  "filters": { "entity": "netflix", "domain": null, "intent": null },
+  "order": ["domain", "intent", "entity"],
   "results": [
     {
-      "id": "00000000-0000-4000-8000-000000000020",
-      "messageId": "00000000-0000-4000-8000-000000000021",
-      "message": {
-        "subject": "Your receipt",
-        "sender": "Example Store",
-        "senderDomain": "store.example",
-        "snippet": "Thanks for your order...",
-        "gmailLabels": ["INBOX"],
-        "date": "2026-07-23T19:00:00.000Z"
-      },
-      "recommendedCategory": "RECEIPTS",
-      "suggestedAction": "ARCHIVE_RECOMMENDED",
-      "confidence": 0.95,
-      "requiresReview": false,
-      "explanation": "Receipt metadata signals matched.",
-      "reasonCodes": ["RECEIPT_TERMS"],
-      "source": "RULE",
-      "status": "COMPLETED",
-      "versions": {
-        "classifier": "version-string",
-        "prompt": "version-string",
-        "taxonomy": "version-string"
-      },
-      "classifiedAt": "2026-07-23T20:00:00.000Z",
-      "correction": null
+      "id": "…",
+      "gmailMessageId": "18f0abc",
+      "subject": "Your payment failed",
+      "senderEmail": "billing@netflix.com",
+      "entity": "netflix",
+      "intent": "payment-failed",
+      "folder": {
+        "facetKey": "…",
+        "fullPath": "MailMind/Netflix/Payment failed",
+        "leafName": "Payment failed"
+      }
     }
   ],
+  "total": 3,
   "nextCursor": null
 }
 ```
 
-### `GET /api/classification/results/:id`
+Every hit carries the folder it sits in under `order` (the account's saved ordering unless the
+query names another) — "it was under Finance all along" is half the answer. `folder` is null for
+mail in no folder: unclassified, or in a combination below the floor.
 
-Returns one result DTO from the list contract. The UUID must belong to the connected account.
+The address is split on punctuation on both sides of the match, so `netflix` finds
+`billing@netflix.com` and pasting the whole address finds it too. Matching is `simple`, not
+`english`: the vocabulary is brand names, order numbers and subject lines, and stemming _Coursera_
+buys nothing while costing exact matches.
 
-### `POST /api/classification/run`
+`limit` defaults to 50 and caps at 200; `cursor` is the previous page's `nextCursor`.
 
-Runs classification for a configured maximum number of eligible messages. The response includes:
+`400 FACET_VALIDATION_FAILED` when the query constrains nothing — a search with neither a phrase
+nor a facet is the mailbox, not a search — or when a facet value is not one.
 
-```json
-{
-  "success": true,
-  "runId": "00000000-0000-4000-8000-000000000010",
-  "provider": "external",
-  "model": "configured-model",
-  "requested": 20,
-  "processed": 20,
-  "reused": 5,
-  "rule": 10,
-  "ai": 5,
-  "providerCalls": 5,
-  "review": 2,
-  "failed": 0
-}
-```
+### `GET /api/facets/vocabulary/status`
 
-### `POST /api/classification/messages/:messageId/reclassify`
-
-Forces one eligible stored message through the pipeline. `messageId` is the internal metadata UUID,
-not Gmail’s string message ID. It uses the run response contract.
-
-### `POST /api/classification/results/:id/correct`
-
-Stores an immutable correction. Request:
+The vocabulary this mailbox approved, any pending proposal, and whether the classifier can run at
+all.
 
 ```json
 {
-  "category": "ORDERS",
-  "recommendedAction": "KEEP_IN_INBOX",
-  "feedbackReason": "This is an active order."
+  "approved": { "domain": [{ "name": "finance", "definition": "…" }], "intent": [] },
+  "proposed": { "domain": [], "intent": [] },
+  "ready": false
 }
 ```
 
-`feedbackReason` is optional and limited to 500 trimmed characters. Returns 201:
+### `POST /api/facets/vocabulary/propose`
+
+Grounds a candidate vocabulary in this mailbox's **own** mail — which of its values the mailbox
+actually contains, roughly how much, and with which subjects — and records the result as a
+proposal. One Gemini call. It writes nothing the classifier can read.
+
+The candidate is the account's own approved set when it has one, so re-proposing measures how well
+the current vocabulary still fits. A mailbox with nothing approved is offered the checked-in
+starter set as a **starting point, not an inheritance**: values that fit nothing in this mailbox
+come back at zero weight with no examples, which is exactly the signal for dropping them before
+approving.
+
+### `POST /api/facets/vocabulary/confirm`
+
+The human approval, and the only step after which the classifier speaks differently.
+
+```json
+{ "values": [{ "facet": "domain", "name": "finance", "definition": "Banking, payments, …" }] }
+```
+
+Replaces the approved set rather than merging into it: a vocabulary is a closed set the model
+chooses from, so a value left out has to stop being returnable. Mail already classified is not
+touched — `prompt_version` carries a fingerprint of the vocabulary, so affected messages simply
+read as stale and re-classify on the next pass instead of vanishing from their folders.
+
+`422 FACET_VOCABULARY_EMPTY` when either axis would be left with no values.
+
+Until a vocabulary is approved, `POST /api/facets/classify` and the daily run answer
+`409 FACET_VOCABULARY_NOT_APPROVED`. There is no default to fall back to: "career, development,
+education" describes one person's life, and classifying a second mailbox against it would file that
+person's mail into a stranger's taxonomy.
+
+### `GET /api/facets/vocabulary`
+
+What there is to filter by, with how much mail sits behind each value. `entity` is derived from
+senders so it is whatever this mailbox contains, commonest first; `domain` and `intent` are the
+approved closed vocabularies, and every value appears even at zero, because a filter that hides its
+own empty options makes the vocabulary look smaller than it is.
 
 ```json
 {
-  "id": "00000000-0000-4000-8000-000000000030",
-  "classificationResultId": "00000000-0000-4000-8000-000000000020",
-  "correctedCategory": "ORDERS",
-  "correctedRecommendedAction": "KEEP_IN_INBOX",
-  "feedbackReason": "This is an active order.",
-  "createdAt": "2026-07-23T20:00:00.000Z"
+  "entity": [{ "value": "netflix", "messageCount": 330 }],
+  "domain": [{ "value": "finance", "messageCount": 812 }],
+  "intent": [{ "value": "payment-failed", "messageCount": 9 }]
 }
 ```
 
-## Dynamic-label discovery
+### `POST /api/facets/pivot/apply`
 
-All endpoints require a session. Mutations require trusted Origin. These endpoints store
-suggestions and decisions; they do not create a Gmail label or apply one to a message.
+Writes the canonical pivot into `user_labels` and creates the missing **leaf** paths in Gmail.
+Answers inline: this is bounded by the number of folders, which is tens, not by the number of
+messages.
 
-Candidate types are `SOURCE`, `ORGANIZATION`, `TOPIC`, `SUBSCRIPTION`, `PROJECT`, and `WORKFLOW`.
+**Opt-in, and off by default.** This and `POST /api/facets/file` are the only two routes that
+create or move anything in a real mailbox, and both answer `503 GMAIL_WRITE_DISABLED` unless
+`GMAIL_WRITE_ENABLED` is set. The PWA builds its folders from `message_facets` and a message's deep
+link addresses it by id, so nothing a person sees depends on a Gmail label; writing them is the
+export path for someone who also wants the tree in Gmail's own sidebar.
 
-### `GET /api/label-discovery/status`
+`user_labels.facet_key` is a folder's identity and the path is only how it is spelled, so
+re-applying keeps an existing row and its `gmail_label_id`. A folder whose combination survived a
+spelling change is renamed rather than recreated, which keeps the mail already under it.
 
-```json
-{
-  "enabled": true,
-  "running": false,
-  "activeRunId": null,
-  "pendingCount": 4,
-  "approvedCount": 2,
-  "maxPendingCandidates": 50,
-  "maxApprovedLabels": 100,
-  "gmailLabelCreationSupported": false,
-  "lastErrorCode": null,
-  "latestRun": {
-    "id": "00000000-0000-4000-8000-000000000040",
-    "status": "COMPLETED",
-    "messagesAnalyzed": 120,
-    "groupsDiscovered": 8,
-    "candidatesCreated": 4,
-    "candidatesReused": 2,
-    "candidatesRejectedByRules": 2,
-    "providerCalls": 0,
-    "completedAt": "2026-07-23T20:00:00.000Z"
-  },
-  "versions": {
-    "discovery": "version-string",
-    "naming": "version-string",
-    "confidence": "version-string"
-  }
-}
-```
-
-### `POST /api/label-discovery/run`
-
-All body fields are optional:
-
-```json
-{
-  "minMessages": 3,
-  "lookbackDays": 90,
-  "maxCandidates": 20,
-  "allowedCandidateTypes": ["SOURCE", "ORGANIZATION"],
-  "preferOrganizations": true,
-  "preferTopics": true
-}
-```
-
-Limits: `minMessages` 3–100, `lookbackDays` 7–365, `maxCandidates` 1–50, and one through six
-allowed types. Returns run counts:
-
-```json
-{
-  "success": true,
-  "runId": "00000000-0000-4000-8000-000000000040",
-  "messagesAnalyzed": 120,
-  "groupsDiscovered": 8,
-  "candidatesCreated": 4,
-  "candidatesReused": 2,
-  "candidatesRejectedByRules": 2,
-  "providerCalls": 0,
-  "discoveryVersion": "version-string"
-}
-```
-
-### `GET /api/label-discovery/candidates`
-
-Query parameters:
-
-| Parameter       | Rules                                                                                         |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `status`        | `PENDING`, `APPROVED`, `REJECTED`, `DEFERRED`, `MERGED`, `CREATED`, `SUPERSEDED`, or `FAILED` |
-| `candidateType` | One candidate type listed above                                                               |
-| `cursor`        | Candidate UUID returned as `nextCursor`                                                       |
-| `limit`         | Integer 1–50; default 20                                                                      |
-
-```json
-{
-  "candidates": [
-    {
-      "id": "00000000-0000-4000-8000-000000000050",
-      "candidateType": "ORGANIZATION",
-      "suggestedLeafName": "Example Store",
-      "suggestedFullPath": "MailMind/Organizations/Example Store",
-      "status": "PENDING",
-      "confidence": 0.88,
-      "confidenceLevel": "HIGH",
-      "messageCount": 12,
-      "threadCount": 8,
-      "firstMessageAt": "2026-06-01T00:00:00.000Z",
-      "lastMessageAt": "2026-07-23T00:00:00.000Z",
-      "dominantCategory": "ORDERS",
-      "categoryAgreement": 0.8,
-      "sourceAgreement": 0.95,
-      "reasonCodes": ["SOURCE_VOLUME"],
-      "reasons": ["Frequent source"],
-      "discoveryVersion": "version-string",
-      "existingLabelConflict": false,
-      "mergeSuggestion": null,
-      "decision": null,
-      "lastDiscoveredAt": "2026-07-23T20:00:00.000Z"
-    }
-  ],
-  "nextCursor": null
-}
-```
-
-### `GET /api/label-discovery/candidates/:id`
-
-Returns one candidate DTO from the list contract.
-
-### `POST /api/label-discovery/candidates/:id/approve`
-
-Optional rename request:
-
-```json
-{ "leafName": "Example Orders" }
-```
-
-`leafName` is 2–60 trimmed characters and is checked against controlled naming and duplicate
-rules. Returns 201:
-
-```json
-{
-  "id": "00000000-0000-4000-8000-000000000051",
-  "candidateId": "00000000-0000-4000-8000-000000000050",
-  "status": "APPROVED",
-  "finalLeafName": "Example Orders",
-  "finalFullPath": "MailMind/Organizations/Example Orders",
-  "gmailLabelCreated": false,
-  "message": "Suggestion approved. Gmail was not changed."
-}
-```
-
-### `POST /api/label-discovery/candidates/:id/reject`
-
-Optional body `{ "reason": "..." }`, limited to 500 trimmed characters. Returns 201 with decision
-ID, candidate ID, `status: "REJECTED"`, and a Gmail-unchanged message.
-
-### `POST /api/label-discovery/candidates/:id/defer`
-
-Optional body `{ "reason": "..." }`, limited to 500 trimmed characters. Returns 201 with decision
-ID, candidate ID, `status: "DEFERRED"`, and a Gmail-unchanged message.
-
-### `POST /api/label-discovery/candidates/:id/merge`
-
-Request:
-
-```json
-{
-  "targetCandidateId": "00000000-0000-4000-8000-000000000060"
-}
-```
-
-Returns 201:
-
-```json
-{
-  "candidateId": "00000000-0000-4000-8000-000000000050",
-  "status": "MERGED",
-  "mergedIntoCandidateId": "00000000-0000-4000-8000-000000000060",
-  "mergedIntoPath": "MailMind/Organizations/Example",
-  "message": "Candidates merged. Gmail was not changed."
-}
-```
+It **never deletes**. Folders that match no current combination come back in `orphaned` for a
+person to decide about, because deleting a Gmail label does not unlabel the mail beneath it.
 
 ## Daily automation
 
@@ -614,15 +689,95 @@ All endpoints require a session; mutations require a trusted Origin. Status and 
 send `Cache-Control: no-store`.
 
 - `GET /api/automation/status` returns Gmail connection/reauthorization state, scheduler state,
-  last-run counters/errors, today’s token and cost usage, configured limits, and pending review
-  count.
-- `POST /api/automation/run` performs a manual resumable run and returns `runId` plus
-  `COMPLETED`, `PARTIAL`, or `FAILED` status.
-- `GET /api/automation/review` returns uncertain metadata classifications. It never includes OAuth
-  or provider credentials.
-- `POST /api/automation/review/:id/approve` accepts `{ "category": "WORK" }`, applies the
-  corresponding Gmail label, and teaches the sender pattern.
+  last-run counters/errors, today’s token and cost usage, configured limits, pending review count,
+  `approvedLabelCount`/`labelsReady`, and `backlogRemaining` for an in-progress backfill.
+- `POST /api/automation/run` **accepts** a manual resumable run and returns `202` with
+  `{ runId, state: "RUNNING", kind, startedAt, alreadyRunning }`. The run syncs the mailbox and
+  then classifies in paced Gemini batches, so the client polls `GET /api/activity/runs/:id` rather
+  than holding the request open. `alreadyRunning: true` means this call joined a run already in
+  flight instead of starting a second one. Preconditions the caller can act on are still checked
+  before accepting: `409 AUTOMATION_NO_APPROVED_LABELS` when no label is confirmed,
+  `503 AUTOMATION_DISABLED` or `503 AUTOMATION_NOT_CONFIGURED` when the feature is off. Everything
+  else — a rate limit, the daily budget, a provider outage — ends up on the run record.
+  A run classifies and stops there: filing is opt-in behind `GMAIL_WRITE_ENABLED` and off by
+  default, so what runs unattended writes nothing into the mailbox. Mail classified tonight is in
+  its folder tonight, because the folder is a view of `message_facets`.
+- `GET /api/automation/gaps` groups the messages recorded as fitting no approved folder, by sending
+  domain and by subject shape, and returns the clusters large enough to justify a folder as
+  `{ analyzedCount, clusteredCount, clusters[] }`. Each cluster carries the `kind`/`value` of the
+  rule that would route it, a `messageCount`, sample subjects, and a mechanically derived
+  `suggestedName`. Read-only, and no model is called: turning a cluster into a folder still goes
+  through `POST /api/labels/confirm` like any other.
+- `GET /api/automation/review` returns uncertain results, each carrying the proposed `labelName`.
+  It never includes OAuth or provider credentials.
+- `POST /api/automation/review/:id/approve` accepts `{ "labelName": "Invoices" }`, validated against
+  the account's approved labels (`400 AUTOMATION_LABEL_NOT_APPROVED` otherwise), applies that Gmail
+  label, and teaches the sender pattern.
 - `POST /api/automation/review/:id/skip` resolves the item without modifying Gmail.
+
+A run applies routing rules first: every message a rule matches is filed with no model call, and
+only the remainder is batched to Gemini. A run files each message into exactly one approved folder.
+A message that fits none of them is
+recorded as a skipped action and left in the inbox — automation never invents a label. When
+unprocessed synchronized mail predates automation, runs drain that backlog oldest-first across as
+many runs as the daily budget requires.
+
+## Activity runs
+
+Work that outlives a request — a full mailbox backfill, a filing run — is started with `202` and a
+run id, then polled here. Both endpoints require a session and send `Cache-Control: no-store`.
+
+A run's `state` is one of:
+
+| State       | Meaning                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| `RUNNING`   | In flight. Poll again.                                                          |
+| `SUCCEEDED` | Finished everything it set out to do.                                           |
+| `STOPPED`   | Did real work and quit for a reason: `stopReason` and `errorMessage` say which. |
+| `FAILED`    | Ended on an error. `errorCode` and `errorMessage` are always set.               |
+
+`STOPPED` is not a failure. Hitting the daily Gemini budget or a provider rate limit ends a run
+that filed everything it could; the rest resumes on the next run from its checkpoints.
+
+### `GET /api/activity/runs`
+
+`?limit=` accepts 1-100 and defaults to 20. Newest first.
+
+```json
+{
+  "runs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000030",
+      "kind": "AUTOMATION_FILING",
+      "state": "STOPPED",
+      "trigger": "SCHEDULED",
+      "processedCount": 120,
+      "totalCount": 250,
+      "counts": { "messagesLabeled": 118, "reviewRequired": 6, "failed": 2 },
+      "stopReason": "DAILY_BUDGET_REACHED",
+      "errorCode": null,
+      "errorMessage": "This run stopped at the daily Gemini budget. Everything filed so far is saved and the rest continues on the next run.",
+      "featureRunId": "00000000-0000-4000-8000-000000000031",
+      "startedAt": "2026-08-20T02:00:00.000Z",
+      "finishedAt": "2026-08-20T02:04:00.000Z",
+      "durationMs": 240000
+    }
+  ]
+}
+```
+
+`kind` is one of `GMAIL_INITIAL_SYNC`, `GMAIL_INCREMENTAL_SYNC`, `GMAIL_LABEL_SYNC`,
+`LABEL_PROPOSAL`, `AUTOMATION_FILING`. `counts` carries that kind's own counters; `featureRunId`
+points at the feature's detailed record (`gmail_sync_runs` or `automation_runs`).
+
+### `GET /api/activity/runs/:id`
+
+The same object for one run, or `404 ACTIVITY_RUN_NOT_FOUND` when it belongs to another account.
+
+| Code                         | Status | Meaning                           |
+| ---------------------------- | ------ | --------------------------------- |
+| `ACTIVITY_VALIDATION_FAILED` | 400    | The limit or run id is not valid. |
+| `ACTIVITY_RUN_NOT_FOUND`     | 404    | No such run for this account.     |
 
 ## Privacy boundary
 

@@ -46,7 +46,10 @@ vi.mock('../src/sessions/session.service.js', () => ({
 }));
 
 import { AuthService } from '../src/auth/auth.service.js';
-import { GMAIL_MODIFY_SCOPE } from '../src/integrations/google/google-scopes.js';
+import {
+  GMAIL_MODIFY_SCOPE,
+  GMAIL_READONLY_SCOPE,
+} from '../src/integrations/google/google-scopes.js';
 import { GoogleGmailService } from '../src/integrations/google/google-login.service.js';
 import { sha256 } from '../src/security/hashing.service.js';
 import { AppError } from '../src/errors/AppError.js';
@@ -121,10 +124,24 @@ describe('OAuth start and safe status contracts', () => {
       initiating_session_id: 'session-id',
     });
     expect(stored.state_hash).toBe(sha256(options.state));
-    expect(options.scope).toContain(GMAIL_MODIFY_SCOPE);
+    expect(options.scope).toContain(GMAIL_READONLY_SCOPE);
     expect(options.access_type).toBe('offline');
-    expect(options.include_granted_scopes).toBe(true);
     expect(options.prompt).toBe('consent');
+  });
+
+  /**
+   * Card 25. `gmail.modify` is a restricted scope the product no longer uses, and
+   * `include_granted_scopes` is incremental authorisation — asking for it while narrowing would
+   * carry a legacy `modify` grant forward into the new token instead of letting the connection
+   * settle at what this deployment actually asks for.
+   */
+  it('asks for read-only access and does not re-request a scope it stopped using', async () => {
+    mocks.findForUser.mockResolvedValue(null);
+    await new GoogleGmailService().beginConnection(authRequest, '/settings/connections');
+    const options = mocks.generateAuthUrl.mock.calls[0]?.[0];
+
+    expect(options.scope).not.toContain(GMAIL_MODIFY_SCOPE);
+    expect(options.include_granted_scopes).toBeUndefined();
   });
 
   it('completes login once, persists the verified identity, and returns no Google token object', async () => {

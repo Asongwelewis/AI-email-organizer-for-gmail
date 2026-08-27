@@ -7,16 +7,27 @@ import { RouteErrorBoundary } from '@web/components/RouteErrorBoundary';
 import { AppShell } from '@web/layouts/AppShell';
 import { PublicLayout } from '@web/layouts/PublicLayout';
 import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
-import { ConnectionsPage } from '@web/pages/ConnectionsPage';
-import { ClassificationPage } from '@web/pages/ClassificationPage';
-import { DashboardPage } from '@web/pages/DashboardPage';
 import { LandingPage } from '@web/pages/LandingPage';
 import { LoginPage } from '@web/pages/LoginPage';
-import { LegalPlaceholder } from '@web/pages/LegalPlaceholder';
-import { LabelDiscoveryPage } from '@web/pages/LabelDiscoveryPage';
-import { AutomationPage } from '@web/pages/AutomationPage';
+import { DataDeletionPage } from '@web/pages/DataDeletionPage';
+import { PrivacyPolicy } from '@web/pages/PrivacyPolicy';
+import { SupportPage } from '@web/pages/SupportPage';
+import { TermsOfService } from '@web/pages/TermsOfService';
+import { ActivityPage } from '@web/pages/ActivityPage';
+import { ApprovePage } from '@web/pages/ApprovePage';
+import { FindPage } from '@web/pages/FindPage';
+import { SortedPage } from '@web/pages/SortedPage';
+import { SetupPage } from '@web/pages/SetupPage';
+import { ReviewPage } from '@web/pages/ReviewPage';
+import { PivotPage } from '@web/pages/PivotPage';
+import { isSentryEnabled } from '@web/instrument';
 
-const routes: RouteObject[] = [
+/**
+ * The marketing and sign-in surfaces keep their editorial treatment. The signed-in app does not:
+ * decorative motion behind a screen you use every day is noise, so the atmosphere stops at the
+ * door and the three screens are laid out plainly.
+ */
+const publicRoutes: RouteObject[] = [
   {
     path: '/',
     element: (
@@ -27,31 +38,51 @@ const routes: RouteObject[] = [
   },
   { path: '/login', element: <LoginPage /> },
   { path: '/auth/callback', element: <AuthCallbackPage /> },
+  /*
+   * Real documents, not placeholders, and public: Google's restricted-scope verification needs a
+   * privacy policy, terms, a support page and an in-app deletion path, all reachable without
+   * signing in. Deletion is signed-out-aware rather than protected — the page has to be linkable
+   * from a policy and from the Cloud Console.
+   */
+  { path: '/privacy', element: <PrivacyPolicy /> },
+  { path: '/terms', element: <TermsOfService /> },
+  { path: '/support', element: <SupportPage /> },
+  { path: '/data-deletion', element: <DataDeletionPage /> },
+];
+
+const appRoutes: RouteObject[] = [
+  { path: '/setup', element: <SetupPage /> },
+  { path: '/sorted', element: <SortedPage /> },
+  { path: '/find', element: <FindPage /> },
+  { path: '/folders', element: <PivotPage /> },
+  { path: '/review', element: <ReviewPage /> },
+  { path: '/approve', element: <ApprovePage /> },
+  { path: '/activity', element: <ActivityPage /> },
+];
+
+const sentryCreateBrowserRouter = isSentryEnabled
+  ? Sentry.wrapCreateBrowserRouterV7(createBrowserRouter)
+  : createBrowserRouter;
+
+export const router = sentryCreateBrowserRouter([
+  {
+    element: <VisualRoot />,
+    errorElement: <RouteErrorBoundary />,
+    children: publicRoutes,
+  },
   {
     element: (
       <ProtectedRoute>
         <AppShell />
       </ProtectedRoute>
     ),
-    children: [
-      { path: '/dashboard', element: <DashboardPage /> },
-      { path: '/settings/connections', element: <ConnectionsPage /> },
-      { path: '/dashboard/classification', element: <ClassificationPage /> },
-      { path: '/dashboard/labels/discover', element: <LabelDiscoveryPage /> },
-      { path: '/dashboard/automation', element: <AutomationPage /> },
-    ],
-  },
-  { path: '/privacy', element: <LegalPlaceholder title="Privacy Policy" /> },
-  { path: '/terms', element: <LegalPlaceholder title="Terms of Service" /> },
-  { path: '*', element: <Navigate to="/" replace /> },
-];
-
-const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(createBrowserRouter);
-
-export const router = sentryCreateBrowserRouter([
-  {
-    element: <VisualRoot />,
     errorElement: <RouteErrorBoundary />,
-    children: routes,
+    children: appRoutes,
   },
+  // Retired surfaces; keep old links working rather than bouncing them to the landing page.
+  { path: '/dashboard/*', element: <Navigate to="/sorted" replace /> },
+  { path: '/labels', element: <Navigate to="/approve" replace /> },
+  { path: '/automation', element: <Navigate to="/activity" replace /> },
+  { path: '/settings/*', element: <Navigate to="/sorted" replace /> },
+  { path: '*', element: <Navigate to="/" replace /> },
 ]);

@@ -1,12 +1,15 @@
 import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
+import { captureApiException } from '@api/observability/sentry.js';
+// One engine. `runScheduledAccount` refreshes the mailbox, classifies into facets, then files
+// through the canonical pivot — it no longer reaches the retired taxonomy classifier.
 import { automationService } from './automation.service.js';
 
 let timer: NodeJS.Timeout | null = null;
 let ticking = false;
 
 async function tick(): Promise<void> {
-  if (ticking || !env.AUTOMATION_ENABLED || !env.OPENAI_API_KEY) return;
+  if (ticking || !env.AUTOMATION_ENABLED || !env.GEMINI_API_KEY) return;
   ticking = true;
   try {
     const accounts = await automationService.eligibleScheduledAccounts();
@@ -14,6 +17,7 @@ async function tick(): Promise<void> {
       try {
         await automationService.runScheduledAccount(account.id, account.user_id);
       } catch (error) {
+        captureApiException(error, { operation: 'scheduled_automation_account' });
         logger.error(
           { ...safeErrorDetails(error), accountId: account.id },
           'scheduled automation account failed',
@@ -21,6 +25,7 @@ async function tick(): Promise<void> {
       }
     }
   } catch (error) {
+    captureApiException(error, { operation: 'scheduled_automation_tick' });
     logger.error(safeErrorDetails(error), 'scheduled automation tick failed');
   } finally {
     ticking = false;

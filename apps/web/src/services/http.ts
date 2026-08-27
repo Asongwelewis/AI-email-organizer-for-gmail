@@ -8,14 +8,26 @@ import type {
   GmailSyncStatus,
   SessionRefreshResponse,
 } from '@web/types/auth';
+import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type {
-  ClassificationCategory,
-  ClassificationResultsPage,
-  ClassificationStatus,
-  RecommendedAction,
-} from '@web/types/classification';
-import type { LabelCandidatesPage, LabelDiscoveryStatus } from '@web/types/labelDiscovery';
+  FacetVocabulary,
+  FolderMessages,
+  PivotApplyResult,
+  PivotFacet,
+  PivotPlan,
+  PivotSettings,
+  PivotView,
+  SearchFilters,
+  SearchResults,
+} from '@web/types/facets';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
+import type {
+  ApprovePlanInput,
+  ConfirmLabelInput,
+  FolderMessagesResponse,
+  LabelsOverview,
+  UserLabel,
+} from '@web/types/labels';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -103,6 +115,15 @@ export const api = {
     await http.post('/auth/logout-all');
   },
 
+  /**
+   * Deletes the account and everything stored about it. Irreversible, and the server clears the
+   * session cookie in the same response.
+   */
+  async deleteAccount(): Promise<{ success: boolean; connectedAccounts: number }> {
+    const response = await http.delete<{ success: boolean; connectedAccounts: number }>('/auth/me');
+    return response.data;
+  },
+
   async completeTutorial(
     decision: 'COMPLETED' | 'SKIPPED',
   ): Promise<{ success: boolean; tutorialCompletedAt: string }> {
@@ -134,8 +155,9 @@ export const api = {
     return response.data;
   },
 
-  async initialGmailSync(): Promise<GmailSyncResult> {
-    const response = await http.post<GmailSyncResult>('/gmail/sync/initial');
+  /** 202: the backfill outlives the request, so this returns a run id to poll. */
+  async initialGmailSync(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/gmail/sync/initial');
     return response.data;
   },
 
@@ -144,66 +166,45 @@ export const api = {
     return response.data;
   },
 
-  async getClassificationStatus(): Promise<ClassificationStatus> {
-    const response = await http.get<ClassificationStatus>('/classification/status');
+  async getLabels(): Promise<LabelsOverview> {
+    const response = await http.get<LabelsOverview>('/labels');
     return response.data;
   },
 
-  async getClassificationResults(cursor?: string): Promise<ClassificationResultsPage> {
-    const response = await http.get<ClassificationResultsPage>('/classification/results', {
-      params: { requiresReview: true, limit: 20, ...(cursor ? { cursor } : {}) },
-    });
+  async proposeLabels(): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/propose', {});
     return response.data;
   },
 
-  async runClassification(): Promise<{ success: boolean; runId: string }> {
-    const response = await http.post<{ success: boolean; runId: string }>('/classification/run');
+  async confirmLabels(labels: ConfirmLabelInput[]): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/confirm', { labels });
     return response.data;
   },
 
-  async correctClassification(
-    id: string,
-    input: { category: ClassificationCategory; recommendedAction: RecommendedAction },
-  ): Promise<void> {
-    await http.post(`/classification/results/${id}/correct`, input);
-  },
-
-  async getLabelDiscoveryStatus(): Promise<LabelDiscoveryStatus> {
-    const response = await http.get<LabelDiscoveryStatus>('/label-discovery/status');
+  /** Approves a proposed tree. Omitting nodeIds approves all of it. */
+  async approvePlan(input: ApprovePlanInput): Promise<LabelsOverview> {
+    const response = await http.post<LabelsOverview>('/labels/confirm', input);
     return response.data;
   },
 
-  async getLabelCandidates(cursor?: string): Promise<LabelCandidatesPage> {
-    const response = await http.get<LabelCandidatesPage>('/label-discovery/candidates', {
-      params: { limit: 20, ...(cursor ? { cursor } : {}) },
-    });
+  /** The mail filed into one folder, for the drill-in list on Sorted. */
+  async getFolderMessages(labelId: string): Promise<FolderMessagesResponse> {
+    const response = await http.get<FolderMessagesResponse>(`/labels/${labelId}/messages`);
     return response.data;
   },
 
-  async runLabelDiscovery(): Promise<{ success: boolean; runId: string }> {
-    const response = await http.post<{ success: boolean; runId: string }>(
-      '/label-discovery/run',
-      {},
-    );
+  async getActivityRuns(limit = 20): Promise<ActivityRunsResponse> {
+    const response = await http.get<ActivityRunsResponse>('/activity/runs', { params: { limit } });
     return response.data;
   },
 
-  async approveLabelCandidate(id: string, leafName?: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/approve`, {
-      ...(leafName ? { leafName } : {}),
-    });
+  async renameLabel(id: string, leafName: string): Promise<UserLabel> {
+    const response = await http.patch<UserLabel>(`/labels/${id}`, { leafName });
+    return response.data;
   },
 
-  async rejectLabelCandidate(id: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/reject`, {});
-  },
-
-  async deferLabelCandidate(id: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/defer`, {});
-  },
-
-  async mergeLabelCandidate(id: string, targetCandidateId: string): Promise<void> {
-    await http.post(`/label-discovery/candidates/${id}/merge`, { targetCandidateId });
+  async deleteLabel(id: string): Promise<void> {
+    await http.delete(`/labels/${id}`);
   },
 
   async getAutomationStatus(): Promise<AutomationStatus> {
@@ -216,20 +217,121 @@ export const api = {
     return response.data;
   },
 
-  async runAutomation(): Promise<{ success: boolean; runId: string; status: string }> {
-    const response = await http.post<{ success: boolean; runId: string; status: string }>(
-      '/automation/run',
-      {},
-    );
+  /** 202: filing outlives the request, so this returns a run id to poll. */
+  async runAutomation(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/automation/run', {});
     return response.data;
   },
 
-  async approveAutomationReview(id: string, category: ClassificationCategory): Promise<void> {
-    await http.post(`/automation/review/${id}/approve`, { category });
+  async approveAutomationReview(id: string, labelName: string): Promise<void> {
+    await http.post(`/automation/review/${id}/approve`, { labelName });
   },
 
   async skipAutomationReview(id: string): Promise<void> {
     await http.post(`/automation/review/${id}/skip`, {});
+  },
+
+  async getPivotSettings(): Promise<PivotSettings> {
+    const response = await http.get<PivotSettings>('/facets/pivot');
+    return response.data;
+  },
+
+  /** Changes which ordering is canonical. Writes nothing to Gmail until `applyPivot`. */
+  async setPivotSettings(input: {
+    canonicalPivot: PivotFacet[];
+    minMessages?: number;
+  }): Promise<PivotSettings> {
+    const response = await http.put<PivotSettings>('/facets/pivot', input);
+    return response.data;
+  },
+
+  /** What applying the canonical ordering would do. Reads only. */
+  async getPivotPlan(): Promise<PivotPlan> {
+    const response = await http.get<PivotPlan>('/facets/pivot/plan');
+    return response.data;
+  },
+
+  /**
+   * Any ordering at all, materialised or not — the same facet rows arranged differently, with no
+   * Gmail call and no model call behind it.
+   */
+  async getPivotView(order: PivotFacet[], minMessages?: number): Promise<PivotView> {
+    const response = await http.get<PivotView>('/facets/pivot/view', {
+      params: {
+        order: order.join(','),
+        ...(minMessages === undefined ? {} : { minMessages }),
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * The mail inside one folder. Keyed by facet combination, not by a folder row, so it works
+   * whether or not a pivot was ever applied to Gmail.
+   */
+  async getFacetMessages(
+    facetKey: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<FolderMessages> {
+    const response = await http.get<FolderMessages>('/facets/messages', {
+      params: {
+        facetKey,
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * Subject and sender across the whole mailbox, narrowed by any combination of facets. No model
+   * call and no Gmail call behind it — Postgres full text over stored metadata.
+   */
+  async searchMessages(
+    query: string,
+    filters: SearchFilters = {},
+    options: { order?: PivotFacet[]; limit?: number; cursor?: string } = {},
+  ): Promise<SearchResults> {
+    const response = await http.get<SearchResults>('/facets/search', {
+      params: {
+        ...(query ? { q: query } : {}),
+        ...(filters.entity ? { entity: filters.entity } : {}),
+        ...(filters.domain ? { domain: filters.domain } : {}),
+        ...(filters.intent ? { intent: filters.intent } : {}),
+        ...(options.order?.length ? { order: options.order.join(',') } : {}),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+      },
+    });
+    return response.data;
+  },
+
+  /** What there is to filter by, and how much mail sits behind each value. */
+  async getFacetVocabulary(): Promise<FacetVocabulary> {
+    const response = await http.get<FacetVocabulary>('/facets/vocabulary');
+    return response.data;
+  },
+
+  async applyPivot(): Promise<PivotApplyResult> {
+    const response = await http.post<PivotApplyResult>('/facets/pivot/apply', {});
+    return response.data;
+  },
+
+  /** 202: classifying a mailbox is thousands of paced Gemini calls. */
+  async classifyFacets(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/facets/classify', {});
+    return response.data;
+  },
+
+  /** 202: filing is one Gmail call per message. */
+  async fileFacets(): Promise<StartedRun> {
+    const response = await http.post<StartedRun>('/facets/file', {});
+    return response.data;
+  },
+
+  async getActivityRun(runId: string): Promise<ActivityRun> {
+    const response = await http.get<ActivityRun>(`/activity/runs/${runId}`);
+    return response.data;
   },
 };
 

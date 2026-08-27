@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ThemeProvider } from '@web/context/ThemeContext';
 import { LoginPage } from './LoginPage';
 
 const authState = vi.hoisted(() => ({
@@ -16,12 +17,14 @@ vi.mock('@web/context/useAuth', () => ({ useAuth: () => authState }));
 
 function renderLogin(entry = '/login') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/dashboard" element={<div>Dashboard destination</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/sorted" element={<div>Sorted destination</div>} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -60,9 +63,9 @@ describe('LoginPage', () => {
     expect(screen.queryByText('database-secret')).not.toBeInTheDocument();
   });
 
-  it('redirects an authenticated user to the dashboard', () => {
+  it('redirects an authenticated user to the sorted screen', () => {
     authState.isAuthenticated = true;
     renderLogin();
-    expect(screen.getByText('Dashboard destination')).toBeInTheDocument();
+    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
   });
 });

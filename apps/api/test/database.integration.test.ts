@@ -14,19 +14,20 @@ const databaseTests =
   process.env['RUN_DATABASE_INTEGRATION'] === 'true' && isDisposableHost ? describe : describe.skip;
 
 async function cleanDatabase() {
+  await prisma.activity_runs.deleteMany();
+  // Explicit, though both would also go by cascade: a table nobody names is a table nobody
+  // notices leaking state between tests.
+  await prisma.message_facets.deleteMany();
+  await prisma.facet_pivot_settings.deleteMany();
+  await prisma.user_labels.deleteMany();
   await prisma.automation_message_actions.deleteMany();
   await prisma.learned_classification_patterns.deleteMany();
   await prisma.automation_runs.deleteMany();
   await prisma.automation_states.deleteMany();
   await prisma.automation_settings.deleteMany();
-  await prisma.dynamic_label_candidate_messages.deleteMany();
-  await prisma.dynamic_label_candidates.deleteMany();
-  await prisma.label_discovery_runs.deleteMany();
-  await prisma.label_discovery_states.deleteMany();
-  await prisma.user_classification_corrections.deleteMany();
-  await prisma.classification_results.deleteMany();
-  await prisma.classification_runs.deleteMany();
-  await prisma.classification_states.deleteMany();
+  await prisma.taxonomy_plan_node_rules.deleteMany();
+  await prisma.taxonomy_plan_nodes.deleteMany();
+  await prisma.taxonomy_plans.deleteMany();
   await prisma.gmail_sync_runs.deleteMany();
   await prisma.gmail_message_metadata.deleteMany();
   await prisma.gmail_labels.deleteMany();
@@ -407,102 +408,7 @@ databaseTests('PostgreSQL authentication repositories', () => {
     ).resolves.toMatchObject({ history_id: '101', subject: 'Updated subject' });
   });
 
-  it('persists classification results and immutable correction history', async () => {
-    const user = await prisma.users.create({
-      data: {
-        google_subject: `subject-${randomUUID()}`,
-        email: 'classify@example.com',
-        normalized_email: 'classify@example.com',
-        email_verified: true,
-      },
-    });
-    const account = await prisma.connected_google_accounts.create({
-      data: {
-        user_id: user.id,
-        google_subject: 'classification-google-subject',
-        email: 'classify@gmail.com',
-        gmail_connected: true,
-        connection_status: 'CONNECTED',
-      },
-    });
-    const message = await prisma.gmail_message_metadata.create({
-      data: { connected_google_account_id: account.id, gmail_message_id: 'classified-message' },
-    });
-    const result = await prisma.classification_results.create({
-      data: {
-        gmail_message_id: message.id,
-        connected_google_account_id: account.id,
-        category: 'RECEIPTS',
-        recommended_action: 'ARCHIVE_RECOMMENDED',
-        confidence: 0.91,
-        requires_review: false,
-        explanation: 'Receipt terms are present.',
-        reason_codes: ['RECEIPT_TERMS'],
-        source: 'RULE',
-        classifier_version: 'mailmind-classifier-v1',
-        prompt_version: 'mailmind-prompt-v1',
-        taxonomy_version: 'mailmind-taxonomy-v1',
-        provider: 'rules',
-        input_hash: 'a'.repeat(64),
-        message_metadata_hash: 'a'.repeat(64),
-        status: 'COMPLETED',
-      },
-    });
-    await prisma.user_classification_corrections.create({
-      data: {
-        classification_result_id: result.id,
-        gmail_message_id: message.id,
-        connected_google_account_id: account.id,
-        user_id: user.id,
-        original_category: 'RECEIPTS',
-        corrected_category: 'FINANCE',
-        original_recommended_action: 'ARCHIVE_RECOMMENDED',
-        corrected_recommended_action: 'KEEP_IN_INBOX',
-      },
-    });
-    expect(await prisma.classification_results.count()).toBe(1);
-    expect(await prisma.user_classification_corrections.count()).toBe(1);
-    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
-    expect(await prisma.classification_results.count()).toBe(0);
-    expect(await prisma.user_classification_corrections.count()).toBe(0);
-  });
-
-  it('prevents concurrent classification runs and recovers a stale lease', async () => {
-    const user = await prisma.users.create({
-      data: {
-        google_subject: `subject-${randomUUID()}`,
-        email: 'lease@example.com',
-        normalized_email: 'lease@example.com',
-        email_verified: true,
-      },
-    });
-    const account = await prisma.connected_google_accounts.create({
-      data: {
-        user_id: user.id,
-        google_subject: 'lease-google-subject',
-        email: 'lease@gmail.com',
-        gmail_connected: true,
-        connection_status: 'CONNECTED',
-      },
-    });
-    const { ClassificationRepository } =
-      await import('../src/features/classification/repositories/classification.repository.js');
-    const repository = new ClassificationRepository();
-    const attempts = await Promise.allSettled([
-      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
-      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
-    ]);
-    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
-    await prisma.classification_states.update({
-      where: { connected_google_account_id: account.id },
-      data: { lease_expires_at: new Date(Date.now() - 1000) },
-    });
-    await expect(
-      repository.acquireLease(account.id, 'mock', 'mock-v1', 'classifier-v1'),
-    ).resolves.toMatchObject({ accountId: account.id });
-  });
-
-  it('persists label discovery candidates, associations, and immutable decisions', async () => {
+  it('persists a proposed tree with its routing rules and cascades with the account', async () => {
     const user = await prisma.users.create({
       data: {
         google_subject: `subject-${randomUUID()}`,
@@ -520,176 +426,312 @@ databaseTests('PostgreSQL authentication repositories', () => {
         connection_status: 'CONNECTED',
       },
     });
-    const message = await prisma.gmail_message_metadata.create({
+    const plan = await prisma.taxonomy_plans.create({
       data: {
         connected_google_account_id: account.id,
-        gmail_message_id: 'labels-message',
+        model: 'gemini-flash-lite-latest',
+        prompt_version: 'mailmind-taxonomy-planner-v1',
+        sampled_message_count: 500,
+        analyzed_message_count: 596,
+        leaf_count: 1,
       },
     });
-    const candidate = await prisma.dynamic_label_candidates.create({
+    const parent = await prisma.taxonomy_plan_nodes.create({
       data: {
-        connected_google_account_id: account.id,
-        candidate_type: 'SOURCE',
-        source_key: 'github.com',
-        suggested_leaf_name: 'GitHub',
-        suggested_full_path: 'MailMind/Sources/GitHub',
-        normalized_name: 'github',
-        confidence: 0.9,
-        message_count: 1,
-        thread_count: 1,
-        category_agreement: 1,
-        source_agreement: 1,
-        discovery_version: 'mailmind-label-discovery-v1',
-        naming_version: 'mailmind-label-naming-v1',
-        input_hash: 'b'.repeat(64),
+        plan_id: plan.id,
+        depth: 1,
+        kind: 'CATEGORY',
+        name: 'Job hunt',
+        full_path: 'MailMind/Job hunt',
+        normalized_name: 'jobhunt',
+        rationale: 'Job search mail arrives from many senders.',
+        estimated_message_count: 40,
+        is_leaf: false,
       },
     });
-    await prisma.dynamic_label_candidate_messages.create({
+    await prisma.taxonomy_plan_nodes.create({
       data: {
-        candidate_id: candidate.id,
-        gmail_message_id: message.id,
-        association_score: 0.9,
+        plan_id: plan.id,
+        parent_id: parent.id,
+        depth: 2,
+        kind: 'TOPIC',
+        name: 'Applications sent',
+        full_path: 'MailMind/Job hunt/Applications sent',
+        normalized_name: 'applicationssent',
+        rationale: 'Confirmations that an application reached a company.',
+        estimated_message_count: 25,
+        rules: {
+          create: [{ rule_kind: 'SENDER_DOMAIN', match_value: 'greenhouse.io' }],
+        },
       },
     });
-    const decision = await prisma.label_decisions.create({
-      data: {
-        candidate_id: candidate.id,
-        user_id: user.id,
-        decision: 'APPROVE',
-        original_suggested_name: 'GitHub',
-        final_leaf_name: 'GitHub',
-        final_full_path: 'MailMind/Sources/GitHub',
-      },
-    });
+
+    // Only one plan may await review, so a second pending plan is refused outright.
     await expect(
-      prisma.label_decisions.update({
-        where: { id: decision.id },
-        data: { decision_reason: 'mutation is forbidden' },
+      prisma.taxonomy_plans.create({
+        data: {
+          connected_google_account_id: account.id,
+          model: 'gemini-flash-lite-latest',
+          prompt_version: 'mailmind-taxonomy-planner-v1',
+          sampled_message_count: 10,
+          analyzed_message_count: 10,
+        },
       }),
     ).rejects.toThrow();
+
     await prisma.connected_google_accounts.delete({ where: { id: account.id } });
-    expect(await prisma.dynamic_label_candidates.count()).toBe(0);
-    expect(await prisma.dynamic_label_candidate_messages.count()).toBe(0);
-    expect(await prisma.label_decisions.count()).toBe(0);
+    expect(await prisma.taxonomy_plans.count()).toBe(0);
+    expect(await prisma.taxonomy_plan_nodes.count()).toBe(0);
+    expect(await prisma.taxonomy_plan_node_rules.count()).toBe(0);
   });
 
-  it('rejects cross-account label associations and merge cycles', async () => {
+  it('enforces depth, ownership, and path composition on the label tree', async () => {
     const user = await prisma.users.create({
       data: {
         google_subject: `subject-${randomUUID()}`,
-        email: 'merge@example.com',
-        normalized_email: 'merge@example.com',
+        email: 'tree@example.com',
+        normalized_email: 'tree@example.com',
       },
     });
     const [accountA, accountB] = await Promise.all([
       prisma.connected_google_accounts.create({
-        data: {
-          user_id: user.id,
-          google_subject: 'merge-account-a',
-          email: 'merge-a@gmail.com',
-        },
+        data: { user_id: user.id, google_subject: 'tree-account-a', email: 'tree-a@gmail.com' },
       }),
       prisma.connected_google_accounts.create({
-        data: {
-          user_id: user.id,
-          google_subject: 'merge-account-b',
-          email: 'merge-b@gmail.com',
-        },
+        data: { user_id: user.id, google_subject: 'tree-account-b', email: 'tree-b@gmail.com' },
       }),
     ]);
-    const messageB = await prisma.gmail_message_metadata.create({
+    const root = await prisma.user_labels.create({
       data: {
-        connected_google_account_id: accountB.id,
-        gmail_message_id: 'cross-account-message',
-      },
-    });
-    const base = {
-      confidence: 0.8,
-      message_count: 3,
-      thread_count: 2,
-      category_agreement: 1,
-      source_agreement: 1,
-      discovery_version: 'mailmind-label-discovery-v1',
-      naming_version: 'mailmind-label-naming-v1',
-    };
-    const first = await prisma.dynamic_label_candidates.create({
-      data: {
-        ...base,
         connected_google_account_id: accountA.id,
-        candidate_type: 'SOURCE',
-        source_key: 'first.example',
-        suggested_leaf_name: 'First Source',
-        suggested_full_path: 'MailMind/Sources/First Source',
-        normalized_name: 'firstsource',
-        input_hash: 'c'.repeat(64),
+        depth: 1,
+        leaf_name: 'Job hunt',
+        full_path: 'MailMind/Job hunt',
+        normalized_name: 'jobhunt',
+        source: 'AI_PROPOSED',
       },
     });
-    const second = await prisma.dynamic_label_candidates.create({
-      data: {
-        ...base,
-        connected_google_account_id: accountA.id,
-        candidate_type: 'SOURCE',
-        source_key: 'second.example',
-        suggested_leaf_name: 'Second Source',
-        suggested_full_path: 'MailMind/Sources/Second Source',
-        normalized_name: 'secondsource',
-        input_hash: 'd'.repeat(64),
-      },
-    });
+
+    // A path that is not the parent's path plus the leaf name would render as a broken tree.
     await expect(
-      prisma.dynamic_label_candidate_messages.create({
+      prisma.user_labels.create({
         data: {
-          candidate_id: first.id,
-          gmail_message_id: messageB.id,
-          association_score: 0.8,
+          connected_google_account_id: accountA.id,
+          parent_id: root.id,
+          depth: 2,
+          leaf_name: 'Applications sent',
+          full_path: 'MailMind/Applications sent',
+          normalized_name: 'applicationssent',
+          source: 'AI_PROPOSED',
         },
       }),
     ).rejects.toThrow();
-    await prisma.dynamic_label_candidates.update({
-      where: { id: first.id },
-      data: { status: 'MERGED', merged_into_candidate_id: second.id },
-    });
+
+    // A child must sit exactly one level below its parent.
     await expect(
-      prisma.dynamic_label_candidates.update({
-        where: { id: second.id },
-        data: { status: 'MERGED', merged_into_candidate_id: first.id },
+      prisma.user_labels.create({
+        data: {
+          connected_google_account_id: accountA.id,
+          parent_id: root.id,
+          depth: 3,
+          leaf_name: 'Applications sent',
+          full_path: 'MailMind/Job hunt/Applications sent',
+          normalized_name: 'applicationssent',
+          source: 'AI_PROPOSED',
+        },
       }),
     ).rejects.toThrow();
+
+    // A folder may never be nested under another account's folder.
+    await expect(
+      prisma.user_labels.create({
+        data: {
+          connected_google_account_id: accountB.id,
+          parent_id: root.id,
+          depth: 2,
+          leaf_name: 'Applications sent',
+          full_path: 'MailMind/Job hunt/Applications sent',
+          normalized_name: 'applicationssent',
+          source: 'AI_PROPOSED',
+        },
+      }),
+    ).rejects.toThrow();
+
+    const child = await prisma.user_labels.create({
+      data: {
+        connected_google_account_id: accountA.id,
+        parent_id: root.id,
+        depth: 2,
+        leaf_name: 'Applications sent',
+        full_path: 'MailMind/Job hunt/Applications sent',
+        normalized_name: 'applicationssent',
+        source: 'AI_PROPOSED',
+        gmail_label_id: 'Label_child',
+      },
+    });
+
+    // Four levels is deeper than the tree allows.
+    await expect(
+      prisma.user_labels.create({
+        data: {
+          connected_google_account_id: accountA.id,
+          parent_id: child.id,
+          depth: 4,
+          leaf_name: 'Too deep',
+          full_path: 'MailMind/Job hunt/Applications sent/Too deep',
+          normalized_name: 'toodeep',
+          source: 'AI_PROPOSED',
+        },
+      }),
+    ).rejects.toThrow();
+
+    await prisma.user_labels.delete({ where: { id: root.id } });
+    expect(await prisma.user_labels.count()).toBe(0);
   });
 
-  it('prevents concurrent label discovery runs and recovers a stale lease', async () => {
+  it('routes one rule value to exactly one folder per account', async () => {
     const user = await prisma.users.create({
       data: {
         google_subject: `subject-${randomUUID()}`,
-        email: 'discovery-lease@example.com',
-        normalized_email: 'discovery-lease@example.com',
+        email: 'rules@example.com',
+        normalized_email: 'rules@example.com',
+      },
+    });
+    const account = await prisma.connected_google_accounts.create({
+      data: { user_id: user.id, google_subject: 'rules-account', email: 'rules@gmail.com' },
+    });
+    const label = await prisma.user_labels.create({
+      data: {
+        connected_google_account_id: account.id,
+        leaf_name: 'Applications sent',
+        full_path: 'MailMind/Applications sent',
+        normalized_name: 'applicationssent',
+        source: 'AI_PROPOSED',
+      },
+    });
+    const rule = {
+      connected_google_account_id: account.id,
+      rule_kind: 'SENDER_DOMAIN' as const,
+      match_value: 'greenhouse.io',
+      rule_source: 'PLANNER' as const,
+      user_label_id: label.id,
+      label_name: label.leaf_name,
+      label_path: label.full_path,
+      confidence: 1,
+    };
+    await prisma.learned_classification_patterns.create({ data: rule });
+    await expect(prisma.learned_classification_patterns.create({ data: rule })).rejects.toThrow();
+
+    // A subject rule with the same text is a different rule, not a duplicate.
+    await prisma.learned_classification_patterns.create({
+      data: { ...rule, rule_kind: 'SUBJECT_CONTAINS', match_value: 'application received' },
+    });
+
+    await prisma.user_labels.delete({ where: { id: label.id } });
+    expect(await prisma.learned_classification_patterns.count()).toBe(0);
+  });
+
+  it('keeps one label per account name and cascades labels with the account', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'labels-owner@example.com',
+        normalized_email: 'labels-owner@example.com',
       },
     });
     const account = await prisma.connected_google_accounts.create({
       data: {
         user_id: user.id,
-        google_subject: 'discovery-lease-google-subject',
-        email: 'discovery-lease@gmail.com',
+        google_subject: 'labels-owner-subject',
+        email: 'labels-owner@gmail.com',
         gmail_connected: true,
         connection_status: 'CONNECTED',
       },
     });
-    const { LabelDiscoveryRepository } =
-      await import('../src/features/label-discovery/label-discovery.repository.js');
-    const repository = new LabelDiscoveryRepository();
-    const attempts = await Promise.allSettled([
-      repository.acquireLease(account.id),
-      repository.acquireLease(account.id),
-    ]);
-    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
-    expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(1);
-    await prisma.label_discovery_states.update({
-      where: { connected_google_account_id: account.id },
-      data: { lease_expires_at: new Date(Date.now() - 1000) },
+    await prisma.user_labels.create({
+      data: {
+        connected_google_account_id: account.id,
+        leaf_name: 'Invoices',
+        full_path: 'MailMind/Invoices',
+        normalized_name: 'invoices',
+        source: 'AI_PROPOSED',
+        gmail_label_id: 'Label_1',
+      },
     });
-    await expect(repository.acquireLease(account.id)).resolves.toMatchObject({
-      accountId: account.id,
+    await expect(
+      prisma.user_labels.create({
+        data: {
+          connected_google_account_id: account.id,
+          leaf_name: 'Invoices',
+          full_path: 'MailMind/Invoices',
+          normalized_name: 'invoices',
+          source: 'USER_CREATED',
+        },
+      }),
+    ).rejects.toThrow();
+
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.user_labels.count()).toBe(0);
+  });
+
+  it('keeps one live run per account and kind, and records why a run ended', async () => {
+    const user = await prisma.users.create({
+      data: {
+        google_subject: `subject-${randomUUID()}`,
+        email: 'activity@example.com',
+        normalized_email: 'activity@example.com',
+      },
     });
+    const account = await prisma.connected_google_accounts.create({
+      data: { user_id: user.id, google_subject: 'activity-account', email: 'activity@gmail.com' },
+    });
+    const running = {
+      connected_google_account_id: account.id,
+      kind: 'AUTOMATION_FILING' as const,
+      expires_at: new Date(Date.now() + 300_000),
+    };
+    const first = await prisma.activity_runs.create({ data: running });
+
+    // A second live run of the same kind would race the first over the same lease.
+    await expect(prisma.activity_runs.create({ data: running })).rejects.toThrow();
+    // A different kind may run alongside it.
+    await prisma.activity_runs.create({
+      data: { ...running, kind: 'GMAIL_INITIAL_SYNC' },
+    });
+
+    // RUNNING and a finish timestamp cannot both be true.
+    await expect(
+      prisma.activity_runs.update({
+        where: { id: first.id },
+        data: { finished_at: new Date() },
+      }),
+    ).rejects.toThrow();
+    // A failure without a code would be exactly the blind spot this table exists to remove.
+    await expect(
+      prisma.activity_runs.update({
+        where: { id: first.id },
+        data: { state: 'FAILED', finished_at: new Date() },
+      }),
+    ).rejects.toThrow();
+
+    const stopped = await prisma.activity_runs.update({
+      where: { id: first.id },
+      data: {
+        state: 'STOPPED',
+        finished_at: new Date(),
+        stop_reason: 'DAILY_BUDGET_REACHED',
+        error_message: 'This run stopped at the daily Gemini budget.',
+        processed_count: 120,
+        total_count: 250,
+        counts: { messagesLabeled: 118, failed: 2 },
+      },
+    });
+    expect(stopped.stop_reason).toBe('DAILY_BUDGET_REACHED');
+    // The slot is free again once the run ends.
+    await prisma.activity_runs.create({ data: running });
+
+    await prisma.connected_google_accounts.delete({ where: { id: account.id } });
+    expect(await prisma.activity_runs.count()).toBe(0);
   });
 
   it('enforces one durable automation action per message and persists bounded usage', async () => {
@@ -733,15 +775,40 @@ databaseTests('PostgreSQL authentication repositories', () => {
       connected_google_account_id: account.id,
       gmail_message_id: message.id,
       user_id: user.id,
-      category: 'WORK' as const,
+      label_name: 'Work',
       label_path: 'MailMind/Work',
       confidence: 0.9,
-      source: 'OPENAI' as const,
+      source: 'AI' as const,
       explanation: 'Work metadata.',
       input_hash: 'e'.repeat(64),
     };
     await prisma.automation_message_actions.create({ data: actionData });
     await expect(prisma.automation_message_actions.create({ data: actionData })).rejects.toThrow();
+
+    // "Nothing fits" is the documented outcome for mail that belongs in no approved folder, and
+    // it has to be storable. Writing '' here failed the label_path check, which aborted the batch
+    // and ended the run — invisible to the unit tests because they mock Prisma.
+    const declined = await prisma.gmail_message_metadata.create({
+      data: { connected_google_account_id: account.id, gmail_message_id: 'declined-message' },
+    });
+    const noLabel = {
+      ...actionData,
+      gmail_message_id: declined.id,
+      status: 'SKIPPED' as const,
+      label_name: 'NONE',
+      label_path: null,
+      explanation: 'No approved folder fits.',
+    };
+    await expect(
+      prisma.automation_message_actions.create({ data: noLabel }),
+    ).resolves.toMatchObject({ label_name: 'NONE', label_path: null });
+
+    // The two halves stay consistent: a NONE decision never carries a path, and a filed one always does.
+    await expect(
+      prisma.automation_message_actions.create({
+        data: { ...noLabel, gmail_message_id: declined.id, label_path: 'MailMind/Work' },
+      }),
+    ).rejects.toThrow();
     expect(await prisma.automation_runs.findUnique({ where: { id: run.id } })).toMatchObject({
       input_tokens: 100,
       output_tokens: 20,

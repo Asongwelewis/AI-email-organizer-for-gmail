@@ -130,6 +130,47 @@ describe('GoogleTokenService', () => {
     );
   });
 
+  it('hands a client the refresh token so a run outliving one access token can renew itself', async () => {
+    const expiry = new Date(Date.now() + 10 * 60_000);
+    mocks.findById.mockResolvedValue(connectedAccount({ access_token_expires_at: expiry }));
+
+    const credentials = await new GoogleTokenService().getGmailClientCredentials('account-id');
+
+    // Without the refresh token a backfill past the hour mark takes a 401 it cannot recover from.
+    expect(credentials).toEqual({
+      accessToken: 'current-access-token',
+      refreshToken: 'current-refresh-token',
+      expiryDate: expiry.getTime(),
+    });
+  });
+
+  it('persists a token the client renewed on its own', async () => {
+    const previousExpiry = new Date(Date.now() + 10 * 60_000);
+    mocks.findById.mockResolvedValue(connectedAccount({ access_token_expires_at: previousExpiry }));
+    mocks.conditionalTokenUpdate.mockResolvedValue({ count: 1 });
+    const renewedExpiry = Date.now() + 55 * 60_000;
+
+    await new GoogleTokenService().storeRefreshedAccessToken(
+      'account-id',
+      'renewed-access-token',
+      renewedExpiry,
+    );
+
+    expect(mocks.conditionalTokenUpdate).toHaveBeenCalledTimes(1);
+    const [accountId, expected, data] = mocks.conditionalTokenUpdate.mock.calls[0]!;
+    expect(accountId).toBe('account-id');
+    expect(expected).toBe(previousExpiry);
+    expect(data.access_token_expires_at).toEqual(new Date(renewedExpiry));
+    expect(
+      encryptionService.decrypt({
+        ciphertext: data.access_token_ciphertext,
+        iv: data.access_token_iv,
+        authTag: data.access_token_auth_tag,
+        keyVersion: data.encryption_key_version,
+      }),
+    ).toBe('renewed-access-token');
+  });
+
   it('treats already-revoked Google credentials as a successful local revocation attempt', async () => {
     mocks.revokeToken.mockRejectedValue(new Error('already revoked'));
     await expect(

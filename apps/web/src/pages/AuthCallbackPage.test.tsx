@@ -12,9 +12,8 @@ function renderCallback(entry: string) {
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/dashboard" element={<div>Dashboard destination</div>} />
+          <Route path="/sorted" element={<div>Sorted destination</div>} />
           <Route path="/login" element={<div>Login destination</div>} />
-          <Route path="/settings/connections" element={<div>Connections destination</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -42,20 +41,20 @@ describe('AuthCallbackPage', () => {
     vi.useRealTimers();
   });
 
-  it('redirects login success to the dashboard after the transition', async () => {
+  it('redirects login success to the sorted screen after the transition', async () => {
     vi.useFakeTimers();
     renderCallback('/auth/callback?status=login_success');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(screen.getByText('Dashboard destination')).toBeInTheDocument();
+    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
     vi.useRealTimers();
   });
 
-  it('keeps Gmail denial in the authenticated connections flow', async () => {
+  it('keeps Gmail denial inside the authenticated area', async () => {
     vi.useFakeTimers();
     renderCallback('/auth/callback?status=gmail_denied');
     expect(screen.getByRole('heading', { name: 'Gmail stayed private.' })).toBeInTheDocument();
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(screen.getByText('Connections destination')).toBeInTheDocument();
+    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
     vi.useRealTimers();
   });
 });

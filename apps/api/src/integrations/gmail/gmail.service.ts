@@ -2,6 +2,12 @@ import type { gmail_v1 } from 'googleapis';
 
 import { env } from '@api/config/env.js';
 import { AppError } from '@api/errors/AppError.js';
+import {
+  activityService,
+  type ProgressReporter,
+  type StartedRun,
+} from '@api/features/activity/activity.service.js';
+import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
 import { createGmailClient, withGmailRetry } from './gmail.client.js';
 import { classifyGmailError, isHistoryExpired } from './gmail.errors.js';
@@ -9,11 +15,9 @@ import { mapGmailMessage } from './gmail.mapper.js';
 import { gmailRepository, type SyncLease } from './gmail.repository.js';
 import { emptySyncCounts, type GmailClient, type SyncCounts } from './gmail.types.js';
 
-const MANAGED_LABELS = [
-  { name: 'MailMind', purpose: 'ROOT' },
-  { name: 'MailMind/Processed', purpose: 'PROCESSED' },
-  { name: 'MailMind/Needs Review', purpose: 'NEEDS_REVIEW' },
-] as const;
+// Only the parent label is managed here. Leaf labels are created by the labels
+// feature on confirm, as `MailMind/<leaf>`, and need this parent to exist.
+const MANAGED_LABELS = [{ name: 'MailMind', purpose: 'ROOT' }] as const;
 const METADATA_HEADERS = ['Subject', 'From', 'To', 'Cc', 'Date'];
 
 function chunks<T>(values: T[], size: number): T[][] {
@@ -65,7 +69,39 @@ export class GmailSyncService {
     }
   }
 
-  async initialSync(userId: string) {
+  /**
+   * Accepts an initial sync and answers immediately. A full mailbox backfill walks every page of
+   * Gmail, which no browser will hold a request open for, so the client is handed a run id and
+   * polls it. Only the preconditions it can act on are checked before accepting.
+   */
+  async startInitialSync(userId: string): Promise<StartedRun> {
+    const account = await gmailRepository.activeAccountForUser(userId);
+    const started = await activityService.start({
+      accountId: account.id,
+      kind: 'GMAIL_INITIAL_SYNC',
+      trigger: 'MANUAL',
+    });
+    if (!started.alreadyRunning) {
+      activityService.runDetached(started.runId, async (report) => {
+        const result = await this.initialSync(userId, report);
+        return {
+          state: 'SUCCEEDED',
+          processed: result.messagesExamined,
+          total: result.messagesExamined,
+          counts: {
+            messagesExamined: result.messagesExamined,
+            messagesUpserted: result.messagesUpserted,
+            messagesDeleted: result.messagesDeleted,
+            labelsUpserted: result.labelsUpserted,
+            syncedMessages: result.syncedMessages,
+          },
+        };
+      });
+    }
+    return started;
+  }
+
+  async initialSync(userId: string, report?: ProgressReporter) {
     const account = await gmailRepository.activeAccountForUser(userId);
     const lease = await gmailRepository.acquireLease(account.id, 'INITIAL_SYNC_RUNNING', 'INITIAL');
     const counts = emptySyncCounts();
@@ -73,11 +109,8 @@ export class GmailSyncService {
       const gmail = await createGmailClient(account.id);
       const profile = await this.loadAndValidateProfile(gmail, account.email);
       counts.labelsUpserted = await this.synchronizeLabels(gmail, account.id);
-      const backfill = await gmailRepository.beginBackfill(
-        lease,
-        profile.messagesTotal ?? 0,
-        profile.historyId ?? null,
-      );
+      const total = profile.messagesTotal ?? 0;
+      const backfill = await gmailRepository.beginBackfill(lease, total, profile.historyId ?? null);
       let pageToken = backfill.backfill_page_token ?? undefined;
       if (!backfill.backfill_listing_completed_at) {
         do {
@@ -97,6 +130,18 @@ export class GmailSyncService {
           await this.fetchAndPersistMessages(gmail, account.id, ids, counts);
           pageToken = response.data.nextPageToken ?? undefined;
           await gmailRepository.checkpointBackfillPage(lease, pageToken ?? null, ids.length);
+          // Reported per page, which is also the run's heartbeat: a backfill that stops
+          // reporting is what lets the next start reclaim an abandoned run.
+          await report?.({
+            processed: counts.messagesExamined,
+            total,
+            counts: {
+              messagesExamined: counts.messagesExamined,
+              messagesUpserted: counts.messagesUpserted,
+              messagesDeleted: counts.messagesDeleted,
+              labelsUpserted: counts.labelsUpserted,
+            },
+          });
         } while (pageToken);
       }
       if (!backfill.backfill_started_at) {
@@ -340,12 +385,25 @@ export class GmailSyncService {
   private async recordFailure(lease: SyncLease, error: unknown): Promise<void> {
     const classified = error instanceof AppError ? error : classifyGmailError(error);
     if (classified.code === 'GMAIL_REAUTH_REQUIRED') {
-      await connectedGoogleAccountRepository.markReauthenticationRequired(
-        lease.accountId,
-        'GMAIL_API_UNAUTHORIZED',
-      );
+      await this.confirmCredentialsOrMarkReauth(lease.accountId);
     }
     await gmailRepository.fail(lease, classified.code);
+  }
+
+  /**
+   * A 401 is not proof the grant is gone: an access token that expired mid-run looks identical to
+   * a revoked one. Disconnecting on the response alone cost a valid connection, so ask Google for
+   * a fresh token instead. `refreshGoogleAccessToken` marks the account itself when the refresh is
+   * genuinely rejected, which makes that call the single authority on a dead grant.
+   */
+  private async confirmCredentialsOrMarkReauth(accountId: string): Promise<void> {
+    const account = await connectedGoogleAccountRepository.findById(accountId);
+    if (!account) return;
+    try {
+      await googleTokenService.refreshGoogleAccessToken(account);
+    } catch {
+      // Already recorded by the refresh path; the sync error code is written by the caller.
+    }
   }
 }
 

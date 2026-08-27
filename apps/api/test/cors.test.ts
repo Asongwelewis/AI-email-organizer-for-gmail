@@ -22,6 +22,17 @@ describe('CORS', () => {
     expect(response.headers['access-control-allow-credentials']).toBe('true');
   });
 
+  it('allows Sentry distributed tracing headers from the frontend', async () => {
+    const response = await request(app)
+      .options('/api/auth/me')
+      .set('Origin', 'https://mailmindai.tech')
+      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Headers', 'sentry-trace,baggage');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-headers']).toBe('sentry-trace,baggage');
+  });
+
   it('does not return CORS permission headers to an untrusted origin', async () => {
     const response = await request(app)
       .options('/api/auth/me')

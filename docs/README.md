@@ -12,14 +12,24 @@ This directory documents the current MailMind AI MVP implementation.
   production build.
 - [API reference](api.md) — HTTP conventions and the implemented endpoint contracts.
 
+## Review
+
+- [Codebase review, August 2026](review-2026-08.md) — full-stack audit at `eb329eb`: what is built,
+  what is wrong, what is missing, and the ordered work left before this can be used daily and
+  eventually shared.
+
 ## Stage-specific design notes
 
 - [Stage 2 setup and security](stage-2-setup.md)
 - [Stage 3 Gmail synchronization](stage-3-gmail-sync.md)
-- [Stage 4 AI classification](stage-4-ai-classification.md)
-- [Stage 4.5 dynamic label discovery](stage-4.5-dynamic-label-discovery.md)
-- [Stage 5 daily automation](stage-5-daily-automation.md)
+- [Stage 5 daily automation](stage-5-daily-automation.md) — current automation behavior, including
+  the approved-label vocabulary and the backfill.
+
+The stage 4 classification and stage 4.5 label-discovery notes were removed: those workflows no
+longer exist. The heuristic candidate-scoring engine that replaced them is gone too — one Gemini
+call now plans the whole folder tree, described in [Architecture](architecture.md),
+[Backend](backend.md), and [API reference](api.md).
 
 These documents describe the current implementation. Daily automatic Gmail labeling is
-implemented with bounded OpenAI usage and human review; billing and attachment or full-body
+implemented with bounded Gemini usage and human review; billing and attachment or full-body
 ingestion are not implemented.

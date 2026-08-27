@@ -5,32 +5,35 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const applicationTables = [
+  'activity_runs',
   'audit_logs',
   'automation_message_actions',
   'automation_runs',
   'automation_settings',
   'automation_states',
-  'classification_results',
-  'classification_runs',
-  'classification_states',
   'connected_google_accounts',
-  'dynamic_label_candidate_messages',
-  'dynamic_label_candidates',
+  'facet_pivot_settings',
+  'facet_vocabularies',
   'gmail_labels',
   'gmail_message_metadata',
   'gmail_sync_runs',
   'gmail_sync_states',
-  'label_decisions',
-  'label_discovery_runs',
-  'label_discovery_states',
   'learned_classification_patterns',
+  'message_facets',
   'oauth_states',
+  'rate_limit_hits',
   'sessions',
-  'user_classification_corrections',
+  'taxonomy_plan_node_rules',
+  'taxonomy_plan_nodes',
+  'taxonomy_plans',
+  'user_labels',
   'users',
 ];
 
 const requiredIndexes = [
+  'activity_runs_account_kind_running_unique_idx',
+  'activity_runs_account_started_idx',
+  'activity_runs_state_expiry_idx',
   'audit_logs_action_idx',
   'audit_logs_created_at_idx',
   'audit_logs_user_id_idx',
@@ -47,26 +50,11 @@ const requiredIndexes = [
   'automation_states_lease_expiry_idx',
   'automation_states_next_run_idx',
   'automation_states_retry_idx',
-  'classification_corrections_result_created_idx',
-  'classification_corrections_user_created_idx',
-  'classification_results_account_category_idx',
-  'classification_results_account_classified_idx',
-  'classification_results_active_message_unique_idx',
-  'classification_results_gmail_message_id_idx',
-  'classification_results_review_queue_idx',
-  'classification_runs_account_started_idx',
-  'classification_runs_status_idx',
-  'classification_states_account_unique_idx',
-  'classification_states_lease_expiry_idx',
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
-  'dynamic_label_candidate_messages_gmail_message_id_idx',
-  'dynamic_label_candidates_account_hash_unique_idx',
-  'dynamic_label_candidates_account_name_idx',
-  'dynamic_label_candidates_account_status_idx',
-  'dynamic_label_candidates_active_path_unique_idx',
-  'dynamic_label_candidates_merged_into_candidate_id_idx',
+  'facet_vocabularies_account_status_idx',
+  'facet_vocabularies_account_value_unique_idx',
   'gmail_labels_account_label_unique_idx',
   'gmail_labels_account_managed_idx',
   'gmail_labels_account_name_unique_idx',
@@ -76,6 +64,7 @@ const requiredIndexes = [
   'gmail_messages_account_deleted_idx',
   'gmail_messages_account_history_idx',
   'gmail_messages_account_message_unique_idx',
+  'gmail_messages_account_search_idx',
   'gmail_messages_account_thread_idx',
   'gmail_sync_runs_account_started_idx',
   'gmail_sync_runs_status_idx',
@@ -83,27 +72,38 @@ const requiredIndexes = [
   'gmail_sync_states_lease_expiry_idx',
   'gmail_sync_states_next_retry_idx',
   'gmail_sync_states_status_idx',
-  'label_decisions_candidate_created_idx',
-  'label_decisions_merged_into_candidate_id_idx',
-  'label_decisions_user_created_idx',
-  'label_discovery_runs_account_started_idx',
-  'label_discovery_runs_status_idx',
-  'label_discovery_states_account_unique_idx',
-  'label_discovery_states_lease_expiry_idx',
-  'learned_patterns_account_sender_unique_idx',
+  'learned_patterns_account_label_idx',
+  'learned_patterns_account_rule_unique_idx',
+  'learned_patterns_facet_idx',
   'learned_patterns_reuse_idx',
+  'message_facets_account_classified_idx',
+  'message_facets_account_domain_intent_idx',
+  'message_facets_account_entity_intent_idx',
+  'message_facets_message_unique_idx',
   'oauth_states_expiry_idx',
   'oauth_states_initiating_session_idx',
   'oauth_states_initiating_user_idx',
   'oauth_states_purpose_idx',
   'oauth_states_state_hash_unique_idx',
   'oauth_states_used_at_idx',
+  'rate_limit_hits_expiry_idx',
   'sessions_expires_at_idx',
   'sessions_revoked_at_idx',
   'sessions_token_hash_unique_idx',
   'sessions_user_id_idx',
-  'user_classification_corrections_connected_google_account_id_idx',
-  'user_classification_corrections_gmail_message_id_idx',
+  'taxonomy_plan_node_rules_node_idx',
+  'taxonomy_plan_node_rules_unique_idx',
+  'taxonomy_plan_nodes_parent_idx',
+  'taxonomy_plan_nodes_path_unique_idx',
+  'taxonomy_plan_nodes_plan_idx',
+  'taxonomy_plans_account_pending_unique_idx',
+  'taxonomy_plans_account_status_idx',
+  'user_labels_account_created_idx',
+  'user_labels_account_depth_idx',
+  'user_labels_account_facet_key_unique_idx',
+  'user_labels_account_path_unique_idx',
+  'user_labels_account_sibling_name_unique_idx',
+  'user_labels_parent_idx',
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
   'users_status_idx',
@@ -123,19 +123,18 @@ try {
     where n.nspname = 'public'
       and c.relname in (
         'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+        'activity_runs',
         'automation_settings', 'automation_states', 'automation_runs',
         'automation_message_actions', 'learned_classification_patterns',
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-        'classification_results', 'classification_runs', 'classification_states',
-        'user_classification_corrections', 'dynamic_label_candidates',
-        'dynamic_label_candidate_messages', 'label_decisions', 'label_discovery_runs',
-        'label_discovery_states'
+        'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
+        'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
       )
     order by c.relname
   `;
   assert(
     JSON.stringify(tables.map((table) => table.table_name)) === JSON.stringify(applicationTables),
-    'all twenty-three application tables must exist',
+    'every application table must exist',
   );
   assert(
     tables.every((table) => table.rls_enabled && table.rls_forced),
@@ -164,13 +163,12 @@ try {
     from unnest(array['public', 'anon', 'authenticated']) as roles(role_name)
     cross join unnest(array[
       'users', 'connected_google_accounts', 'sessions', 'oauth_states', 'audit_logs',
+      'activity_runs',
       'automation_settings', 'automation_states', 'automation_runs',
       'automation_message_actions', 'learned_classification_patterns',
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
-      'classification_results', 'classification_runs', 'classification_states',
-      'user_classification_corrections', 'dynamic_label_candidates',
-      'dynamic_label_candidate_messages', 'label_decisions', 'label_discovery_runs',
-      'label_discovery_states'
+      'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
+      'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -186,6 +184,9 @@ try {
     from pg_catalog.pg_indexes
     where schemaname = 'public'
       and indexname in (
+        'activity_runs_account_kind_running_unique_idx',
+        'activity_runs_account_started_idx',
+        'activity_runs_state_expiry_idx',
         'audit_logs_action_idx',
         'audit_logs_created_at_idx',
         'audit_logs_user_id_idx',
@@ -202,26 +203,11 @@ try {
         'automation_states_lease_expiry_idx',
         'automation_states_next_run_idx',
         'automation_states_retry_idx',
-        'classification_corrections_result_created_idx',
-        'classification_corrections_user_created_idx',
-        'classification_results_account_category_idx',
-        'classification_results_account_classified_idx',
-        'classification_results_active_message_unique_idx',
-        'classification_results_gmail_message_id_idx',
-        'classification_results_review_queue_idx',
-        'classification_runs_account_started_idx',
-        'classification_runs_status_idx',
-        'classification_states_account_unique_idx',
-        'classification_states_lease_expiry_idx',
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
-        'dynamic_label_candidate_messages_gmail_message_id_idx',
-        'dynamic_label_candidates_account_hash_unique_idx',
-        'dynamic_label_candidates_account_name_idx',
-        'dynamic_label_candidates_account_status_idx',
-        'dynamic_label_candidates_active_path_unique_idx',
-        'dynamic_label_candidates_merged_into_candidate_id_idx',
+        'facet_vocabularies_account_status_idx',
+        'facet_vocabularies_account_value_unique_idx',
         'gmail_labels_account_label_unique_idx',
         'gmail_labels_account_managed_idx',
         'gmail_labels_account_name_unique_idx',
@@ -231,6 +217,7 @@ try {
         'gmail_messages_account_deleted_idx',
         'gmail_messages_account_history_idx',
         'gmail_messages_account_message_unique_idx',
+        'gmail_messages_account_search_idx',
         'gmail_messages_account_thread_idx',
         'gmail_sync_runs_account_started_idx',
         'gmail_sync_runs_status_idx',
@@ -238,30 +225,41 @@ try {
         'gmail_sync_states_lease_expiry_idx',
         'gmail_sync_states_next_retry_idx',
         'gmail_sync_states_status_idx',
-        'label_decisions_candidate_created_idx',
-        'label_decisions_merged_into_candidate_id_idx',
-        'label_decisions_user_created_idx',
-        'label_discovery_runs_account_started_idx',
-        'label_discovery_runs_status_idx',
-        'label_discovery_states_account_unique_idx',
-        'label_discovery_states_lease_expiry_idx',
-        'learned_patterns_account_sender_unique_idx',
+        'learned_patterns_account_label_idx',
+        'learned_patterns_account_rule_unique_idx',
+        'learned_patterns_facet_idx',
         'learned_patterns_reuse_idx',
+        'message_facets_account_classified_idx',
+        'message_facets_account_domain_intent_idx',
+        'message_facets_account_entity_intent_idx',
+        'message_facets_message_unique_idx',
         'oauth_states_expiry_idx',
         'oauth_states_initiating_session_idx',
         'oauth_states_initiating_user_idx',
         'oauth_states_purpose_idx',
         'oauth_states_state_hash_unique_idx',
         'oauth_states_used_at_idx',
+        'rate_limit_hits_expiry_idx',
         'sessions_expires_at_idx',
         'sessions_revoked_at_idx',
         'sessions_token_hash_unique_idx',
         'sessions_user_id_idx',
+        'taxonomy_plan_node_rules_node_idx',
+        'taxonomy_plan_node_rules_unique_idx',
+        'taxonomy_plan_nodes_parent_idx',
+        'taxonomy_plan_nodes_path_unique_idx',
+        'taxonomy_plan_nodes_plan_idx',
+        'taxonomy_plans_account_pending_unique_idx',
+        'taxonomy_plans_account_status_idx',
+        'user_labels_account_created_idx',
+        'user_labels_account_depth_idx',
+        'user_labels_account_facet_key_unique_idx',
+        'user_labels_account_path_unique_idx',
+        'user_labels_account_sibling_name_unique_idx',
+        'user_labels_parent_idx',
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
         'users_status_idx'
-        ,'user_classification_corrections_connected_google_account_id_idx'
-        ,'user_classification_corrections_gmail_message_id_idx'
       )
     order by indexname
   `;
@@ -276,42 +274,36 @@ try {
     where not tgisinternal
       and tgrelid in (
         'public.users'::regclass,
+        'public.activity_runs'::regclass,
         'public.connected_google_accounts'::regclass,
         'public.gmail_labels'::regclass,
         'public.gmail_message_metadata'::regclass,
-        'public.gmail_sync_states'::regclass,
-        'public.classification_results'::regclass,
-        'public.classification_states'::regclass
+        'public.gmail_sync_states'::regclass
         ,'public.automation_settings'::regclass
         ,'public.automation_states'::regclass
         ,'public.automation_message_actions'::regclass
         ,'public.learned_classification_patterns'::regclass
-        ,'public.dynamic_label_candidates'::regclass
-        ,'public.dynamic_label_candidate_messages'::regclass
-        ,'public.label_decisions'::regclass
-        ,'public.label_discovery_states'::regclass
+        ,'public.taxonomy_plans'::regclass
+        ,'public.user_labels'::regclass
       )
     order by tgname
   `;
   assert(
     JSON.stringify(triggers.map((trigger) => trigger.trigger_name)) ===
       JSON.stringify([
+        'activity_runs_set_updated_at',
         'automation_actions_account_guard',
         'automation_actions_set_updated_at',
         'automation_settings_set_updated_at',
         'automation_states_set_updated_at',
-        'classification_results_set_updated_at',
-        'classification_states_set_updated_at',
         'connected_google_accounts_set_updated_at',
-        'dynamic_label_candidate_messages_account_guard',
-        'dynamic_label_candidates_merge_guard',
-        'dynamic_label_candidates_set_updated_at',
         'gmail_labels_set_updated_at',
         'gmail_message_metadata_set_updated_at',
         'gmail_sync_states_set_updated_at',
-        'label_decisions_immutable_guard',
-        'label_discovery_states_set_updated_at',
         'learned_patterns_set_updated_at',
+        'taxonomy_plans_set_updated_at',
+        'user_labels_set_updated_at',
+        'user_labels_validate_tree',
         'users_set_updated_at',
       ]),
     'all updated_at triggers must exist',
@@ -335,12 +327,12 @@ try {
          and t.typname in (
            'audit_result', 'google_connection_status', 'oauth_purpose', 'user_status',
            'gmail_sync_status', 'gmail_sync_type', 'gmail_sync_run_status'
-           ,'classification_category', 'recommended_action', 'classification_source',
-           'classification_status', 'classification_run_status'
-           ,'dynamic_label_candidate_type', 'dynamic_label_candidate_status',
-           'label_candidate_decision', 'label_discovery_run_status'
+           ,'taxonomy_plan_status', 'taxonomy_node_kind', 'user_label_source'
+           ,'routing_rule_kind', 'routing_rule_source'
+           ,'activity_run_kind', 'activity_run_state'
            ,'automation_run_status', 'automation_trigger', 'automation_action_status',
            'automation_classification_source'
+           ,'facet_source'
          )) as enum_count,
       (select count(*) from pg_catalog.pg_constraint
        where contype = 'f'
@@ -367,10 +359,17 @@ try {
       (select gen_random_uuid() is not null) as uuid_available
   `;
   const summary = catalog[0];
+  // Exact counts, so a migration that quietly adds or drops something structural is caught rather
+  // than absorbed. The cost is that every schema change must update them here — which is the point,
+  // but it also means a stale number reads as a real failure: these three had drifted several
+  // migrations behind before the facet work began.
   assert(summary?.enum_count === 20n, 'all twenty enum types must exist');
-  assert(summary.foreign_key_count === 35n, 'all thirty-five foreign keys must exist');
+  assert(summary.foreign_key_count === 30n, 'all thirty foreign keys must exist');
   assert(summary.citext_count === 0n, 'citext must not be installed as a MailMind dependency');
-  assert(summary.migration_count === 9n, 'exactly nine intended Prisma migrations must be applied');
+  assert(
+    summary.migration_count === 22n,
+    'exactly twenty-two intended Prisma migrations must be applied',
+  );
   assert(summary.failed_migration_count === 0n, 'no failed Prisma migration may remain');
   assert(summary.test_artifact_count === 0n, 'no known integration-test records may remain');
   assert(summary.uuid_available, 'gen_random_uuid() must be available');

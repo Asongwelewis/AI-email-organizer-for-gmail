@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   status: vi.fn(),
   run: vi.fn(),
+  start: vi.fn(),
   reviewQueue: vi.fn(),
+  gapReport: vi.fn(),
   approve: vi.fn(),
   skip: vi.fn(),
 }));
@@ -19,6 +21,7 @@ vi.mock('../src/features/automation/automation.service.js', () => ({
   automationService: mocks,
 }));
 
+import { AppError } from '../src/errors/AppError.js';
 import { automationRouter } from '../src/features/automation/automation.routes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 
@@ -43,9 +46,28 @@ describe('automation HTTP routes', () => {
     });
     mocks.status.mockResolvedValue({ gmailConnected: true, enabled: true, running: false });
     mocks.reviewQueue.mockResolvedValue({ items: [] });
-    mocks.run.mockResolvedValue({ success: true, runId: actionId, status: 'COMPLETED' });
+    mocks.gapReport.mockResolvedValue({ analyzedCount: 0, clusteredCount: 0, clusters: [] });
+    mocks.start.mockResolvedValue({
+      runId: actionId,
+      state: 'RUNNING',
+      kind: 'AUTOMATION_FILING',
+      startedAt: '2026-08-20T00:00:00.000Z',
+      alreadyRunning: false,
+    });
     mocks.approve.mockResolvedValue({ success: true });
     mocks.skip.mockResolvedValue({ success: true });
+  });
+
+  it('serves the gap report as a read-only view that requires a session', async () => {
+    mocks.authenticate.mockRejectedValueOnce(
+      new AppError('AUTHENTICATION_REQUIRED', 'Authentication is required.', 401),
+    );
+    expect((await request(app).get('/api/automation/gaps')).status).toBe(401);
+
+    const response = await request(app).get('/api/automation/gaps');
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.body).toMatchObject({ analyzedCount: 0, clusters: [] });
   });
 
   it('returns connection state with explicit no-cache headers', async () => {
@@ -55,7 +77,7 @@ describe('automation HTTP routes', () => {
     expect(response.body).toMatchObject({ gmailConnected: true });
   });
 
-  it('protects mutations by origin and validates review categories', async () => {
+  it('protects mutations by origin and validates the approval body', async () => {
     const denied = await request(app)
       .post('/api/automation/run')
       .set('Origin', 'https://evil.example');
@@ -64,14 +86,37 @@ describe('automation HTTP routes', () => {
     const invalid = await request(app)
       .post(`/api/automation/review/${actionId}/approve`)
       .set('Origin', 'http://localhost:5173')
-      .send({ category: 'NOT_A_CATEGORY' });
+      .send({ category: 'WORK' });
     expect(invalid.status).toBe(400);
+    expect(mocks.approve).not.toHaveBeenCalled();
 
     const valid = await request(app)
       .post(`/api/automation/review/${actionId}/approve`)
       .set('Origin', 'http://localhost:5173')
-      .send({ category: 'WORK' });
+      .send({ labelName: 'Invoices' });
     expect(valid.status).toBe(200);
-    expect(mocks.approve).toHaveBeenCalledWith('user-id', actionId, 'WORK');
+    expect(mocks.approve).toHaveBeenCalledWith('user-id', actionId, 'Invoices');
+  });
+
+  // Filing outlives a browser request, so the endpoint accepts and hands back a run id to poll.
+  it('accepts a filing run with 202 and a run id to poll', async () => {
+    const response = await request(app)
+      .post('/api/automation/run')
+      .set('Origin', 'http://localhost:5173');
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({ runId: actionId, state: 'RUNNING' });
+  });
+
+  // Preconditions the caller can act on still answer synchronously rather than in a run record.
+  it('refuses to run before any label is approved', async () => {
+    const { AppError } = await import('../src/errors/AppError.js');
+    mocks.start.mockRejectedValueOnce(
+      new AppError('AUTOMATION_NO_APPROVED_LABELS', 'Confirm labels first.', 409),
+    );
+    const response = await request(app)
+      .post('/api/automation/run')
+      .set('Origin', 'http://localhost:5173');
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('AUTOMATION_NO_APPROVED_LABELS');
   });
 });

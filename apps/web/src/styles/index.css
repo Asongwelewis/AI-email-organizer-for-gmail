@@ -1,24 +1,35 @@
 @import 'tailwindcss';
 
+/**
+ * The public pages: landing, sign-in, the OAuth handoff, and the legal pages.
+ *
+ * Colour lives in `theme.css`. The names below are the vocabulary this file has always used, kept
+ * as an alias layer so several thousand existing rules retheme by redefinition instead of by
+ * rewrite — but every one of them now resolves to a theme token, so light and dark are one
+ * substitution apart and neither is hardcoded here.
+ *
+ * `--ink` and `--line` are deliberately NOT re-declared: they are theme tokens already and this
+ * file's rules were written against those exact names.
+ */
 :root {
-  color-scheme: light;
-  font-family: 'Manrope', 'Avenir Next', sans-serif;
-  color: #101923;
-  background: #f3ecdf;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--surface-window);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --paper: #f3ecdf;
-  --paper-light: #fbf7ee;
-  --paper-deep: #e6dccb;
-  --ink: #101923;
-  --ink-soft: #34404a;
-  --navy: #0b2448;
-  --cobalt: #123f78;
-  --vermilion: #ef3d17;
-  --brass: #b88936;
-  --line: rgba(16, 25, 35, 0.16);
-  --shadow: 0 30px 80px rgba(26, 27, 27, 0.13);
+
+  --paper: var(--surface-window);
+  --paper-light: var(--surface-content);
+  --paper-deep: var(--surface-inset);
+  --ink-soft: var(--ink-secondary);
+  /* The editorial palette's three accents all collapse onto the one system accent: macOS spends
+     colour on the thing you are meant to press and almost nowhere else. */
+  --navy: var(--accent);
+  --cobalt: var(--accent);
+  --vermilion: var(--accent);
+  --brass: var(--ink-secondary);
+  --shadow: var(--shadow-lg);
 }
 
 * {
@@ -40,19 +51,25 @@ body,
 body {
   margin: 0;
   overflow-x: hidden;
+  color: var(--ink);
+  /* A single soft light source at the top-left, at the strength the current theme can carry. */
   background:
-    radial-gradient(circle at 15% 4%, rgba(255, 255, 255, 0.86), transparent 28rem), var(--paper);
+    radial-gradient(circle at 15% 4%, var(--page-glow), transparent 28rem), var(--surface-window);
 }
 
+/**
+ * The grain. Multiplying noise over cream reads as paper; multiplying it over graphite reads as
+ * dirt, so the BLEND MODE is a theme token and not only the opacity.
+ */
 body::before {
   position: fixed;
   z-index: 100;
   inset: 0;
   pointer-events: none;
   content: '';
-  opacity: 0.22;
+  opacity: var(--grain-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.15'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
+  mix-blend-mode: var(--grain-blend);
 }
 
 .mail-atmosphere {
@@ -69,7 +86,7 @@ body::before {
   position: absolute;
   display: block;
   width: clamp(7rem, 12vw, 12.5rem);
-  opacity: 0.055;
+  opacity: var(--atmosphere-opacity);
   will-change: transform;
   animation: mail-drift-a 18s ease-in-out infinite alternate;
 }
@@ -152,11 +169,11 @@ body::before {
 }
 
 .mail-atmosphere[data-scene='landing'] .mail-shape {
-  opacity: 0.068;
+  opacity: var(--atmosphere-opacity-landing);
 }
 
 .mail-atmosphere[data-scene='auth'] .mail-shape {
-  opacity: 0.038;
+  opacity: var(--atmosphere-opacity-auth);
   animation-duration: 28s;
 }
 
@@ -184,10 +201,10 @@ body::before {
   gap: 0.45rem;
   min-height: 2.5rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid rgba(16, 25, 35, 0.2);
+  border: 1px solid var(--line-strong);
   color: var(--ink);
-  background: rgba(251, 247, 238, 0.88);
-  box-shadow: 0 8px 28px rgba(16, 25, 35, 0.1);
+  background: var(--surface-chrome-opaque);
+  box-shadow: var(--shadow-md);
   backdrop-filter: blur(10px);
   cursor: pointer;
 }
@@ -198,7 +215,7 @@ body::before {
 }
 
 .motion-pause span {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.58rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -247,18 +264,19 @@ img {
 }
 
 ::selection {
-  color: var(--paper-light);
-  background: var(--cobalt);
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 
 :focus-visible {
-  outline: 3px solid var(--vermilion);
-  outline-offset: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .eyebrow,
 .card-index {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.68rem;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -281,7 +299,7 @@ img {
 }
 
 .brand-mark__name {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-wordmark);
   font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -290,15 +308,16 @@ img {
 .brand-mark__name em {
   margin-left: 0.15em;
   color: var(--vermilion);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.62em;
   font-style: normal;
   letter-spacing: 0.04em;
   vertical-align: super;
 }
 
+/* Sits on a dark photographic panel in both themes, so it does not follow the surface tokens. */
 .brand-mark--inverted {
-  color: var(--paper-light);
+  color: #ffffff;
 }
 
 .public-shell {
@@ -356,9 +375,11 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 2.75rem;
   padding: 0.72rem 1rem;
-  color: var(--paper-light);
-  background: var(--ink);
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: var(--radius-md);
 }
 
 .header-login svg {
@@ -385,7 +406,7 @@ img {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1.8rem;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.67rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -394,7 +415,8 @@ img {
 .landing-kicker span {
   width: 1.8rem;
   height: 0.5rem;
-  background: var(--vermilion);
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .landing-hero h1,
@@ -403,24 +425,24 @@ img {
 .page-heading h1,
 .legal-page h1 {
   margin: 0;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(4.1rem, 7.4vw, 8.9rem);
-  font-weight: 500;
-  letter-spacing: -0.07em;
-  line-height: 0.79;
+  font-family: var(--font-display);
+  font-size: clamp(3.4rem, 6.4vw, 7.4rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
 }
 
 .landing-hero h1 em,
 .login-panel h1 em,
 .dashboard-welcome h1 em,
 .page-heading h1 em {
-  color: var(--vermilion);
-  font-style: italic;
+  color: var(--accent);
+  font-style: normal;
 }
 
 .landing-hero__promise {
   margin: 2rem 0 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.55rem, 2.5vw, 2.8rem);
   font-weight: 500;
   letter-spacing: -0.035em;
@@ -450,11 +472,13 @@ img {
   gap: 0.7rem;
   min-height: 3.25rem;
   padding: 0.9rem 1.2rem;
-  color: var(--paper-light);
+  color: var(--accent-ink);
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
-  background: var(--ink);
+  background: var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
   transition:
     color 220ms ease,
     background 220ms ease,
@@ -463,8 +487,8 @@ img {
 
 .cta-link:hover,
 .inline-link:hover {
-  color: var(--paper-light);
-  background: var(--vermilion);
+  color: var(--accent-ink);
+  background: var(--accent-hover);
   transform: translateY(-2px);
 }
 
@@ -478,7 +502,7 @@ img {
   align-items: center;
   gap: 0.48rem;
   color: var(--ink-soft);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.67rem;
 }
 
@@ -490,6 +514,8 @@ img {
   position: relative;
   z-index: 1;
   margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
 
@@ -499,8 +525,9 @@ img {
   inset: 0;
   pointer-events: none;
   content: '';
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: inset 0 0 0 10px rgba(12, 29, 47, 0.04);
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 10px rgb(12 29 47 / 0.04);
 }
 
 .landing-hero__visual img {
@@ -518,12 +545,13 @@ img {
   display: flex;
   justify-content: space-between;
   padding: 1rem 1.2rem;
-  color: var(--paper-light);
-  font-family: 'DM Mono', monospace;
+  /* Printed on the photograph itself, which is dark in both themes. */
+  color: #ffffff;
+  font-family: var(--font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  background: linear-gradient(transparent, rgba(8, 15, 22, 0.82));
+  background: linear-gradient(transparent, rgb(8 15 22 / 0.82));
 }
 
 .scroll-cue {
@@ -533,7 +561,7 @@ img {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -555,9 +583,10 @@ img {
   padding: clamp(5rem, 10vw, 10rem) max(1.5rem, calc((100vw - 1440px) / 2));
 }
 
+/* A deep band in both themes — see --surface-invert in theme.css. */
 .principles-section {
-  color: var(--paper-light);
-  background: var(--ink);
+  color: var(--ink-on-invert);
+  background: var(--surface-invert);
 }
 
 .section-intro {
@@ -572,24 +601,24 @@ img {
 .landing-final-cta h2 {
   max-width: 55rem;
   margin: 0;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(2.7rem, 5.5vw, 6rem);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.95;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 4.8vw, 5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.03;
 }
 
 .principles-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1px solid var(--line-on-invert);
 }
 
 .principle-card {
   position: relative;
   min-height: 23rem;
   padding: 2rem clamp(1.25rem, 3vw, 2.7rem) 2.5rem;
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: 1px solid var(--line-on-invert);
 }
 
 .principle-card:last-child {
@@ -597,22 +626,23 @@ img {
 }
 
 .principle-card__number {
-  color: #9fa7aa;
-  font-family: 'DM Mono', monospace;
+  color: var(--ink-on-invert-soft);
+  font-family: var(--font-mono);
   font-size: 0.67rem;
 }
 
 .principle-card h3 {
   margin: 5rem 0 1rem;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(1.65rem, 2.5vw, 2.65rem);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.2vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .principle-card p {
   max-width: 24rem;
   margin: 0;
-  color: #b7bdbf;
+  color: var(--ink-on-invert-soft);
   font-size: 0.93rem;
   line-height: 1.7;
 }
@@ -622,11 +652,11 @@ img {
   right: 2rem;
   bottom: 2rem;
   width: 1.2rem;
-  color: var(--vermilion);
+  color: var(--accent);
 }
 
 .workflow-section {
-  background: var(--paper-deep);
+  background: var(--surface-inset);
 }
 
 .workflow-panel {
@@ -634,14 +664,16 @@ img {
   grid-template-columns: 0.72fr 1.28fr;
   min-height: 38rem;
   overflow: hidden;
-  color: var(--paper-light);
-  background: var(--cobalt);
-  box-shadow: var(--shadow);
+  color: var(--ink);
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--highlight-inset), var(--shadow-md);
 }
 
 .workflow-panel__header {
   padding: clamp(2rem, 5vw, 5rem);
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid var(--line);
 }
 
 .workflow-panel__header h2 {
@@ -651,7 +683,7 @@ img {
 .workflow-panel__header > p {
   max-width: 30rem;
   margin: 2rem 0 0;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink-secondary);
   line-height: 1.7;
 }
 
@@ -669,8 +701,8 @@ img {
   flex-direction: column;
   min-height: 19rem;
   padding: clamp(2rem, 4vw, 4rem);
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .workflow-steps li:nth-child(even) {
@@ -685,30 +717,30 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: rgba(255, 255, 255, 0.58);
-  font-family: 'DM Mono', monospace;
+  color: var(--ink-tertiary);
+  font-family: var(--font-mono);
   font-size: 0.67rem;
 }
 
 .workflow-step__meta svg {
   width: 1rem;
-  color: var(--vermilion);
+  color: var(--accent);
 }
 
 .workflow-steps h3 {
   max-width: 24rem;
   margin: auto 0 1.25rem;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(1.75rem, 2.7vw, 2.8rem);
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 2.3vw, 2.3rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
 }
 
 .workflow-steps p {
   max-width: 25rem;
   margin: 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--ink-secondary);
   font-size: 0.92rem;
   line-height: 1.7;
 }
@@ -739,8 +771,10 @@ img {
 
 .cta-link--paper {
   color: var(--ink);
-  border: 1px solid var(--ink);
-  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset), var(--shadow-sm);
 }
 
 .public-footer {
@@ -758,7 +792,7 @@ img {
 
 .public-footer > span {
   justify-self: end;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .magnetic-button {
@@ -769,10 +803,12 @@ img {
   min-height: 3.2rem;
   padding: 0.8rem 1.25rem;
   overflow: hidden;
-  color: var(--paper-light);
+  color: var(--accent-ink);
   cursor: pointer;
   border: 1px solid transparent;
-  background: var(--ink);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
   transition:
     color 200ms ease,
     background 200ms ease,
@@ -794,7 +830,7 @@ img {
   inset: 100% 0 auto;
   height: 100%;
   content: '';
-  background: var(--vermilion);
+  background: var(--accent-hover);
   transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -809,23 +845,24 @@ img {
 
 .magnetic-button--outline {
   color: var(--ink);
-  border-color: var(--line);
-  background: transparent;
+  border-color: var(--line-strong);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset), var(--shadow-sm);
 }
 
 .magnetic-button--outline:hover,
 .magnetic-button--danger:hover {
-  color: var(--paper-light);
+  color: var(--accent-ink);
 }
 
 .magnetic-button--paper {
   color: var(--ink);
-  background: var(--paper-light);
+  background: var(--surface-elevated);
 }
 
 .magnetic-button--danger {
-  color: #a22510;
-  border-color: rgba(162, 37, 16, 0.3);
+  color: var(--status-danger-ink);
+  border-color: var(--status-danger-line);
   background: transparent;
 }
 
@@ -843,15 +880,16 @@ img {
   height: 1rem;
   pointer-events: none;
   border-radius: 50%;
-  background: var(--vermilion);
-  mix-blend-mode: multiply;
+  background: var(--accent);
+  mix-blend-mode: var(--grain-blend);
 }
 
 .login-page {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(32rem, 1.08fr);
-  min-height: 100vh;
-  background: var(--paper-light);
+  min-height: 100dvh;
+  color: var(--ink);
+  background: var(--surface-content);
 }
 
 .login-panel {
@@ -868,7 +906,7 @@ img {
 
 .login-panel h1 {
   margin: 1.5rem 0 2rem;
-  font-size: clamp(3.8rem, 6vw, 6.8rem);
+  font-size: clamp(3rem, 5vw, 5.4rem);
 }
 
 .login-panel__content > p {
@@ -887,7 +925,8 @@ img {
   width: 1.2rem !important;
   height: 1.2rem !important;
   padding: 0.16rem;
-  background: white;
+  background: #ffffff;
+  border-radius: 3px;
 }
 
 .login-assurances {
@@ -900,30 +939,41 @@ img {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--ink-soft);
-  font-family: 'DM Mono', monospace;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
   font-size: 0.64rem;
 }
 
 .login-assurances svg {
   width: 0.9rem;
-  color: var(--cobalt);
+  color: var(--accent);
 }
 
 .safe-alert {
   margin-top: 1.4rem;
   padding: 1rem;
-  color: #7d281a;
-  border-left: 4px solid var(--vermilion);
-  background: #fee7db;
+  color: var(--status-danger-ink);
+  border-left: 4px solid var(--status-danger-ink);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--status-danger-bg);
   font-size: 0.82rem;
   line-height: 1.55;
 }
 
 .login-panel__footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 1.5rem;
+  align-items: center;
   font-size: 0.68rem;
+}
+
+.login-panel__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .login-panel__footer a {
@@ -932,10 +982,10 @@ img {
 
 .login-art {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   overflow: hidden;
-  background: var(--ink);
+  background: var(--surface-invert);
 }
 
 .login-art img {
@@ -948,7 +998,7 @@ img {
   position: absolute;
   inset: 0;
   content: '';
-  background: linear-gradient(180deg, transparent 48%, rgba(6, 13, 22, 0.78));
+  background: linear-gradient(180deg, transparent 48%, rgb(6 13 22 / 0.78));
 }
 
 .login-art figcaption {
@@ -959,16 +1009,18 @@ img {
   left: clamp(2rem, 5vw, 5rem);
   display: flex;
   flex-direction: column;
-  color: var(--paper-light);
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(1.5rem, 2.6vw, 3rem);
-  line-height: 1.1;
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2.3vw, 2.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 .login-art figcaption strong {
-  color: #ff6848;
-  font-style: italic;
-  font-weight: 500;
+  color: #6cb6ff;
+  font-style: normal;
+  font-weight: 600;
 }
 
 .callback-page,
@@ -977,10 +1029,12 @@ img {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 2rem;
+  color: var(--ink);
   background:
-    linear-gradient(90deg, transparent 49.9%, var(--line) 50%, transparent 50.1%), var(--paper);
+    linear-gradient(90deg, transparent 49.9%, var(--line) 50%, transparent 50.1%),
+    var(--surface-window);
 }
 
 .callback-page > .brand-mark {
@@ -992,8 +1046,9 @@ img {
   padding: clamp(2rem, 5vw, 4.5rem);
   text-align: center;
   border: 1px solid var(--line);
-  background: var(--paper-light);
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-xl);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset), var(--shadow-lg);
 }
 
 .callback-card__icon {
@@ -1002,13 +1057,14 @@ img {
   height: 4.5rem;
   margin: 0 auto 1.5rem;
   place-items: center;
-  color: var(--paper-light);
-  background: var(--cobalt);
+  color: var(--accent-ink);
+  background: var(--accent);
   border-radius: 50%;
 }
 
 .callback-card--error .callback-card__icon {
-  background: var(--vermilion);
+  color: #ffffff;
+  background: var(--status-danger-ink);
 }
 
 .callback-card__icon svg {
@@ -1017,10 +1073,11 @@ img {
 
 .callback-card h1 {
   margin: 1rem 0;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(2.4rem, 5vw, 4.5rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
 }
 
 .callback-card p {
@@ -1033,7 +1090,8 @@ img {
   height: 2px;
   margin: 2rem 0;
   overflow: hidden;
-  background: var(--paper-deep);
+  border-radius: 999px;
+  background: var(--surface-inset);
 }
 
 .callback-progress span {
@@ -1127,7 +1185,7 @@ img {
   flex: none;
   overflow: hidden;
   color: var(--paper-light);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   object-fit: cover;
   background: var(--cobalt);
   border-radius: 50%;
@@ -1248,7 +1306,7 @@ img {
 .stage-card h2,
 .connection-stage h2 {
   margin: 1.2rem 0 0.65rem;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 3.5vw, 3.5rem);
   font-weight: 500;
   letter-spacing: -0.05em;
@@ -1471,7 +1529,7 @@ img {
   padding: 0 0 1rem 1.2rem;
   overflow-wrap: anywhere;
   color: var(--ink-soft);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.62rem;
 }
 
@@ -1520,7 +1578,7 @@ img {
 
 .confirm-dialog h2 {
   margin: 1.2rem 0 1rem;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 500;
   letter-spacing: -0.045em;
@@ -1576,7 +1634,7 @@ img {
 
 .route-loader p {
   margin-top: 1rem;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.64rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1952,7 +2010,7 @@ img {
 }
 
 .classification-stat strong {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2.8rem, 5vw, 5rem);
   font-weight: 500;
 }
@@ -2045,7 +2103,7 @@ img {
 
 .distribution-card dd {
   margin: 0;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
 }
 
@@ -2066,7 +2124,7 @@ img {
 .review-section__heading h2,
 .classification-empty h2 {
   margin: 0.75rem 0 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 4rem);
   font-weight: 500;
   letter-spacing: -0.045em;
@@ -2093,7 +2151,7 @@ img {
 
 .recommendation-card__message h3 {
   margin: 1.2rem 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.8rem, 3vw, 3.2rem);
   font-weight: 500;
   line-height: 1.05;
@@ -2116,7 +2174,7 @@ img {
   padding: 0.35rem 0.55rem;
   color: var(--ink-soft);
   border: 1px solid var(--line);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.56rem;
 }
 
@@ -2518,7 +2576,7 @@ img {
 }
 
 .workflow-rail__intro strong {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.2rem;
   font-weight: 600;
 }
@@ -2565,7 +2623,7 @@ img {
   color: var(--ink);
   border: 1px solid currentColor;
   border-radius: 50%;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   place-items: center;
 }
@@ -2615,7 +2673,7 @@ img {
 
 .coverage-panel__heading h2 {
   margin: 0.45rem 0 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.8rem, 3vw, 2.8rem);
   font-weight: 550;
 }
@@ -2624,7 +2682,7 @@ img {
   padding: 0.55rem 0.7rem;
   color: var(--ink);
   border: 1px solid rgba(16, 25, 35, 0.28);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
 }
 
@@ -2662,7 +2720,7 @@ img {
 
 .product-metric > strong {
   align-self: end;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3.6rem);
   font-weight: 550;
 }
@@ -2797,7 +2855,7 @@ img {
 .classification-mode-explainer h2,
 .discovery-explainer h2 {
   margin: 0.7rem 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.8rem, 3vw, 3rem);
   font-weight: 550;
 }
@@ -3098,7 +3156,7 @@ summary,
 .label-candidate-card h3 {
   margin: 0;
   overflow-wrap: anywhere;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.8rem, 3vw, 3.2rem);
   font-weight: 500;
   line-height: 1.05;
@@ -3108,7 +3166,7 @@ summary,
   padding: 0.35rem 0.55rem;
   color: var(--ink-soft);
   border: 1px solid var(--line);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.58rem;
 }
 
@@ -3302,7 +3360,7 @@ summary,
 
 .tutorial-card__topline > span {
   color: #59636a;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -3339,7 +3397,7 @@ summary,
   top: 3.2rem;
   right: 1.6rem;
   color: rgba(16, 25, 35, 0.06);
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: 6rem;
   font-weight: 600;
   line-height: 1;
@@ -3350,7 +3408,7 @@ summary,
   position: relative;
   max-width: 18rem;
   margin: 0.7rem 0 0;
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3rem);
   font-weight: 500;
   letter-spacing: -0.045em;
@@ -3402,7 +3460,7 @@ summary,
 
 .tutorial-card__actions > span {
   color: #737b80;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.58rem;
 }
 
@@ -3464,4 +3522,261 @@ summary,
   .tutorial-scrim {
     backdrop-filter: none;
   }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.labels-page {
+  display: grid;
+  gap: 2rem;
+  padding-bottom: 5rem;
+}
+
+.labels-panel {
+  display: grid;
+  gap: 1.2rem;
+  padding: 1.8rem;
+  border: 1px solid var(--line);
+}
+
+.labels-panel__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.labels-panel__heading h2 {
+  margin: 0.3rem 0 0;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+}
+
+.labels-empty {
+  margin: 0;
+  padding: 2rem;
+  text-align: center;
+  border: 1px dashed var(--line);
+}
+
+.labels-error {
+  margin: 0 0 1.2rem;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  overflow-wrap: anywhere;
+}
+
+.labels-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.labels-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+}
+
+.labels-row__name {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.labels-row__name input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+}
+
+.labels-row__source {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.labels-row__controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.labels-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.labels-add label {
+  flex: 1 1 16rem;
+}
+
+.labels-add input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+}
+
+.labels-actions {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+/* ------------------------------------------------------------ legal documents */
+
+/**
+ * A reading column, not a hero.
+ *
+ * `.legal-page` centres a huge title over one sentence, which was right for a placeholder saying
+ * "this will be published later" and wrong for a document somebody has to actually read before
+ * connecting their mailbox.
+ */
+.legal-doc {
+  min-height: 100dvh;
+  padding: 3rem 1.5rem 6rem;
+  color: var(--ink);
+  background: var(--surface-window);
+}
+
+.legal-doc__column {
+  /* A measure, not a width: ~70 characters is where prose stops being hard to track. */
+  width: min(100%, 46rem);
+  margin: 0 auto;
+}
+
+.legal-doc__back {
+  display: inline-block;
+  margin-bottom: 2.5rem;
+  font-size: 0.875rem;
+  color: var(--ink-secondary);
+  text-decoration: none;
+}
+
+.legal-doc__back:hover {
+  color: var(--ink);
+}
+
+.legal-doc h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1.15;
+}
+
+.legal-doc__updated {
+  margin: 0 0 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ink-secondary);
+}
+
+/* The honest one-paragraph version, before the detail. Set apart so it is read first. */
+.legal-doc__summary {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2.5rem;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--surface-inset);
+}
+
+.legal-doc__summary p {
+  margin: 0;
+}
+
+.legal-doc h2 {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.legal-doc h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.legal-doc p,
+.legal-doc li {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink-secondary);
+}
+
+.legal-doc li {
+  margin-bottom: 0.4rem;
+}
+
+.legal-doc strong {
+  color: var(--ink);
+}
+
+.legal-doc code {
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.legal-doc a {
+  color: var(--accent);
+}
+
+.legal-doc__confirm {
+  display: block;
+  margin: 1rem 0;
+}
+
+.legal-doc__confirm input {
+  width: min(100%, 20rem);
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.legal-doc__confirm input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/*
+ * The one destructive control in the product. Colour alone never carries meaning here — the label
+ * says "Delete everything" and the action is behind a typed confirmation — but it should not look
+ * like the button beside it either.
+ */
+.button--danger {
+  color: #fff;
+  background: #d7373f;
+  border-color: #d7373f;
+}
+
+.button--danger:hover:not(:disabled) {
+  background: #bf2c33;
 }

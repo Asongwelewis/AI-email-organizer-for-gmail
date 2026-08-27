@@ -10,27 +10,26 @@
     "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev --workspace @mailmind/web\" \"npm run dev --workspace @mailmind/api\"",
     "dev:web": "npm run dev --workspace @mailmind/web",
     "dev:api": "npm run dev --workspace @mailmind/api",
-    "build": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
-    "test": "npm test --workspace @mailmind/api && npm test --workspace @mailmind/web",
+    "build": "node scripts/with-app-version.mjs npm run build:workspaces",
+    "build:workspaces": "npm run build --workspace @mailmind/shared && npm run build --workspace @mailmind/ui && npm run build --workspace @mailmind/api && npm run build --workspace @mailmind/web",
+    "build:web": "cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs npm run build --workspace @mailmind/web",
+    "test": "node --test scripts/app-version.test.mjs && npm test --workspace @mailmind/api && npm test --workspace @mailmind/web",
     "test:e2e": "node e2e/run-e2e.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --force",
+    "audit:production": "node scripts/audit-production.mjs",
     "prepare": "node .husky/install.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
     "@playwright/test": "^1.62.0",
-    "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.14",
-    "@types/passport": "^1.0.17",
-    "@types/passport-google-oauth20": "^2.0.16",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
@@ -56,8 +55,5 @@
     "@tailwindcss/oxide-linux-x64-musl": "4.3.3",
     "lightningcss-linux-x64-gnu": "1.32.0",
     "lightningcss-linux-x64-musl": "1.32.0"
-  },
-  "dependencies": {
-    "@supabase/server": "^1.4.0"
   }
 }

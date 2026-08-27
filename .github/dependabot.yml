@@ -1,0 +1,29 @@
+# Dependency updates, grouped so a week of patch bumps is one pull request rather than twenty.
+#
+# The audit found no Dependabot at all, which for an app holding OAuth tokens and reading a mailbox
+# means a known vulnerability in a transitive dependency is found by somebody else first. CI runs
+# `npm audit --omit=dev --audit-level=high` on every push, so a bump that breaks something is
+# caught by the same suite as any other change.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Patch and minor bumps travel together; a major is worth reading on its own.
+      routine:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies

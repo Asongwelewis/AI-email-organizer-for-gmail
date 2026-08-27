@@ -1,0 +1,251 @@
+/**
+ * The palette. One file, three states, no colour defined anywhere else.
+ *
+ * macOS is not "dark colours" — it is layered graphite that is never pure black, translucent
+ * chrome over the content behind it, a top-light hairline that makes a panel look milled rather
+ * than printed, and one system blue reserved for the thing you are meant to press. Those four
+ * ideas are what the tokens below encode.
+ *
+ * Three states, because a theme has three and not two:
+ *
+ *   :root                                        the complete LIGHT palette, unconditionally.
+ *   @media (prefers-color-scheme: dark)          dark, but only when no explicit choice was made.
+ *     :root:not([data-theme='light'])
+ *   :root[data-theme='dark']                     dark again, so an explicit choice beats the OS.
+ *
+ * Every token is defined once on bare `:root`. A colour whose ONLY definition lives inside a media
+ * query is a colour that disappears when the query does not match, so the dark blocks below only
+ * ever REDEFINE — they never introduce.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* -------------------------------------------------------------- surfaces */
+  /* window is the desktop ground, content is the sheet you read, elevated is a card on top of it. */
+  --surface-window: #ececee;
+  --surface-content: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-inset: #f5f5f7;
+  /* Chrome is translucent on purpose: vibrancy is the single most macOS-reading detail there is. */
+  --surface-chrome: rgb(246 246 248 / 0.72);
+  --surface-chrome-opaque: #f6f6f8;
+  --surface-scrim: rgb(0 0 0 / 0.28);
+  /* The deliberately inverted band on the landing page. Dark in BOTH themes: a section that flips
+     to blazing white on a dark page is not an inversion, it is a flashbang. */
+  --surface-invert: #1d1d1f;
+  --ink-on-invert: #f5f5f7;
+  --ink-on-invert-soft: rgb(235 235 245 / 0.66);
+  --line-on-invert: rgb(255 255 255 / 0.2);
+
+  /* ------------------------------------------------------------------ ink */
+  /* Apple's label ramp: full, secondary, tertiary. Alpha rather than mixed greys, so text keeps
+     its relationship to whatever surface it lands on. */
+  --ink: #1d1d1f;
+  --ink-secondary: rgb(60 60 67 / 0.72);
+  --ink-tertiary: rgb(60 60 67 / 0.45);
+  --ink-inverted: #ffffff;
+
+  /* ---------------------------------------------------------------- lines */
+  --line: rgb(0 0 0 / 0.1);
+  --line-strong: rgb(0 0 0 / 0.2);
+  /* The inner top highlight. This is what stops a card reading as a flat rectangle. */
+  --highlight-inset: inset 0 1px 0 rgb(255 255 255 / 0.9);
+
+  /* --------------------------------------------------------------- accent */
+  /* One accent, spent only on focus, selection, and the single primary action per screen. */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(0 113 227 / 0.12);
+
+  /* --------------------------------------------------------------- status */
+  --status-info-ink: #0b4a8f;
+  --status-info-bg: #e8f1fc;
+  --status-info-line: #b9d3f0;
+  --status-success-ink: #14683f;
+  --status-success-bg: #e6f4ec;
+  --status-success-line: #b3ddc5;
+  --status-warn-ink: #78530f;
+  --status-warn-bg: #fdf3dd;
+  --status-warn-line: #e6cf9c;
+  --status-danger-ink: #9c2f14;
+  --status-danger-bg: #fdece8;
+  --status-danger-line: #eab8a9;
+
+  /* --------------------------------------------------------------- shape */
+  /* Apple's radius scale. Controls are small, panels are large, sheets are largest. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 24px 64px rgb(0 0 0 / 0.16);
+
+  --vibrancy: saturate(180%) blur(20px);
+
+  /* --------------------------------------------------------------- type */
+  /* On a Mac the first family in each stack IS San Francisco, which is the entire point. Manrope
+     is already loaded and is the closest thing to SF everywhere else. */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Manrope', system-ui, 'Segoe UI', sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Manrope', system-ui, 'Segoe UI',
+    sans-serif;
+  --font-mono: 'SF Mono', 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Fraunces is a serif — the least macOS thing in the old design. It keeps the wordmark and
+     nothing else; numerals moved to the system stack with tabular figures. */
+  --font-wordmark: 'Fraunces', Georgia, 'Times New Roman', serif;
+
+  /* --------------------------------------------------- decorative surfaces */
+  /* The paper grain. Multiply over cream reads as texture; over graphite it reads as dirt, so the
+     blend mode is a token too, not just the opacity. */
+  --grain-opacity: 0.2;
+  --grain-blend: multiply;
+  /* The single soft light source at the top-left of the public pages. */
+  --page-glow: rgb(255 255 255 / 0.86);
+  /* The drifting envelopes behind the public pages. Tuned per theme: a stroke that is a whisper on
+     cream is invisible on graphite. */
+  --atmosphere-opacity: 0.055;
+  --atmosphere-opacity-landing: 0.068;
+  --atmosphere-opacity-auth: 0.038;
+
+  /* ---------------------------------------------------------- folder tiles */
+  /*
+   * A folder's hue comes from a hash of its path and never changes; only the saturation and
+   * lightness are the theme's business.
+   *
+   * These are saturation+lightness PAIRS, not finished colours, and the `hsl()` is composed in
+   * `.folder-tile` where `--tile-hue` actually lives. A custom property is substituted against the
+   * element that DECLARES it, so composing the colour here would resolve `--tile-hue` against
+   * `:root` — where it is never set — and paint every folder the same fallback blue.
+   */
+  --tile-sl-surface: 46% 94%;
+  --tile-sl-ink: 58% 26%;
+  --tile-sl-line: 34% 84%;
+}
+
+/* The OS asked for dark and nobody overrode it. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --surface-window: #1c1c1e;
+    --surface-content: #232326;
+    --surface-elevated: #2c2c2e;
+    --surface-inset: #161618;
+    --surface-chrome: rgb(28 28 30 / 0.72);
+    --surface-chrome-opaque: #1c1c1e;
+    --surface-scrim: rgb(0 0 0 / 0.55);
+    --surface-invert: #111113;
+    --ink-on-invert: #f5f5f7;
+    --ink-on-invert-soft: rgb(235 235 245 / 0.66);
+    --line-on-invert: rgb(255 255 255 / 0.14);
+
+    --ink: #f5f5f7;
+    --ink-secondary: rgb(235 235 245 / 0.64);
+    --ink-tertiary: rgb(235 235 245 / 0.4);
+    --ink-inverted: #1d1d1f;
+
+    --line: rgb(255 255 255 / 0.1);
+    --line-strong: rgb(255 255 255 / 0.2);
+    --highlight-inset: inset 0 1px 0 rgb(255 255 255 / 0.06);
+
+    --accent: #0a84ff;
+    --accent-hover: #409cff;
+    --accent-ink: #ffffff;
+    --accent-soft: rgb(10 132 255 / 0.18);
+
+    --status-info-ink: #6cb6ff;
+    --status-info-bg: rgb(10 132 255 / 0.16);
+    --status-info-line: rgb(10 132 255 / 0.34);
+    --status-success-ink: #5fd68a;
+    --status-success-bg: rgb(48 209 88 / 0.14);
+    --status-success-line: rgb(48 209 88 / 0.3);
+    --status-warn-ink: #f0c05a;
+    --status-warn-bg: rgb(255 214 10 / 0.13);
+    --status-warn-line: rgb(255 214 10 / 0.28);
+    --status-danger-ink: #ff8f7a;
+    --status-danger-bg: rgb(255 69 58 / 0.15);
+    --status-danger-line: rgb(255 69 58 / 0.32);
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 24px 64px rgb(0 0 0 / 0.6);
+
+    --grain-opacity: 0.05;
+    --grain-blend: screen;
+    --page-glow: rgb(255 255 255 / 0.045);
+    --atmosphere-opacity: 0.07;
+    --atmosphere-opacity-landing: 0.085;
+    --atmosphere-opacity-auth: 0.05;
+
+    --tile-sl-surface: 30% 16%;
+    --tile-sl-ink: 65% 76%;
+    --tile-sl-line: 26% 26%;
+  }
+}
+
+/* Someone chose dark. This block is identical to the one above and must stay that way; it exists
+   so the choice wins on a machine whose OS is set to light. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface-window: #1c1c1e;
+  --surface-content: #232326;
+  --surface-elevated: #2c2c2e;
+  --surface-inset: #161618;
+  --surface-chrome: rgb(28 28 30 / 0.72);
+  --surface-chrome-opaque: #1c1c1e;
+  --surface-scrim: rgb(0 0 0 / 0.55);
+  /* The band has to go darker than the page it sits on, and the page is #1c1c1e here. Left at
+     its light value of #1d1d1f it is one hex digit from the background and simply disappears. */
+  --surface-invert: #111113;
+  --ink-on-invert: #f5f5f7;
+  --ink-on-invert-soft: rgb(235 235 245 / 0.66);
+  --line-on-invert: rgb(255 255 255 / 0.14);
+
+  --ink: #f5f5f7;
+  --ink-secondary: rgb(235 235 245 / 0.64);
+  --ink-tertiary: rgb(235 235 245 / 0.4);
+  --ink-inverted: #1d1d1f;
+
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.2);
+  --highlight-inset: inset 0 1px 0 rgb(255 255 255 / 0.06);
+
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(10 132 255 / 0.18);
+
+  --status-info-ink: #6cb6ff;
+  --status-info-bg: rgb(10 132 255 / 0.16);
+  --status-info-line: rgb(10 132 255 / 0.34);
+  --status-success-ink: #5fd68a;
+  --status-success-bg: rgb(48 209 88 / 0.14);
+  --status-success-line: rgb(48 209 88 / 0.3);
+  --status-warn-ink: #f0c05a;
+  --status-warn-bg: rgb(255 214 10 / 0.13);
+  --status-warn-line: rgb(255 214 10 / 0.28);
+  --status-danger-ink: #ff8f7a;
+  --status-danger-bg: rgb(255 69 58 / 0.15);
+  --status-danger-line: rgb(255 69 58 / 0.32);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 64px rgb(0 0 0 / 0.6);
+
+  --grain-opacity: 0.05;
+  --grain-blend: screen;
+  --page-glow: rgb(255 255 255 / 0.045);
+  --atmosphere-opacity: 0.07;
+  --atmosphere-opacity-landing: 0.085;
+  --atmosphere-opacity-auth: 0.05;
+
+  --tile-sl-surface: 30% 16%;
+  --tile-sl-ink: 65% 76%;
+  --tile-sl-line: 26% 26%;
+}

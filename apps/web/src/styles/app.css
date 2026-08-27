@@ -1,0 +1,1410 @@
+/**
+ * The signed-in app. Restrained on purpose: no gradients, no decorative motion. Depth comes from
+ * layered surfaces, a hairline, and the inner top highlight that makes a panel read as milled
+ * rather than printed — the macOS vocabulary, not a drop shadow under everything.
+ *
+ * The system font stack carries UI text and every numeral (on a Mac that is San Francisco, which
+ * is the point); DM Mono carries timestamps and codes. Fraunces is now the wordmark only.
+ *
+ * Every colour comes from `theme.css`. The `--app-*` names below are kept as a thin alias layer so
+ * the several hundred rules in this file did not all have to be rewritten to change theme — but
+ * they alias tokens now, and nothing here defines a colour of its own.
+ *
+ * One breakpoint, at 768px. Below it the navigation is a bottom tab bar and the grid is two
+ * columns; above it a left rail and four columns inside a max-width column.
+ */
+
+.shell {
+  --app-paper: var(--surface-window);
+  --app-card: var(--surface-content);
+  --app-ink: var(--ink);
+  --app-ink-soft: var(--ink-secondary);
+  --app-line: var(--line);
+  --app-line-strong: var(--line-strong);
+  --app-focus: var(--accent);
+  --app-danger: var(--status-danger-ink);
+  --app-rail: 15rem;
+  --app-tabs: 4.25rem;
+
+  min-height: 100dvh;
+  background: var(--app-paper);
+  color: var(--app-ink);
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell *:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- navigation */
+
+.shell__rail {
+  display: none;
+}
+
+/**
+ * Vibrancy. Translucent chrome over the content scrolling behind it is the single most
+ * macOS-reading detail in the whole interface — and it is also the one that fails silently, so the
+ * opaque tint is the default and the blur is layered on only where it is supported.
+ */
+.shell__tabs {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  height: calc(var(--app-tabs) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface-chrome-opaque);
+  border-top: 1px solid var(--line);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .shell__tabs {
+    background: var(--surface-chrome);
+    -webkit-backdrop-filter: var(--vibrancy);
+    backdrop-filter: var(--vibrancy);
+  }
+}
+
+.tab-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+  justify-content: center;
+  /* The bar reserves the safe area as padding, so the target itself has to be measured against
+     the bar's own height and not the padded box. 44pt minimum, per platform guidance. */
+  min-height: 2.75rem;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+  text-decoration: none;
+  transition: color 160ms ease-out;
+}
+
+.tab-item:active {
+  opacity: 0.6;
+}
+
+.tab-item svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.tab-item--active {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.shell__main {
+  padding: 1.5rem 1.25rem calc(var(--app-tabs) + 2rem);
+}
+
+.shell__column {
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+/* The mobile home for the theme control; on desktop the rail's account row takes it over. */
+.shell__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.shell__theme {
+  order: -1;
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------- screens */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.screen__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screen__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  /* SF tightens as it grows; matching that is most of what makes a heading read as native. */
+  letter-spacing: -0.022em;
+}
+
+.screen__lede,
+.screen__hint {
+  max-width: 46rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--app-ink-soft);
+}
+
+.screen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding-top: 0.5rem;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.search {
+  display: flex;
+  flex: 1 1 14rem;
+  gap: 0.5rem;
+  align-items: center;
+  /* 44pt minimum: this is a tap target on a phone, not only a desktop field. */
+  min-height: 2.75rem;
+  max-width: 22rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--app-ink-soft);
+}
+
+.search input {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+/**
+ * The macOS push button: a hairline, an inner top highlight, and a single hairline shadow. The
+ * highlight is what stops it reading as a flat rectangle with a border drawn round it.
+ */
+.button {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.95rem;
+  font: inherit;
+  font-weight: 500;
+  color: var(--app-ink);
+  cursor: pointer;
+  background: var(--surface-elevated);
+  border: 1px solid var(--app-line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--highlight-inset), var(--shadow-sm);
+  transition:
+    background-color 140ms ease-out,
+    transform 140ms ease-out,
+    opacity 140ms ease-out;
+}
+
+/* Scale, not translate: a button that moves its own box nudges everything laid out beside it. */
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  color: var(--app-ink-soft);
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.45;
+}
+
+.button--primary {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.button--quiet {
+  color: var(--accent);
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.button--quiet:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.button--icon {
+  display: inline-flex;
+  min-width: 2.75rem;
+  padding: 0.4rem;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+.button--icon:hover:not(:disabled) {
+  background: var(--surface-inset);
+}
+
+.button--icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* ---------------------------------------------------------------- folder grid */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.crumbs__step {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.crumbs svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.crumbs__link {
+  padding: 0;
+  font: inherit;
+  color: var(--app-focus);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/**
+ * `--tile-hue` arrives from `FolderTile` as a bare number and `theme.css` supplies the
+ * saturation+lightness pair for the current theme; the `hsl()` is composed HERE, on the element
+ * that declares the hue. Composing it in `:root` instead would substitute `--tile-hue` against
+ * `:root`, where it is never set, and every folder would come out the same fallback blue.
+ *
+ * So a folder keeps its hue — the thing the eye actually learns — across renders, sessions, and a
+ * theme switch, while staying readable in both.
+ */
+.folder-tile {
+  --tile-surface: hsl(var(--tile-hue, 218) var(--tile-sl-surface));
+  --tile-ink: hsl(var(--tile-hue, 218) var(--tile-sl-ink));
+  --tile-line: hsl(var(--tile-hue, 218) var(--tile-sl-line));
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+  min-height: 8.5rem;
+  padding: 0.9rem;
+  color: var(--tile-ink);
+  text-align: left;
+  cursor: pointer;
+  background: var(--tile-surface);
+  border: 1px solid var(--tile-line);
+  border-radius: var(--radius-lg);
+  transition: transform 140ms ease-out;
+}
+
+.folder-tile:active {
+  transform: scale(0.98);
+}
+
+.folder-tile__top {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.folder-tile__icon {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.folder-tile__children {
+  font-size: 0.6875rem;
+  opacity: 0.75;
+}
+
+.folder-tile__count {
+  margin-top: auto;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.022em;
+  font-variant-numeric: tabular-nums;
+}
+
+.folder-tile__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* ---------------------------------------------------------------- mail list */
+
+.mail-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset);
+  overflow: hidden;
+}
+
+.mail-list li + li .mail-row {
+  border-top: 1px solid var(--app-line);
+}
+
+.mail-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.75rem;
+  padding: 0.75rem 0.9rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mail-row__from {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.mail-row__subject {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.mail-row__date {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+/*
+ * Where a hit sits. Search shows it — "it was under Finance all along" is half of what the person
+ * was actually asking — and a folder listing does not, because it is already the answer.
+ */
+.mail-row__folder {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+  opacity: 0.85;
+}
+
+.mail-row__open {
+  display: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- proposal */
+
+.plan-meta,
+.run__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.plan-meta dt,
+.run__stats dt {
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+.plan-meta dd,
+.run__stats dd {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-tree {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-node {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--app-line);
+}
+
+.plan-node--depth-2 {
+  padding-left: 1.25rem;
+}
+
+.plan-node--depth-3 {
+  padding-left: 2.5rem;
+}
+
+.plan-node--dropped {
+  opacity: 0.45;
+}
+
+.plan-node__main {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  cursor: pointer;
+}
+
+.plan-node__name {
+  --tile-ink: hsl(var(--tile-hue, 218) var(--tile-sl-ink));
+
+  font-weight: 500;
+}
+
+.plan-node__count,
+.plan-node__rule-count {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-node__rationale {
+  margin: 0.35rem 0 0 1.85rem;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.plan-node__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.5rem 0 0 1.85rem;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+  list-style: none;
+}
+
+.plan-node__rules li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.plan-node__rules code,
+.notice__code,
+.run__reason-code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.plan-warnings summary {
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+  cursor: pointer;
+}
+
+.plan-warnings ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- runs */
+
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--highlight-inset);
+}
+
+.run__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.run__kind {
+  font-weight: 500;
+}
+
+.run__time,
+.run__duration,
+.run__counts {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--app-ink-soft);
+}
+
+.run__time {
+  margin-left: auto;
+}
+
+.badge {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 999px;
+}
+
+/* State is never carried by colour alone — each badge also spells its state out in words. */
+.badge--running {
+  color: var(--status-info-ink);
+  border-color: var(--status-info-line);
+  background: var(--status-info-bg);
+}
+
+.badge--succeeded {
+  color: var(--status-success-ink);
+  border-color: var(--status-success-line);
+  background: var(--status-success-bg);
+}
+
+.badge--stopped {
+  color: var(--status-warn-ink);
+  border-color: var(--status-warn-line);
+  background: var(--status-warn-bg);
+}
+
+.badge--failed {
+  color: var(--status-danger-ink);
+  border-color: var(--status-danger-line);
+  background: var(--status-danger-bg);
+}
+
+.run__trigger {
+  font-size: 0.6875rem;
+  color: var(--app-ink-soft);
+}
+
+.run__progress {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.run__bar {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  background: var(--app-line);
+  border-radius: 999px;
+}
+
+.run__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--app-ink-soft);
+}
+
+.run__reason {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+.run__reason--error {
+  color: var(--app-danger);
+}
+
+/* ---------------------------------------------------------------- states */
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.85rem;
+  border: 1px solid var(--app-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset);
+}
+
+.notice--error {
+  color: var(--status-danger-ink);
+  border-color: var(--status-danger-line);
+  background: var(--status-danger-bg);
+}
+
+.notice__title {
+  margin: 0;
+  font-weight: 500;
+}
+
+.notice__message {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+}
+
+.notice__code {
+  display: inline-block;
+  margin-top: 0.4rem;
+  opacity: 0.85;
+}
+
+.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--app-line-strong);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.empty-state__description {
+  max-width: 34rem;
+  margin: 0.4rem auto 0;
+  font-size: 0.9375rem;
+  color: var(--app-ink-soft);
+}
+
+.empty-state__action {
+  margin-top: 1rem;
+}
+
+.loading-state {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--app-ink-soft);
+}
+
+/* ---------------------------------------------------------------- update prompt */
+
+.update-toast {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: calc(var(--app-tabs) + 1rem);
+  left: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--app-line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--highlight-inset), var(--shadow-lg);
+}
+
+.update-toast p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* ---------------------------------------------------------------- desktop */
+
+@media (min-width: 768px) {
+  .shell {
+    display: grid;
+    grid-template-columns: var(--app-rail) minmax(0, 1fr);
+  }
+
+  .shell__tabs {
+    display: none;
+  }
+
+  /* The sidebar. Vibrancy here is what a Finder or Mail window looks like. */
+  .shell__rail {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    height: 100dvh;
+    padding: 1.5rem 1rem;
+    background: var(--surface-chrome-opaque);
+    border-right: 1px solid var(--app-line);
+  }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .shell__rail {
+      background: var(--surface-chrome);
+      -webkit-backdrop-filter: var(--vibrancy);
+      backdrop-filter: var(--vibrancy);
+    }
+  }
+
+  /* The wordmark — the one place Fraunces survives, because it is the brand and not the interface. */
+  .shell__brand {
+    font-family: var(--font-wordmark);
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .shell__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nav-item {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.9375rem;
+    color: var(--app-ink-soft);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+  }
+
+  .nav-item svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .nav-item:hover {
+    color: var(--app-ink);
+    background: var(--accent-soft);
+  }
+
+  /* Selected sidebar rows in macOS are filled with the accent, not tinted grey. */
+  .nav-item--active,
+  .nav-item--active:hover {
+    font-weight: 500;
+    color: var(--accent-ink);
+    background: var(--accent);
+  }
+
+  .shell__account {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: auto;
+    font-size: 0.8125rem;
+    color: var(--app-ink-soft);
+  }
+
+  .shell__email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell__main {
+    padding: 2.5rem 2rem 3rem;
+  }
+
+  .tile-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .folder-tile {
+    min-height: 9.5rem;
+  }
+
+  .mail-row {
+    grid-template-columns: 14rem 1fr 6rem 1.25rem;
+    align-items: center;
+  }
+
+  .mail-row__subject {
+    grid-column: auto;
+  }
+
+  .mail-row__open {
+    display: block;
+  }
+
+  .update-toast {
+    right: 1.5rem;
+    bottom: 1.5rem;
+    left: auto;
+    max-width: 26rem;
+  }
+
+  .shell__toolbar {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- theme control */
+
+/**
+ * The macOS segmented control. One recessed track, a raised "knob" on the selected segment.
+ *
+ * It lives in `app.css` rather than beside the component because the public pages use it too, and
+ * `index.css` imports this file's tokens from the same place — one definition, one appearance,
+ * whichever side of the sign-in door it is on.
+ */
+.theme-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.theme-toggle__option {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  /* 44pt targets on touch. The control is small on desktop and must not be on a phone. */
+  min-width: 2.75rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out;
+}
+
+.theme-toggle__option svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.theme-toggle__option:hover {
+  color: var(--ink);
+}
+
+/* The raised knob: filled surface, hairline, top highlight — the same three ingredients as a button. */
+.theme-toggle__option--active {
+  color: var(--ink);
+  background: var(--surface-elevated);
+  box-shadow: var(--highlight-inset), var(--shadow-sm);
+}
+
+@media (pointer: coarse) {
+  .theme-toggle__option {
+    min-height: 2.75rem;
+  }
+}
+
+.theme-toggle--compact .theme-toggle__option {
+  min-width: 2.5rem;
+  padding: 0.3rem 0.45rem;
+}
+
+/* ------------------------------------------------------------------ setup */
+
+/* The first-run path. Each step is gated on the one before it, so the marker carries the state
+   and the action only appears on the step you can actually take. */
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-step {
+  display: flex;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.setup-step--waiting {
+  opacity: 0.55;
+}
+
+.setup-step--current {
+  border-color: var(--accent);
+  box-shadow: var(--highlight-inset);
+}
+
+.setup-step__marker {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--surface-inset);
+  color: var(--ink-secondary);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-step__marker svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.setup-step--done .setup-step__marker {
+  background: var(--accent);
+  color: var(--ink-inverted);
+}
+
+.setup-step--current .setup-step__marker {
+  background: var(--accent);
+  color: var(--ink-inverted);
+}
+
+.setup-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.setup-step__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.setup-step__description {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--app-ink-soft);
+}
+
+.setup-step__action {
+  padding-top: 0.5rem;
+}
+
+/* ----------------------------------------------------------------- review */
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.review__subject {
+  margin: 0;
+  font-weight: 600;
+}
+
+.review__sender,
+.review__snippet,
+.review__why {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.review__snippet {
+  /* Two lines of a truncated snippet is enough to recognise a message; more is a mail client. */
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.review__decision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.review__proposal {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.review__confidence {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-tertiary);
+}
+
+.review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ pivot */
+
+.pivot-order {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pivot-order__item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-content);
+}
+
+.pivot-order__depth {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--surface-inset);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+.pivot-order__label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.pivot-order__controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.pivot-min {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.pivot-min input {
+  width: 5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__title--sub {
+  font-size: 1.125rem;
+}
+
+.plan-node__name {
+  flex: 1;
+}
+
+.plan-node__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-tertiary);
+}
+
+/* ------------------------------------------------------- automation panel */
+
+/* Is it still running on its own, when does it come back, and what has today cost. The daily
+   budgets are cumulative since 00:00 UTC, which is why usage sits beside the next run time. */
+.automation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.automation-panel__headline {
+  margin: 0;
+  font-weight: 600;
+}
+
+.automation-panel__retry {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.automation-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.automation-panel__stats dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-tertiary);
+}
+
+.automation-panel__stats dd {
+  margin: 0.125rem 0 0;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.automation-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* --------------------------------------------------------- folder actions */
+
+.folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.folder-actions__rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.folder-actions__rename input {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* ------------------------------------------------------------- arrangements */
+
+/**
+ * Every ordering of the facets, side by side.
+ *
+ * One used to be canonical because a message carries one Gmail label and no more. That was Gmail's
+ * constraint, not the product's, so none of these is the real one — they are the same rows read in
+ * a different order, and switching costs nothing.
+ */
+.ordering {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.ordering__option {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+  cursor: pointer;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  transition:
+    color 160ms ease-out,
+    border-color 160ms ease-out,
+    background 160ms ease-out;
+}
+
+.ordering__option:hover {
+  color: var(--app-ink);
+  border-color: var(--accent-soft);
+}
+
+/* Selection is carried by the border and the weight, not by colour alone. */
+.ordering__option--active {
+  font-weight: 600;
+  color: var(--app-ink);
+  background: var(--surface-elevated);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.ordering__badge {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-ink-soft);
+}
+
+.ordering__badge svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* ------------------------------------------------------------ facet filters */
+
+.facet-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin: 0.25rem 0 0;
+}
+
+.facet-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.facet-filter__label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-ink-soft);
+}
+
+.facet-filter select {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: inherit;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+}
+
+.facet-filter select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ------------------------------------------------------------------ export */
+
+/**
+ * Mirroring the folders into Gmail. Collapsed, because it is optional and off by default: the app
+ * is the folder view, and a Gmail label buys organisation only inside the Gmail app.
+ */
+.export {
+  padding: 0.9rem 1rem;
+  margin-top: 0.5rem;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.export summary {
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.export > * + * {
+  margin-top: 0.6rem;
+}

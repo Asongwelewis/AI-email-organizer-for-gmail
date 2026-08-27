@@ -2,10 +2,16 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../src/app.js';
+import { env } from '../src/config/env.js';
 import { LOG_REDACTION_PATHS } from '../src/config/logger.js';
 import {
   GMAIL_MODIFY_SCOPE,
-  GOOGLE_GMAIL_SCOPES,
+  GMAIL_READONLY_SCOPE,
+  googleGmailScopes,
+  hasGmailReadScope,
+  hasGmailWriteScope,
+  holdsUnusedWriteScope,
+  requestedGmailScope,
   GOOGLE_LOGIN_SCOPES,
 } from '../src/integrations/google/google-scopes.js';
 import {
@@ -46,7 +52,38 @@ describe('API security contracts', () => {
   it('uses separate identity and Gmail scopes', () => {
     expect(GOOGLE_LOGIN_SCOPES).toEqual(['openid', 'email', 'profile']);
     expect(GOOGLE_LOGIN_SCOPES).not.toContain(GMAIL_MODIFY_SCOPE);
-    expect(GOOGLE_GMAIL_SCOPES).toContain(GMAIL_MODIFY_SCOPE);
+    expect(GOOGLE_LOGIN_SCOPES).not.toContain(GMAIL_READONLY_SCOPE);
+    expect(googleGmailScopes()).toContain(requestedGmailScope());
+  });
+
+  /**
+   * Card 25. `gmail.modify` is a Google restricted scope — it can alter and delete a person's
+   * mail, which is what pulls an app into verification plus an annual CASA Tier 2 assessment.
+   * With Gmail out of the write path the product does not use it, and the default connection must
+   * not ask for it.
+   */
+  it('asks for read-only Gmail access unless the label export is turned on', () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    expect(requestedGmailScope()).toBe(GMAIL_READONLY_SCOPE);
+    expect(googleGmailScopes()).not.toContain(GMAIL_MODIFY_SCOPE);
+
+    env.GMAIL_WRITE_ENABLED = true;
+    expect(requestedGmailScope()).toBe(GMAIL_MODIFY_SCOPE);
+
+    env.GMAIL_WRITE_ENABLED = false;
+  });
+
+  // `modify` implies read, so a grant made before the downgrade is still a working connection —
+  // but it is wider than this deployment uses, which is worth offering to narrow.
+  it('treats a legacy modify grant as readable, writable, and wider than needed', () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    expect(hasGmailReadScope([GMAIL_MODIFY_SCOPE])).toBe(true);
+    expect(hasGmailWriteScope([GMAIL_MODIFY_SCOPE])).toBe(true);
+    expect(holdsUnusedWriteScope([GMAIL_MODIFY_SCOPE])).toBe(true);
+
+    expect(hasGmailReadScope([GMAIL_READONLY_SCOPE])).toBe(true);
+    expect(hasGmailWriteScope([GMAIL_READONLY_SCOPE])).toBe(false);
+    expect(holdsUnusedWriteScope([GMAIL_READONLY_SCOPE])).toBe(false);
   });
 
   it('configures an opaque HttpOnly session cookie', () => {

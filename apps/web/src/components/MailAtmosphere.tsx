@@ -17,7 +17,7 @@ const shapes = [
 function sceneForPath(pathname: string): 'landing' | 'auth' | 'app' | 'legal' {
   if (pathname === '/') return 'landing';
   if (pathname === '/login' || pathname === '/auth/callback') return 'auth';
-  if (pathname === '/dashboard' || pathname.startsWith('/settings/')) return 'app';
+  if (pathname === '/sorted') return 'app';
   return 'legal';
 }
 

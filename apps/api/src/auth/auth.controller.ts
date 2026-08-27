@@ -80,6 +80,17 @@ export class AuthController {
     response.json({ success: true, revokedSessions: result.count });
   }
 
+  /**
+   * Deletes the account and everything stored about it. Required by Google's restricted-scope
+   * policy, and the cookie is cleared in the same response — there is no session left to hold.
+   */
+  async deleteAccount(request: Request, response: Response): Promise<void> {
+    const auth = request.auth!;
+    const result = await authService.deleteAccount(auth.user.id);
+    clearSessionCookie(response);
+    response.json({ success: true, connectedAccounts: result.connectedAccounts });
+  }
+
   async completeTutorial(request: Request, response: Response): Promise<void> {
     const decision = request.body?.decision;
     if (decision !== 'SKIPPED' && decision !== 'COMPLETED') {

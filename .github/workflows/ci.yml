@@ -1,15 +1,13 @@
 name: CI
 
 on:
+  # The long branches are gone; naming them one by one meant a new branch silently ran no CI at
+  # all until somebody remembered to add it here. Pull requests are covered separately below, so
+  # this list only has to name the branches that are pushed to directly.
   push:
     branches:
       - main
       - develop
-      - feature/google-auth
-      - feature/gmail-sync-foundation
-      - feat-foundation-and-project-setup
-      - feature/ai-classification-pipeline
-      - feature/dynamic-label-discovery
   pull_request:
 
 jobs:
@@ -20,12 +18,10 @@ jobs:
       RUN_DATABASE_INTEGRATION: 'true'
       DATABASE_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
       DIRECT_URL: postgresql://postgres:mailmind_test_password@127.0.0.1:5432/mailmind_test
-      AI_CLASSIFIER_ENABLED: 'true'
-      AI_CLASSIFIER_PROVIDER: mock
-      AI_CLASSIFIER_MODEL: deterministic-mock-v1
-      DYNAMIC_LABEL_DISCOVERY_ENABLED: 'true'
-      DYNAMIC_LABEL_AI_NAMING_ENABLED: 'false'
       VITE_API_BASE_URL: https://api.mailmindai.tech
+      APP_VERSION: mailmind@${{ github.sha }}
+      VITE_APP_VERSION: mailmind@${{ github.sha }}
+      SENTRY_RELEASE: mailmind@${{ github.sha }}
 
     services:
       postgres:
@@ -53,6 +49,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # A dated, reasoned allowlist rather than a bare `npm audit`. One unfixable transitive
+      # advisory used to fail this step, and because it is the first, every step after it reported
+      # "skipped" — so lint, tests and the build had not actually run for three commits.
+      - name: Audit production dependencies
+        run: npm run audit:production
 
       - name: Prepare database roles used by the migrations
         run: |
@@ -84,6 +86,15 @@ jobs:
 
       - name: Test database lifecycle
         run: npm run test:database --workspace @mailmind/api
+
+      # The e2e suite existed and had never run anywhere but a developer's machine, which is the
+      # same as not existing: it is the only check that every screen renders without a console
+      # error, and the screens are what kept breaking.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end
+        run: npm run test:e2e
 
       - name: Build
         run: npm run build

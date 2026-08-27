@@ -13,12 +13,65 @@ import { createGoogleOAuthClient } from '@api/integrations/google/google-oauth.c
 import { verifyGoogleIdentity } from '@api/integrations/google/google-identity.service.js';
 import { GOOGLE_LOGIN_SCOPES } from '@api/integrations/google/google-scopes.js';
 import { userRepository } from '@api/repositories/user.repository.js';
+import { prisma } from '@api/database/prisma.js';
+import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 
 function oauthExpiry(): Date {
   return new Date(Date.now() + env.OAUTH_STATE_TTL_MINUTES * 60 * 1000);
 }
 
 export class AuthService {
+  /**
+   * Deletes an account and everything MailMind stored about it.
+   *
+   * Required by Google's restricted-scope policy, and it has to be real: the mail metadata, the
+   * facets, the folders, the runs and the decisions all hang off `connected_google_accounts`,
+   * which hangs off `users`, so one delete takes the lot through the cascades already declared in
+   * the schema.
+   *
+   * Two things are deliberately not cascaded. Google's tokens live on Google, so they are revoked
+   * first — deleting our copy would leave a live grant nobody can see. And `audit_logs` is
+   * detached rather than deleted: the record that an account existed and was deleted is the
+   * evidence that the deletion happened, and destroying it destroys the proof. What is left
+   * carries no user id, no session id, and no email.
+   *
+   * Revocation is best-effort by design. If Google is unreachable the deletion still proceeds:
+   * refusing would mean a person who asked to be forgotten stays in the database because a third
+   * party had an outage.
+   */
+  async deleteAccount(userId: string): Promise<{ connectedAccounts: number }> {
+    const accounts = await prisma.connected_google_accounts.findMany({
+      where: { user_id: userId },
+    });
+    for (const account of accounts) {
+      await googleTokenService.revokeGoogleCredentials(account);
+    }
+
+    await prisma.$transaction([
+      /*
+       * `audit_logs.user_id` and `audit_logs.session_id` are nullable and carry no cascade, so
+       * they would block the delete. Nulling them is also the right outcome: the trail survives
+       * and stops pointing at a person who is no longer here.
+       */
+      prisma.audit_logs.updateMany({
+        where: { user_id: userId },
+        data: { user_id: null, session_id: null },
+      }),
+      prisma.users.delete({ where: { id: userId } }),
+    ]);
+
+    /*
+     * Recorded without a user id, because there is no longer a user to attribute it to and
+     * writing one would re-introduce the identifier the deletion just removed.
+     */
+    await auditService.record({
+      action: 'ACCOUNT_DELETED',
+      result: 'SUCCESS',
+      metadata: { connectedAccounts: accounts.length },
+    });
+    return { connectedAccounts: accounts.length };
+  }
+
   async beginGoogleLogin(request: Request, redirectPath: unknown): Promise<string> {
     const rawState = generateSecureToken();
     await oauthStateRepository.create({

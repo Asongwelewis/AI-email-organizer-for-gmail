@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   countMessages: vi.fn(),
   coverage: vi.fn(),
   markReauthenticationRequired: vi.fn(),
+  findById: vi.fn(),
+  refreshGoogleAccessToken: vi.fn(),
 }));
 
 vi.mock('../src/integrations/gmail/gmail.client.js', () => ({
@@ -46,7 +48,11 @@ vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
 vi.mock('../src/repositories/connected-google-account.repository.js', () => ({
   connectedGoogleAccountRepository: {
     markReauthenticationRequired: mocks.markReauthenticationRequired,
+    findById: mocks.findById,
   },
+}));
+vi.mock('../src/integrations/google/google-token.service.js', () => ({
+  googleTokenService: { refreshGoogleAccessToken: mocks.refreshGoogleAccessToken },
 }));
 
 import { GmailSyncService } from '../src/integrations/gmail/gmail.service.js';
@@ -142,7 +148,7 @@ describe('GmailSyncService', () => {
     );
     expect(mocks.complete).toHaveBeenCalledWith(
       lease,
-      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 3 }),
+      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 1 }),
       'history-2',
       true,
     );
@@ -313,6 +319,45 @@ describe('GmailSyncService', () => {
         checkpointHistoryId: 'baseline-history',
       },
     });
+  });
+
+  it('keeps the account connected when a mid-run 401 is only an expired access token', async () => {
+    // A backfill outlives the hour a Google access token lasts, so the 401 it takes at the end
+    // says nothing about the grant. Disconnecting on the response alone stranded a valid account.
+    const unauthorized = Object.assign(new Error('Invalid Credentials'), {
+      response: { status: 401 },
+    });
+    mocks.createGmailClient.mockResolvedValue({
+      users: { getProfile: vi.fn().mockRejectedValue(unauthorized) },
+    });
+    mocks.findById.mockResolvedValue({ id: account.id, user_id: account.user_id });
+    mocks.refreshGoogleAccessToken.mockResolvedValue('a-fresh-access-token');
+
+    await expect(new GmailSyncService().initialSync('user-id')).rejects.toMatchObject({
+      code: 'GMAIL_REAUTH_REQUIRED',
+    });
+
+    expect(mocks.refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+    expect(mocks.markReauthenticationRequired).not.toHaveBeenCalled();
+    expect(mocks.fail).toHaveBeenCalledWith(lease, 'GMAIL_REAUTH_REQUIRED');
+  });
+
+  it('leaves a genuinely revoked grant to be marked by the refresh that rejected it', async () => {
+    const unauthorized = Object.assign(new Error('Invalid Credentials'), {
+      response: { status: 401 },
+    });
+    mocks.createGmailClient.mockResolvedValue({
+      users: { getProfile: vi.fn().mockRejectedValue(unauthorized) },
+    });
+    mocks.findById.mockResolvedValue({ id: account.id, user_id: account.user_id });
+    mocks.refreshGoogleAccessToken.mockRejectedValue(new Error('invalid_grant'));
+
+    await expect(new GmailSyncService().initialSync('user-id')).rejects.toMatchObject({
+      code: 'GMAIL_REAUTH_REQUIRED',
+    });
+
+    expect(mocks.refreshGoogleAccessToken).toHaveBeenCalledTimes(1);
+    expect(mocks.fail).toHaveBeenCalledWith(lease, 'GMAIL_REAUTH_REQUIRED');
   });
 
   it('rejects a profile returned for a different Google identity', async () => {

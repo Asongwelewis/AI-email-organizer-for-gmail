@@ -1,13 +1,13 @@
-import type { ClassificationCategory } from './classification';
-
 export interface AutomationRun {
   id: string;
   status: 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
   trigger: 'SCHEDULED' | 'MANUAL';
   messagesSeen: number;
   patternReused: number;
-  openaiClassified: number;
+  aiClassified: number;
   reviewRequired: number;
+  noLabelSkipped: number;
+  backlogRemaining: number;
   messagesLabeled: number;
   failed: number;
   providerCalls: number;
@@ -48,11 +48,14 @@ export interface AutomationStatus {
     messages: number;
   };
   pendingReviewCount: number;
+  approvedLabelCount: number;
+  labelsReady: boolean;
+  backlogRemaining: number;
 }
 
 export interface AutomationReviewItem {
   id: string;
-  category: ClassificationCategory;
+  labelName: string;
   labelPath: string;
   confidence: number;
   explanation: string;
