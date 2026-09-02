@@ -291,6 +291,13 @@ describe('facet HTTP routes', () => {
     );
   });
 
+  // "Only new mail" is a filter in its own right, so it survives being shared as a link.
+  it('accepts unread as a search of its own', async () => {
+    await request(app).get('/api/facets/search?unread=true');
+
+    expect(mocks.search).toHaveBeenCalledWith('user-id', null, { unread: true }, {});
+  });
+
   it('carries a cursor and an ordering through so results page and locate themselves', async () => {
     const cursor = '11111111-1111-4111-8111-111111111111';
     await request(app).get(

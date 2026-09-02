@@ -39,6 +39,8 @@ export interface SearchFilters {
   entity?: string;
   domain?: string;
   intent?: string;
+  /** Only mail still unread in Gmail. On its own it is "what arrived that I have not seen". */
+  unread?: boolean;
 }
 
 export interface SearchHit {
@@ -60,11 +62,28 @@ export interface SearchHit {
   folder: { facetKey: string; fullPath: string; leafName: string } | null;
 }
 
+/** A folder that holds some of the matches, with how many. Counted over ALL of them, not a page. */
+export interface SearchFolderGroup {
+  facetKey: string | null;
+  fullPath: string | null;
+  leafName: string;
+  count: number;
+}
+
 export interface SearchResult {
   query: string | null;
-  filters: { entity: string | null; domain: string | null; intent: string | null };
+  filters: { entity: string | null; domain: string | null; intent: string | null; unread: boolean };
   order: PivotFacet[];
   results: SearchHit[];
+  /**
+   * Which folders the matches live in, largest first, over the whole result set rather than the
+   * page in hand.
+   *
+   * A flat list of messages is a worse mailbox than the one the person already has. The answer
+   * worth giving is "your new mail is in these four folders", and that cannot be assembled from
+   * fifty rows of a result that runs to hundreds.
+   */
+  folders: SearchFolderGroup[];
   total: number;
   nextCursor: string | null;
 }
@@ -123,7 +142,7 @@ export class MessageSearchService {
     options: { limit?: number; cursor?: string; order?: PivotFacet[] } = {},
   ): Promise<SearchResult> {
     const trimmed = query?.trim() ?? '';
-    if (!trimmed && !filters.entity && !filters.domain && !filters.intent) {
+    if (!trimmed && !filters.entity && !filters.domain && !filters.intent && !filters.unread) {
       throw new AppError(
         'FACET_VALIDATION_FAILED',
         'A search needs a phrase or at least one facet.',
@@ -141,6 +160,12 @@ export class MessageSearchService {
         Prisma.sql`${SEARCHABLE} @@ websearch_to_tsquery('simple', ${searchTerms(trimmed)})`,
       );
     }
+    /*
+     * Unread on its own is a legitimate whole search: "what has arrived that I have not read",
+     * newest first, each hit carrying the folder it landed in. It reads the mailbox mirror, so
+     * reading something in Gmail drops it from these results on the next sync.
+     */
+    if (filters.unread) conditions.push(Prisma.sql`m.is_unread = true`);
     // Facet filters are equality against a closed vocabulary, so they narrow rather than search.
     if (filters.entity) conditions.push(Prisma.sql`f.entity = ${filters.entity}`);
     if (filters.domain) conditions.push(Prisma.sql`f.domain = ${filters.domain}`);
@@ -192,14 +217,17 @@ export class MessageSearchService {
 
     const page = rows.slice(0, limit);
     const folders = await this.folderResolver(accountId, options.order);
+    const breakdown = await this.folderBreakdown(join, where, folders);
     return {
       query: trimmed || null,
       filters: {
         entity: filters.entity ?? null,
         domain: filters.domain ?? null,
         intent: filters.intent ?? null,
+        unread: filters.unread === true,
       },
       order: folders.order,
+      folders: breakdown,
       total: Number(counted[0]?.total ?? 0n),
       // One row beyond the page proves there is more, without a second count.
       nextCursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null,
@@ -218,6 +246,48 @@ export class MessageSearchService {
         folder: folders.locate(row),
       })),
     };
+  }
+
+  /**
+   * How the whole match set divides across folders.
+   *
+   * Grouped in the database by facet combination first — that is at most a few hundred rows however
+   * large the match set is — and only then mapped onto folders. Counting per message would mean
+   * fetching every match just to bucket it, which is the work the page limit exists to avoid.
+   */
+  private async folderBreakdown(
+    join: Prisma.Sql,
+    where: Prisma.Sql,
+    folders: Awaited<ReturnType<MessageSearchService['folderResolver']>>,
+  ): Promise<SearchFolderGroup[]> {
+    const combinations = await prisma.$queryRaw<
+      Array<{ entity: string | null; domain: string | null; intent: string | null; n: bigint }>
+    >`
+      select f.entity, f.domain, f.intent, count(*)::bigint as n
+      from public.gmail_message_metadata m
+      ${join}
+      ${where}
+      group by f.entity, f.domain, f.intent
+    `;
+
+    const byFolder = new Map<string, SearchFolderGroup>();
+    for (const row of combinations) {
+      const node = folders.locate({ gmail_message_id: '', ...row });
+      // Mail in no folder is still mail somebody is looking for, so it gets a group of its own
+      // rather than being dropped from the count.
+      const key = node?.facetKey ?? '';
+      const existing = byFolder.get(key);
+      if (existing) existing.count += Number(row.n);
+      else {
+        byFolder.set(key, {
+          facetKey: node?.facetKey ?? null,
+          fullPath: node?.fullPath ?? null,
+          leafName: node?.leafName ?? 'No folder',
+          count: Number(row.n),
+        });
+      }
+    }
+    return [...byFolder.values()].sort((left, right) => right.count - left.count);
   }
 
   /**

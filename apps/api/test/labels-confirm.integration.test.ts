@@ -4,6 +4,8 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { env } from '../src/config/env.js';
+
 /**
  * Exercises propose -> confirm end to end against an in-memory repository so the real service,
  * controller, routes and normalization run. Only Gmail, the planner's model call, the session and
@@ -394,6 +396,8 @@ describe('labels propose -> confirm', () => {
   beforeEach(() => {
     mocks.auditRecord.mockReset();
     mocks.auditRecord.mockResolvedValue(undefined);
+    // Mirroring the approved tree into Gmail is the export half; these exercise it on.
+    env.GMAIL_WRITE_ENABLED = true;
   });
 
   it('proposes a tree with counts and creates nothing in Gmail', async () => {
@@ -514,6 +518,8 @@ describe('POST /api/labels/confirm over HTTP', () => {
   beforeEach(() => {
     mocks.auditRecord.mockReset();
     mocks.auditRecord.mockResolvedValue(undefined);
+    // Mirroring the approved tree into Gmail is the export half; these exercise it on.
+    env.GMAIL_WRITE_ENABLED = true;
     mocks.authenticate.mockReset();
     mocks.authenticate.mockResolvedValue({ user: { id: USER_ID }, session: { id: 'session-1' } });
   });

@@ -145,7 +145,9 @@ export class PivotService {
         entity: true,
         domain: true,
         intent: true,
-        message: { select: { internal_date: true } },
+        // Read straight from the mailbox mirror, so a folder's unread badge tracks Gmail rather
+        // than anything MailMind decided. Reading a message in Gmail clears it on the next sync.
+        message: { select: { internal_date: true, is_unread: true } },
       },
     });
     return rows.map((row) => ({
@@ -154,6 +156,7 @@ export class PivotService {
       domain: row.domain,
       intent: row.intent,
       receivedAt: row.message?.internal_date ?? null,
+      unread: row.message?.is_unread === true,
     }));
   }
 

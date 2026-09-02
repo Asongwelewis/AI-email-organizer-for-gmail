@@ -38,6 +38,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   RUN_ABANDONED:
     'The server restarted while this run was in progress. No work was lost; run it again to continue.',
   CSRF_ORIGIN_INVALID: 'This request came from an origin MailMind does not trust.',
+  FEEDBACK_VALIDATION_FAILED:
+    'Add a little more detail — at least a sentence, and under 4000 characters.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please try again shortly.',
   INTERNAL_SERVER_ERROR: 'Something went wrong on our side. Please try again.',
 };

@@ -17,7 +17,7 @@ export const queryKeys = {
   facetVocabulary: ['facets', 'vocabulary'] as const,
   facetSearch: (
     query: string,
-    filters: { entity?: string; domain?: string; intent?: string },
+    filters: { entity?: string; domain?: string; intent?: string; unread?: boolean },
     order: string[],
   ) =>
     [
@@ -27,6 +27,7 @@ export const queryKeys = {
       filters.entity ?? '',
       filters.domain ?? '',
       filters.intent ?? '',
+      filters.unread ? 'unread' : '',
       order.join(','),
     ] as const,
 };

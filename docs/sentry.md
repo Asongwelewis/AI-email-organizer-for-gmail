@@ -137,3 +137,20 @@ Remove the triggers before committing.
 Sentry's authenticated event-query integration is required to automate the final dashboard
 confirmation. A successful SDK transport response proves delivery but does not by itself prove
 symbolication; inspect the received issue after the production source-map upload.
+
+## What is reported, and what is not
+
+A 5xx is the right shape for "this request could not be served", but it does not by itself mean
+something went wrong. A feature the operator turned off answers `503` on purpose, on a path that
+expects it, and the screen already shows the code so a person can act on it.
+
+`shouldReportToSentry` therefore reads the error **code**, not only the status. The codes in
+`CONFIGURATION_REFUSALS` — `AUTOMATION_DISABLED`, `AUTOMATION_NOT_CONFIGURED`,
+`CLASSIFICATION_DISABLED`, `LABEL_DISCOVERY_DISABLED`, `PROVIDER_NOT_CONFIGURED` and
+`GMAIL_WRITE_DISABLED` — are never reported. Without that, every click of a button belonging to a
+disabled feature files a fresh issue, and since `GMAIL_WRITE_ENABLED` is off by default the Gmail
+export buttons would do it on every press.
+
+Provider failures are deliberately **not** in that set. `PROVIDER_UNAVAILABLE` is also a 503, but it
+means Gemini broke, which is exactly the kind of thing Sentry is for. Filtering on status alone
+cannot tell those two apart.

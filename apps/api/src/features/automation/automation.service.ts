@@ -296,6 +296,18 @@ export class AutomationService {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
       enabled: env.AUTOMATION_ENABLED && (settings?.enabled ?? true) && Boolean(env.GEMINI_API_KEY),
+      /*
+       * WHY it is off, not just that it is. Three different things switch automation off — the
+       * deployment flag, this account's own setting, and a missing Gemini key — and a screen that
+       * names only the first sends someone to change a variable that was already correct.
+       */
+      disabledReason: !env.AUTOMATION_ENABLED
+        ? ('AUTOMATION_DISABLED' as const)
+        : !env.GEMINI_API_KEY
+          ? ('AUTOMATION_NOT_CONFIGURED' as const)
+          : settings?.enabled === false
+            ? ('ACCOUNT_PAUSED' as const)
+            : null,
       running: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
       nextRunAt: state?.next_run_at?.toISOString() ?? null,
       retryAt: state?.retry_at?.toISOString() ?? null,
@@ -417,30 +429,69 @@ export class AutomationService {
     };
   }
 
+  /**
+   * A reviewer's decision on a message the classifier was not sure about.
+   *
+   * With the Gmail export off — the default — this records the decision and touches the mailbox
+   * not at all. That is the whole of card 21 applied to this path: the folder a person sees is a
+   * view of the facets, so a decision is a fact in MailMind, and Gmail is the source rather than
+   * the store. Refusing instead would have stranded the review queue behind a setting that has
+   * nothing to do with reviewing.
+   *
+   * What must NOT happen when the export is off is writing a label id into
+   * `gmail_message_metadata.label_ids`. That column mirrors what Gmail actually holds, and
+   * recording a label nobody applied would leave the database describing a mailbox that disagrees
+   * with it — the exact failure the rename path already guards against.
+   */
   async approve(userId: string, actionId: string, labelName: string) {
     const action = await this.reviewableAction(userId, actionId);
     const approved = await this.approvedLabel(action.connected_google_account_id, labelName);
     const labelPath = approved.full_path;
-    const label = await this.gmail.ensureLabel(action.connected_google_account_id, labelPath);
-    // Exclusive, like every other filing path: a reviewer approving a folder for a message that
-    // already wears one must move it, not add a second MailMind label to it.
-    const stale = await this.currentMailMindLabelIds(
-      action.connected_google_account_id,
-      action.message.label_ids,
-    );
-    await this.gmail.applyExclusiveLabel(
-      action.connected_google_account_id,
-      action.message.gmail_message_id,
-      label.id,
-      stale,
-    );
+    const mirrorToGmail = env.GMAIL_WRITE_ENABLED;
+
+    let gmailLabelId: string | null = null;
+    if (mirrorToGmail) {
+      const label = await this.gmail.ensureLabel(action.connected_google_account_id, labelPath);
+      gmailLabelId = label.id;
+      // Exclusive, like every other filing path: a reviewer approving a folder for a message that
+      // already wears one must move it, not add a second MailMind label to it.
+      const stale = await this.currentMailMindLabelIds(
+        action.connected_google_account_id,
+        action.message.label_ids,
+      );
+      await this.gmail.applyExclusiveLabel(
+        action.connected_google_account_id,
+        action.message.gmail_message_id,
+        label.id,
+        stale,
+      );
+      await prisma.gmail_message_metadata.update({
+        where: { id: action.gmail_message_id },
+        data: {
+          label_ids: [
+            ...new Set([
+              ...action.message.label_ids.filter((id) => id === label.id || !stale.includes(id)),
+              label.id,
+            ]),
+          ],
+        },
+      });
+      if (!approved.gmail_label_id) {
+        await prisma.user_labels.update({
+          where: { id: approved.id },
+          data: { gmail_label_id: label.id },
+        });
+      }
+    }
+
     await prisma.automation_message_actions.update({
       where: { id: action.id },
       data: {
         status: 'APPLIED',
         label_name: approved.leaf_name,
         label_path: labelPath,
-        gmail_label_id: label.id,
+        // Null when nothing was mirrored, which is the honest record: no Gmail label was involved.
+        gmail_label_id: gmailLabelId,
         confidence: 1,
         source: 'USER',
         reviewed_at: new Date(),
@@ -449,28 +500,11 @@ export class AutomationService {
         last_error_code: null,
       },
     });
-    await prisma.gmail_message_metadata.update({
-      where: { id: action.gmail_message_id },
-      data: {
-        label_ids: [
-          ...new Set([
-            ...action.message.label_ids.filter((id) => id === label.id || !stale.includes(id)),
-            label.id,
-          ]),
-        ],
-      },
-    });
-    if (!approved.gmail_label_id) {
-      await prisma.user_labels.update({
-        where: { id: approved.id },
-        data: { gmail_label_id: label.id },
-      });
-    }
     await auditService.record({
       action: 'automation.review.approved',
       result: 'SUCCESS',
       userId,
-      metadata: { actionId, labelName: approved.leaf_name },
+      metadata: { actionId, labelName: approved.leaf_name, mirroredToGmail: mirrorToGmail },
     });
     return { success: true };
   }

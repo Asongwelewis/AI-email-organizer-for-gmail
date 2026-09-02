@@ -76,12 +76,36 @@ export type ErrorCode =
   | 'PROVIDER_BAD_REQUEST'
   | 'PROVIDER_INVALID_RESPONSE'
   | 'PROVIDER_UNAVAILABLE'
+  | 'FEEDBACK_VALIDATION_FAILED'
   | 'RATE_LIMIT_EXCEEDED'
   | 'CORS_ORIGIN_DENIED'
   | 'CSRF_ORIGIN_INVALID'
   | 'DATABASE_UNAVAILABLE'
   | 'INTERNAL_SERVER_ERROR'
   | 'NOT_FOUND';
+
+/**
+ * Refusals that come from how this deployment is configured, not from anything going wrong.
+ *
+ * Each answers 503 because the request genuinely cannot be served, but none is a fault: the
+ * operator turned a feature off, or never turned it on, and the screen shows the code so a person
+ * can act on it. They are thrown deliberately on a path that expects them.
+ *
+ * Sentry is told to ignore them. Otherwise every click on a button belonging to a disabled feature
+ * files a new issue — and since `GMAIL_WRITE_ENABLED` is off by default, the Gmail export buttons
+ * would do it on every press — which buries the faults Sentry exists to surface.
+ *
+ * Provider failures are deliberately NOT here. `PROVIDER_UNAVAILABLE` means Gemini broke, and that
+ * is worth being told about even though it is also a 503.
+ */
+export const CONFIGURATION_REFUSALS = new Set<ErrorCode>([
+  'AUTOMATION_DISABLED',
+  'AUTOMATION_NOT_CONFIGURED',
+  'CLASSIFICATION_DISABLED',
+  'LABEL_DISCOVERY_DISABLED',
+  'PROVIDER_NOT_CONFIGURED',
+  'GMAIL_WRITE_DISABLED',
+]);
 
 export class AppError extends Error {
   constructor(

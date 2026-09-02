@@ -84,6 +84,8 @@ const searchQuery = z
     entity: facetValue.optional(),
     domain: facetValue.optional(),
     intent: facetValue.optional(),
+    /** `?unread=true`. A plain flag, so it survives being shared as a link. */
+    unread: z.enum(['true', 'false']).optional(),
     order: z
       .string()
       .transform((value) => value.split(',').map((part) => part.trim()))
@@ -211,6 +213,7 @@ export class FacetsController {
           ...(query.entity === undefined ? {} : { entity: query.entity }),
           ...(query.domain === undefined ? {} : { domain: query.domain }),
           ...(query.intent === undefined ? {} : { intent: query.intent }),
+          ...(query.unread === undefined ? {} : { unread: query.unread === 'true' }),
         },
         {
           ...(query.limit === undefined ? {} : { limit: query.limit }),

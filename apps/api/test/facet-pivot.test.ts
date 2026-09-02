@@ -216,3 +216,74 @@ describe('resolving one message to its folder', () => {
     ).toBeNull();
   });
 });
+
+/**
+ * Knowing where the new mail is, without opening anything.
+ *
+ * The subtree number is the one that matters on a collapsed parent: unread mail three levels down
+ * is still mail you have not seen, and a folder that stayed quiet about it would send you hunting
+ * through every child.
+ */
+describe('unread counts', () => {
+  const mail = (id: string, intent: string, unread: boolean) => ({
+    id,
+    entity: 'netflix',
+    domain: 'finance',
+    intent,
+    unread,
+  });
+
+  it('rolls unread mail up to every ancestor, not just the folder it sits in', () => {
+    const pivot = buildPivot(
+      [
+        mail('a', 'payment-failed', true),
+        mail('b', 'payment-failed', false),
+        mail('c', 'payment-failed', true),
+      ],
+      ['entity', 'intent'],
+      { minMessages: 3 },
+    );
+
+    const brand = pivot.nodes.find((node) => node.facetKey === 'entity=netflix')!;
+    const leaf = pivot.nodes.find((node) => node.facetKey.includes('intent='))!;
+    expect(leaf.unreadCount).toBe(2);
+    expect(brand.subtreeUnreadCount).toBe(2);
+  });
+
+  // A message with no `unread` field is treated as read, so an older caller keeps working.
+  it('treats an unspecified message as read rather than as new', () => {
+    const pivot = buildPivot(
+      [
+        { id: 'a', entity: 'netflix', domain: null, intent: null },
+        { id: 'b', entity: 'netflix', domain: null, intent: null },
+      ],
+      ['entity'],
+      { minMessages: 1 },
+    );
+
+    expect(pivot.nodes[0]!.unreadCount).toBe(0);
+  });
+
+  /**
+   * A branch cannot hold mail of its own — only leaves exist in Gmail — so its own mail goes to
+   * the inbox and its own unread count goes with it. What is unread beneath it is untouched.
+   */
+  it('moves a branch’s own unread count to the inbox with its mail', () => {
+    const pivot = buildPivot(
+      [
+        mail('a', 'payment-failed', true),
+        mail('b', 'payment-failed', true),
+        { id: 'c', entity: 'netflix', domain: 'finance', intent: null, unread: true },
+      ],
+      ['entity', 'intent'],
+      { minMessages: 2 },
+    );
+
+    const brand = pivot.nodes.find((node) => node.facetKey === 'entity=netflix')!;
+    expect(brand.isLeaf).toBe(false);
+    expect(brand.messageCount).toBe(0);
+    expect(brand.unreadCount).toBe(0);
+    // Still three unread beneath it, including the one that had nowhere of its own to go.
+    expect(brand.subtreeUnreadCount).toBe(3);
+  });
+});

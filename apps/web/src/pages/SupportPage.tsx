@@ -14,8 +14,9 @@ export function SupportPage() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          Something wrong, or a question about what MailMind does with your mail? Write to{' '}
-          <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>.
+          Something wrong, or a question about what MailMind does with your mail?{' '}
+          <Link to="/feedback">Send it straight through the app</Link> — no account needed — or
+          write to <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>.
         </p>
       }
     >
@@ -51,6 +52,13 @@ export function SupportPage() {
       <p>
         Disconnecting Gmail revokes MailMind&rsquo;s access immediately.{' '}
         <Link to="/data-deletion">Deleting your account</Link> removes everything stored about you.
+      </p>
+
+      <h2>Still stuck</h2>
+      <p>
+        <Link to="/feedback">Tell us what happened.</Link> It reaches whoever runs this deployment
+        directly, works signed out, and stores nothing about you beyond what you type — an address
+        only if you want a reply.
       </p>
 
       <h2>Reporting a security issue</h2>

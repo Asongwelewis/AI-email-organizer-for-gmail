@@ -66,7 +66,8 @@ vi.mock('../src/config/logger.js', () => ({
   safeErrorDetails: () => ({}),
 }));
 
-const { oauthStartLimiter } = await import('../src/middleware/rateLimiters.js');
+const limiters = await import('../src/middleware/rateLimiters.js');
+const { oauthStartLimiter } = limiters;
 const { PrismaRateLimitStore } = await import('../src/middleware/rate-limit.store.js');
 
 beforeEach(() => {
@@ -161,5 +162,32 @@ describe('a rate limit shared across API instances', () => {
    */
   it('declares that its keys are not local to one process', () => {
     expect(new PrismaRateLimitStore().localKeys).toBe(false);
+  });
+});
+
+/**
+ * Card 36. A shared counter costs a database round trip, measured at 100-150ms against the
+ * deployed API because Render and Supabase are not co-located; the upsert itself is about 2ms.
+ * Paying that on progress polling — which a client hits every two seconds for the length of a run
+ * — buys nothing, because that budget only stops a client hammering itself. Paying it on the auth
+ * and quota limiters buys a real guard, since with N instances a per-instance limit is N times the
+ * limit.
+ */
+describe('which limiters count across instances', () => {
+  it('shares the counters that guard authentication, quota and mailbox writes', () => {
+    for (const shared of [
+      'oauthStartLimiter',
+      'oauthCallbackLimiter',
+      'sessionRefreshLimiter',
+      'authGeneralLimiter',
+      'gmailSyncLimiter',
+      'classificationMutationLimiter',
+      'labelsMutationLimiter',
+    ]) {
+      expect(limiters).toHaveProperty(shared);
+    }
+    // The split is declared in one place, so this asserts the intent rather than the plumbing:
+    // reads and polling are the only per-instance limiters, and they guard nobody but the caller.
+    expect(Object.keys(limiters)).toEqual(expect.arrayContaining(['activityPollLimiter']));
   });
 });

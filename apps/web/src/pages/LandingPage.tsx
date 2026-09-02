@@ -1,9 +1,10 @@
 import { ArrowRight, Check, LockKeyhole, MousePointer2 } from 'lucide-react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { Link } from 'react-router-dom';
 
 import heroImage from '@web/assets/mailmind-editorial-hero.png';
 import { BrandMark } from '@web/components/BrandMark';
+import { MOTION, useEntrance, useReveal } from '@web/lib/motion';
 
 const principles = [
   {
@@ -43,54 +44,38 @@ const workflow = [
 ] as const;
 
 export function LandingPage() {
+  const reduceMotion = useReducedMotion();
+  const entrance = useEntrance();
+  const reveal = useReveal();
   const { scrollYProgress } = useScroll();
-  const imageY = useTransform(scrollYProgress, [0, 0.45], [0, 54]);
+  /*
+   * Parallax is the one effect most likely to make somebody feel unwell, so it is the first thing
+   * to go when they have asked for less motion. Held to 54px: enough to give the hero some depth,
+   * not enough to detach the image from the words beside it.
+   */
+  const imageY = useTransform(scrollYProgress, [0, 0.45], [0, reduceMotion ? 0 : 54]);
 
   return (
     <>
       <section className="landing-hero">
         <div className="landing-hero__copy">
-          <motion.div
-            className="landing-kicker"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
-          >
+          <motion.div className="landing-kicker" {...entrance(0)}>
             <span /> A human-reviewed Gmail organizer
           </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 32 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          >
+          <motion.h1 {...entrance(1)}>
             MailMind <em>AI</em>
           </motion.h1>
-          <motion.p
-            className="landing-hero__promise"
-            initial={{ opacity: 0, y: 22 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <motion.p className="landing-hero__promise" {...entrance(2)}>
             Thoughtful Gmail organization,
             <br />
             with every suggestion reviewed by you.
           </motion.p>
-          <motion.p
-            className="landing-hero__lede"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.38 }}
-          >
+          <motion.p className="landing-hero__lede" {...entrance(3)}>
             MailMind AI securely analyzes synchronized Gmail metadata to identify recurring senders
             and topics, then suggests useful labels for you to approve or reject. Reviewing a
             suggestion does not change Gmail at this stage.
           </motion.p>
-          <motion.div
-            className="landing-hero__actions"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-          >
+          <motion.div className="landing-hero__actions" {...entrance(4)}>
             <Link className="cta-link" to="/login" data-cursor>
               Begin with Google <ArrowRight aria-hidden="true" />
             </Link>
@@ -100,11 +85,20 @@ export function LandingPage() {
           </motion.div>
         </div>
 
+        {/*
+          Was a 1.15s clip-path wipe. Clip-path is not a compositor-only property, so it repainted
+          a full-bleed image every frame, and the duration was nearly three times the ceiling for
+          an elaborate move. Opacity and a small scale say the same thing, on the GPU, in 400ms.
+        */}
         <motion.figure
           className="landing-hero__visual"
-          initial={{ opacity: 0, clipPath: 'inset(0 100% 0 0)' }}
-          animate={{ opacity: 1, clipPath: 'inset(0 0% 0 0)' }}
-          transition={{ duration: 1.15, delay: 0.2, ease: [0.76, 0, 0.24, 1] }}
+          {...(reduceMotion
+            ? {}
+            : {
+                initial: { opacity: 0, scale: 1.04 },
+                animate: { opacity: 1, scale: 1 },
+                transition: { duration: MOTION.duration.slow, ease: MOTION.ease.out, delay: 0.08 },
+              })}
           style={{ y: imageY }}
         >
           <img
@@ -123,24 +117,17 @@ export function LandingPage() {
       </section>
 
       <section className="principles-section" id="principles" aria-labelledby="principles-title">
-        <div className="section-intro">
+        <motion.div className="section-intro" {...reveal()}>
           <span className="eyebrow">The operating principles</span>
           <h2 id="principles-title">
             Made to recommend.
             <br />
             Built to ask first.
           </h2>
-        </div>
+        </motion.div>
         <div className="principles-grid">
           {principles.map((principle, index) => (
-            <motion.article
-              key={principle.number}
-              className="principle-card"
-              initial={{ opacity: 0, y: 28 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ delay: index * 0.1 }}
-            >
+            <motion.article key={principle.number} className="principle-card" {...reveal(index)}>
               <span className="principle-card__number">{principle.number}</span>
               <h3>{principle.title}</h3>
               <p>{principle.copy}</p>
@@ -152,7 +139,7 @@ export function LandingPage() {
 
       <section className="workflow-section" id="how-it-works" aria-labelledby="workflow-title">
         <div className="workflow-panel">
-          <div className="workflow-panel__header">
+          <motion.div className="workflow-panel__header" {...reveal()}>
             <span className="eyebrow">How it works</span>
             <h2 id="workflow-title" aria-label="Four clear steps. Every choice stays yours.">
               Four clear steps.
@@ -163,16 +150,10 @@ export function LandingPage() {
               From secure sign-in to label review, MailMind keeps identity, Gmail permission, and
               every organization decision explicit.
             </p>
-          </div>
+          </motion.div>
           <ol className="workflow-steps">
             {workflow.map((step, index) => (
-              <motion.li
-                key={step.title}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.35 }}
-                transition={{ delay: index * 0.08 }}
-              >
+              <motion.li key={step.title} {...reveal(index)}>
                 <div className="workflow-step__meta">
                   <span>0{index + 1}</span>
                   <Check aria-hidden="true" />
@@ -185,7 +166,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-final-cta">
+      <motion.section className="landing-final-cta" {...reveal()}>
         <BrandMark compact />
         <h2>Bring calm to the review queue.</h2>
         <p>
@@ -195,7 +176,7 @@ export function LandingPage() {
         <Link className="cta-link cta-link--paper" to="/login">
           Continue with Google <ArrowRight aria-hidden="true" />
         </Link>
-      </section>
+      </motion.section>
     </>
   );
 }

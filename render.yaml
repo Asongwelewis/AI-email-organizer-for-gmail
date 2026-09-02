@@ -2,13 +2,33 @@ services:
   - type: web
     name: ai-email-organizer-for-gmail
     runtime: node
+    # `--include=dev` is load-bearing. Every tool this build runs — typescript, tsc-alias, prisma,
+    # tsx, cross-env, @sentry/cli — is a devDependency, and npm omits those whenever NODE_ENV is
+    # production. Without the flag, setting NODE_ENV below silently installs none of them and the
+    # build dies before it compiles a line.
+    #
+    # `npm run build:api` rather than `npm exec ... --workspace @mailmind/api`: npm exec parses
+    # that flag as its own wherever it appears, and runs the whole command from apps/api, where the
+    # root-relative release script does not exist. It is the same bug that failed every Vercel
+    # deployment for twenty attempts.
     buildCommand: >-
-      npm ci &&
+      npm ci --include=dev &&
       npm run prisma:generate --workspace @mailmind/api &&
-      npm exec cross-env SENTRY_REQUIRE_CONFIG=true node scripts/with-app-version.mjs
-      npm run build --workspace @mailmind/api
+      npm run build:api
+    # Kept because it is the right hook — it runs after a successful build and before traffic
+    # switches — but it is not the guarantee. On 28 Aug 2026 the feedback migration reached main,
+    # the code deployed, and the migration did not run: every valid POST /api/feedback answered
+    # 500 against a table that did not exist. The command itself is fine (verified by hand), so
+    # either this service is not synced to this blueprint — it still answers on
+    # api.mailmindai.tech while the URLs below say .onrender.com — or its plan does not offer
+    # pre-deploy commands, which Render gates behind paid instance types.
     preDeployCommand: npm exec --workspace @mailmind/api -- prisma migrate deploy
-    startCommand: npm run start --workspace @mailmind/api
+    # So the start path runs it too. `migrate deploy` is idempotent and takes an advisory lock, so
+    # doing it in both places costs one fast query on a no-op and makes it impossible for the API
+    # to come up against a schema its code does not match.
+    startCommand: >-
+      npm exec --workspace @mailmind/api -- prisma migrate deploy &&
+      npm run start --workspace @mailmind/api
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

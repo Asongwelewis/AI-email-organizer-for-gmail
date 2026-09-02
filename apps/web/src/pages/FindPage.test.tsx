@@ -38,6 +38,14 @@ const results = (overrides = {}) => ({
   filters: { entity: null, domain: null, intent: null },
   order: ['domain', 'intent'],
   results: [hit()],
+  folders: [
+    {
+      facetKey: 'domain=finance|intent=payment-failed',
+      fullPath: 'MailMind/Finance/Payment failed',
+      leafName: 'Payment failed',
+      count: 1,
+    },
+  ],
   total: 1,
   nextCursor: null,
   ...overrides,
@@ -82,11 +90,13 @@ describe('FindPage', () => {
     expect(link).toHaveAttribute('href', expect.stringContaining('authuser=ada%40gmail.com'));
   });
 
-  // Half of what the person was asking is "where was it": the hit carries its folder.
+  // Half of what the person was asking is "where was it": the row itself carries its folder, so a
+  // message read on its own still says where it lives — not only the group heading above it.
   it('says which folder each hit sits in', async () => {
     renderScreen(<FindPage />, '/find?q=payment');
 
-    expect(await screen.findByText('Finance / Payment failed')).toBeInTheDocument();
+    const row = await screen.findByRole('link', { name: /Your payment failed/ });
+    expect(row.textContent).toContain('Finance / Payment failed');
   });
 
   /**
@@ -128,6 +138,27 @@ describe('FindPage', () => {
     renderScreen(<FindPage />, '/find?q=payment');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('FACET_VALIDATION_FAILED');
+  });
+
+  /**
+   * The whole point over a plain mailbox: the answer leads with where the mail is, not with a flat
+   * list of messages indistinguishable from the inbox it came from.
+   */
+  it('leads with the folders holding the results, not a flat list', async () => {
+    renderScreen(<FindPage />, '/find?q=payment');
+
+    const group = await screen.findByRole('button', { name: /Finance \/ Payment failed/ });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Everything/ })).toBeInTheDocument();
+  });
+
+  // Unread on its own is the "what arrived that I have not seen" question.
+  it('searches unread with no phrase at all', async () => {
+    renderScreen(<FindPage />, '/find?unread=true');
+
+    await waitFor(() =>
+      expect(mocks.searchMessages).toHaveBeenCalledWith('', { unread: true }, {}),
+    );
   });
 
   // One combination in a real mailbox holds 1,823 messages, so results page.

@@ -1,6 +1,23 @@
 import { existsSync, rmSync } from 'node:fs';
 
-import husky from 'husky';
+/**
+ * Installs the Git hooks, and does nothing at all where there are none to install.
+ *
+ * npm runs `prepare` after every install, including installs that omit dev dependencies — a Vercel
+ * production build, `npm ci --omit=dev`, a production image. `husky` is a dev dependency, so a
+ * static import here fails the whole install on a machine that was never going to commit anything.
+ * That is what broke the production deploy: the build had no cache, npm installed without dev
+ * dependencies, and `prepare` brought the install down with it.
+ *
+ * Resolving it dynamically turns "no hooks to install" into the no-op it should always have been.
+ */
+let husky;
+try {
+  ({ default: husky } = await import('husky'));
+} catch {
+  // Not a developer checkout. Hooks are a local convenience and there is nothing to do.
+  process.exit(0);
+}
 
 const message = husky();
 

@@ -64,11 +64,37 @@ describe('AutomationPanel', () => {
   // The flag being off is the single most important thing this panel can say. It was the standing
   // mitigation while two filing engines existed, and an account left that way looks merely idle.
   it('says so plainly when automation is switched off on the server', async () => {
-    mocks.getAutomationStatus.mockResolvedValue(status({ enabled: false, nextRunAt: null }));
+    mocks.getAutomationStatus.mockResolvedValue(
+      status({ enabled: false, nextRunAt: null, disabledReason: 'AUTOMATION_DISABLED' }),
+    );
     renderScreen(<AutomationPanel />);
 
     expect(await screen.findByText('Automation is off')).toBeInTheDocument();
     expect(screen.getByText(/AUTOMATION_ENABLED is false/)).toBeInTheDocument();
+  });
+
+  /**
+   * Three separate things switch automation off, and the panel used to blame the deployment flag
+   * for all of them. That sends someone to change a setting that was already correct, while the
+   * real cause sits untouched — which is exactly what happened with a missing Gemini key.
+   */
+  it('names the missing Gemini key rather than blaming the wrong switch', async () => {
+    mocks.getAutomationStatus.mockResolvedValue(
+      status({ enabled: false, nextRunAt: null, disabledReason: 'AUTOMATION_NOT_CONFIGURED' }),
+    );
+    renderScreen(<AutomationPanel />);
+
+    expect(await screen.findByText(/GEMINI_API_KEY is not set/)).toBeInTheDocument();
+    expect(screen.queryByText(/AUTOMATION_ENABLED is false/)).not.toBeInTheDocument();
+  });
+
+  it('says the account is paused when the switch is the account, not the server', async () => {
+    mocks.getAutomationStatus.mockResolvedValue(
+      status({ enabled: false, nextRunAt: null, disabledReason: 'ACCOUNT_PAUSED' }),
+    );
+    renderScreen(<AutomationPanel />);
+
+    expect(await screen.findByText(/paused for this account/)).toBeInTheDocument();
   });
 
   // A backoff is not the schedule. Reading one as the other is how a stalled account looks healthy.

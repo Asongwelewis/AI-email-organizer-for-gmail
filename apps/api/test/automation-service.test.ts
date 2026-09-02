@@ -463,6 +463,42 @@ describe('review approvals', () => {
     mocks.gmailLabelFindMany.mockResolvedValue([{ gmail_label_id: 'Label_old' }]);
     mocks.actionUpdate.mockResolvedValue({});
     mocks.messageUpdate.mockResolvedValue({});
+    // Mirroring a reviewer's decision into Gmail is the export half, so these exercise it on.
+    env.GMAIL_WRITE_ENABLED = true;
+    mocks.userLabelFindFirst.mockResolvedValue({
+      ...approvedLabel,
+      full_path: 'MailMind/Invoices',
+    });
+  });
+
+  /**
+   * Card 31. `automation.service.approve` reached Gmail with no GMAIL_WRITE_ENABLED check, so a
+   * reviewer clicking Approve wrote a label while writes were nominally off — the scope check
+   * passed, because a mailbox connected before the downgrade still holds gmail.modify.
+   *
+   * With the export off a decision is a fact in MailMind and nothing else. Refusing instead would
+   * strand the review queue behind a setting that has nothing to do with reviewing.
+   */
+  it('records a reviewer decision without touching the mailbox when the export is off', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    const gmail = gmailStub();
+
+    await service(gmail).approve('user-1', 'action-1', 'MailMind/Invoices');
+
+    expect(gmail.ensureLabel).not.toHaveBeenCalled();
+    expect(gmail.applyExclusiveLabel).not.toHaveBeenCalled();
+    // The decision is still recorded, and honestly: no Gmail label was involved, so none is named.
+    expect(mocks.actionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'APPLIED', source: 'USER', gmail_label_id: null }),
+      }),
+    );
+    /*
+     * The one thing that must never happen: `label_ids` mirrors what Gmail actually holds, so
+     * recording a label nobody applied would leave the database describing a mailbox that
+     * disagrees with it.
+     */
+    expect(mocks.messageUpdate).not.toHaveBeenCalled();
   });
 
   it('moves the message rather than adding a second MailMind label', async () => {

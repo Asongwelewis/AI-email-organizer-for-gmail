@@ -105,6 +105,10 @@ describe('the document security policy', () => {
     expect(headerValue('/(.*)', 'X-Content-Type-Options')).toBe('nosniff');
     expect(headerValue('/(.*)', 'Referrer-Policy')).toBe('strict-origin-when-cross-origin');
     expect(headerValue('/(.*)', 'Permissions-Policy')).toContain('geolocation=()');
+    expect(headerValue('/(.*)', 'Cross-Origin-Resource-Policy')).toBe('same-site');
+    expect(headerValue('/(.*)', 'Origin-Agent-Cluster')).toBe('?1');
+    expect(headerValue('/(.*)', 'X-DNS-Prefetch-Control')).toBe('off');
+    expect(headerValue('/(.*)', 'X-Permitted-Cross-Domain-Policies')).toBe('none');
   });
 
   /**

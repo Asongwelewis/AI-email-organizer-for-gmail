@@ -75,6 +75,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Guard the browser secret boundary
+        shell: bash
+        run: |
+          if rg -n 'document\.cookie|dangerouslySetInnerHTML|localStorage\.(getItem|setItem).*\b(token|secret|password|cookie)' apps/web/src; then
+            echo 'Frontend source must not read cookies, render raw HTML, or persist credentials.'
+            exit 1
+          fi
+
       - name: Check formatting
         run: npm run format:check
 

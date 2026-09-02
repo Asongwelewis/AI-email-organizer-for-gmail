@@ -42,6 +42,61 @@ const ENTITY_ALIASES: Record<string, string> = {
 };
 
 /**
+ * Domains that host other people's brands rather than being one.
+ *
+ * Every Substack publication sends from `<publication>@substack.com`, so the registrable domain is
+ * the platform and the brand is the local part. Deriving from the domain collapses ByteByteGo,
+ * System Design Nuggets and Lenny's Newsletter into a single `substack` folder holding a scattered
+ * pile of unrelated newsletters — which is exactly the clutter the entity facet exists to remove,
+ * arrived at from the other direction.
+ *
+ * The local part rather than the display name, deliberately. A display name is chosen by the
+ * sender, changes between sends, and can be anything; the address is a fact about the envelope,
+ * which is the whole basis on which this facet is derived in code instead of being asked of a
+ * model.
+ */
+const PLATFORM_SENDER_DOMAINS = new Set([
+  'substack.com',
+  'beehiiv.com',
+  'ghost.io',
+  'medium.com',
+  'googlegroups.com',
+  'buttondown.email',
+  'convertkit-mail.com',
+  'kit.com',
+]);
+
+/**
+ * Local parts that name the platform's own mail rather than a publication on it.
+ *
+ * `no-reply@substack.com` is Substack writing to you; `bytebytego@substack.com` is ByteByteGo. The
+ * first should stay under the platform, and a folder called "No reply" would be nonsense.
+ */
+const GENERIC_LOCAL_PARTS = new Set([
+  'no-reply',
+  'noreply',
+  'donotreply',
+  'do-not-reply',
+  'hello',
+  'hi',
+  'info',
+  'support',
+  'help',
+  'team',
+  'mail',
+  'email',
+  'newsletter',
+  'news',
+  'notifications',
+  'notification',
+  'updates',
+  'post',
+  'admin',
+  'contact',
+  'billing',
+]);
+
+/**
  * Suffixes a brand bolts onto its own name for a mail domain. Stripped only when the remainder is
  * still a plausible brand name, so `mailchimp` does not become `chimp` and `dell` keeps its name.
  */
@@ -66,6 +121,11 @@ export function entityFor(senderEmail: string | null): string | null {
   const registrable = emailIdentity(senderEmail).registrableDomain;
   if (!registrable) return null;
 
+  if (PLATFORM_SENDER_DOMAINS.has(registrable)) {
+    const publication = publicationFrom(senderEmail);
+    if (publication) return publication;
+  }
+
   const alias = ENTITY_ALIASES[registrable];
   if (alias) return alias;
 
@@ -82,6 +142,22 @@ export function entityFor(senderEmail: string | null): string | null {
     const stripped = slug.slice(0, -suffix.length).replace(/-+$/, '');
     if (stripped.length >= MIN_STRIPPED_LENGTH) return stripped;
   }
+  return slug;
+}
+
+/**
+ * The publication behind a platform address, or null when the address is the platform's own.
+ *
+ * Plus-addressing is stripped first: `nextplayso+should-you-join@substack.com` is one more send
+ * from `nextplayso`, and treating the tag as part of the name would file every campaign into a
+ * folder of its own.
+ */
+function publicationFrom(senderEmail: string | null): string | null {
+  const local = (senderEmail ?? '').split('@')[0]?.toLowerCase().split('+')[0]?.trim();
+  if (!local) return null;
+  const slug = local.replace(SLUG_UNSAFE, '-').replace(/^-+|-+$/g, '');
+  // Too short to be a name, or the platform speaking for itself.
+  if (slug.length < 3 || GENERIC_LOCAL_PARTS.has(slug)) return null;
   return slug;
 }
 

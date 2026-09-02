@@ -101,6 +101,12 @@ carries one MailMind label and no more, which is a Gmail limit rather than a pro
 `gmail_label_id`. Folder names are unique among **siblings**, not per account: a pivot repeats its
 lower levels by construction.
 
+**A folder says where the new mail is.** `buildPivot` counts unread mail per node twice: its own,
+and its whole subtree. The subtree number is what a folder tile shows, because unread mail three
+levels down is still mail nobody has seen and a parent that stayed quiet about it would send a
+person hunting. It is read from `gmail_message_metadata.is_unread`, so it tracks Gmail rather than
+anything MailMind decided.
+
 **Findability is folders plus search.** `GET /api/facets/search` matches subject and sender across
 the whole mailbox with Postgres full text (`simple`, and the sender address split on punctuation on
 both sides of the match), narrowed by any combination of `entity`, `domain` and `intent`, with the
@@ -136,6 +142,10 @@ applies labels via `messages.modify`, and its apply is _exclusive_ — the new l
 other MailMind label comes off in the same call, so a re-filed message never wears two;
 `automation.service` applies one on a reviewer's approval, through the same exclusive path; the
 labels feature and `pivot.service` create/rename leaf paths on confirm, rename, and pivot apply.
+**Every one of those three checks `GMAIL_WRITE_ENABLED` itself** — the flag is not a property of
+one entry point. With the export off, a reviewer's approval and a folder confirm both still record
+their decision in MailMind and write nothing to the mailbox; what they must never do is write a
+label id into `gmail_message_metadata.label_ids`, which mirrors what Gmail actually holds.
 Deleting a label never unlabels mail, so a pivot never deletes folders — it reports the ones that no
 longer match and leaves them alone. `npm run sweep:labels` is the deliberate exception, and it
 strips a label from its mail before deleting it. Nothing else may mutate Gmail.
@@ -151,10 +161,26 @@ approved tree, applied through an _additive_ `messages.modify` — is gone. Two 
 same table and the same labels could always undo each other, and the retired one was the one
 running unattended.
 
+**One public write, and it is the feedback form.** `POST /api/feedback` is the only route in the
+API that does not require a session, because the people best placed to say the app is confusing are
+the ones who never made an account. A session is attributed when one is present and its absence is
+never an error; the guards are the trusted-`Origin` check and a shared five-per-window limit. The
+row holds what was typed, the kind, an optional reply address and a **route** — never a query
+string, since ours carry facet values, search phrases and message ids — and nothing that was
+collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
+authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
+The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one
 database. External calls (Google, Gemini) happen _outside_ database transactions so partial work
 stays durable and resumable.
+
+**One motion rhythm on the public pages.** `apps/web/src/lib/motion.ts` owns the durations, easing
+and stagger, and `useReveal`/`useEntrance` return **nothing at all** under
+`prefers-reduced-motion` — a CSS media query cannot reach a transform driven by JavaScript, so an
+animation added outside these hooks runs regardless of the system setting. Transform and opacity
+only.
 
 **Frontend state.** TanStack Query owns server state with retries and refetch-on-focus disabled by
 default; feature hooks poll every 2s only while a run is active. `AuthProvider` treats

@@ -23,6 +23,8 @@ function node(overrides: Partial<PivotNode> & { facetKey: string; leafName: stri
     depth: 1,
     messageCount: 0,
     subtreeMessageCount: 0,
+    unreadCount: 0,
+    subtreeUnreadCount: 0,
     isLeaf: true,
     ...overrides,
   };

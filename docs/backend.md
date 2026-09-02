@@ -96,8 +96,18 @@ Session lifetime and rate-limit controls:
 
 ### Rate limiting
 
-Every limiter is backed by `rate_limit_hits` in Postgres, so counters hold across API instances and
-across restarts. The window is part of the primary key rather than a value inside the row: a new
+The limiters that guard **authentication, a quota, or a mailbox write** are backed by
+`rate_limit_hits` in Postgres, so their counters hold across API instances and across restarts.
+Reads and progress polling stay in memory.
+
+That split is measured rather than assumed. Against the deployed API on 27 Aug 2026 a database
+round trip costs 100–150ms — Render and Supabase are not co-located — while the upsert itself is
+about 2ms, so the whole cost is the trip. Paying it on `activityPollLimiter`, which a client hits
+every two seconds for the length of a run, would add 150ms and one row written per poll to protect
+a budget that exists only to stop a client hammering itself. Paying it on the OAuth limiters buys a
+real guard, because with N instances a per-instance limit is really N times the limit. Narrowing
+the shared set also narrows what a database outage can take down: a brute-force guard failing
+closed is correct, a folder list failing closed is not. The window is part of the primary key rather than a value inside the row: a new
 window is a new row, so two instances incrementing the same client both land on one atomic
 `on conflict do update` instead of racing over a count they each read a moment earlier. Expired
 rows are swept opportunistically, because an expired row is already invisible to the increment path.
@@ -133,7 +143,14 @@ that would be wrong, and how many correct decisions it would send to a reviewer 
 The labels are a **person's**. `npm run eval:facets --workspace @mailmind/api -- --draw 300` writes
 a stratified, unlabelled draw — round-robin across facet combinations, so rare values are not
 crowded out by the two that dominate a mailbox — for a human to fill in. Labelling with a second
-model, or accepting the classifier's own answers, measures agreement rather than correctness.
+model, or accepting the classifier's own answers, measures agreement rather than correctness. A run
+against a set nobody has labelled yet is refused rather than scored, because it would spend a model
+call per batch to measure nothing.
+
+**A golden set never goes in the repository.** It is a readable extract of a real mailbox — 300
+subject lines and sender addresses — and this repository is public, so it defaults to the gitignored
+`backups/golden-set/golden-set.json`. `apps/api/test/fixtures/golden-set.example.json` shows the
+shape and carries the one case the card names; that is the only part safe to check in.
 
 A run is gated on the vocabulary: a label is only meaningful relative to the set of values it was
 chosen from, so `vocabularyFingerprint` in the fixture is checked against the account's current one
@@ -149,7 +166,10 @@ needs it.
 
 Two separate questions, both of which must be yes before anything is written to a mailbox: does
 this **deployment** offer the export (`GMAIL_WRITE_ENABLED`), and did this **person** grant it
-(`gmail.modify` in `granted_scopes`). The second cannot be turned on from a config file.
+(`gmail.modify` in `granted_scopes`). The first is checked at each of the five places that write —
+filing, pivot apply, reviewer approval, folder confirm and folder rename — rather than at one
+entry point, because a mailbox connected before the scope downgrade still holds `gmail.modify` and
+would otherwise sail through the second check on a path that forgot the first. The second cannot be turned on from a config file.
 `AutomationGmailService` is the single choke point every Gmail write passes through and checks it
 before the first remote call, so a filing run refuses up front with `403 GMAIL_WRITE_SCOPE_MISSING`
 rather than dying part-way and leaving a mailbox half in one tree and half in another.

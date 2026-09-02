@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { env } from '../src/config/env.js';
+
 const mocks = vi.hoisted(() => ({
   auditRecord: vi.fn(),
   activeAccountForUser: vi.fn(),
@@ -94,6 +96,8 @@ function service(gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabe
 describe('LabelsService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Creating and renaming labels in a mailbox is the export half; these exercise it on.
+    env.GMAIL_WRITE_ENABLED = true;
     mocks.activeAccountForUser.mockResolvedValue(account);
     mocks.approvedLabels.mockResolvedValue([]);
     mocks.pendingPlan.mockResolvedValue(null);
@@ -146,6 +150,45 @@ describe('LabelsService', () => {
 
     expect(gmail.ensureLabel).toHaveBeenCalledWith(account.id, 'MailMind/Money in');
     expect(mocks.setGmailLabelId).toHaveBeenCalledWith('label-Money in', 'Label_9');
+  });
+
+  /**
+   * Card 31. `confirm` and `rename` reached Gmail with no GMAIL_WRITE_ENABLED check, so approving
+   * or renaming a folder wrote into the mailbox while writes were nominally off.
+   *
+   * The approved tree is `user_labels`; mirroring it into Gmail's own sidebar is the opt-in half,
+   * exactly as it is for the pivot. With the export off the folder exists and `gmail_label_id`
+   * stays null, which every read path already expects.
+   */
+  it('creates the folder and nothing in Gmail when the export is off', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    const gmail = {
+      ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_9', created: true }),
+      applyLabel: vi.fn(),
+      renameLabel: vi.fn(),
+    };
+    const { instance } = service(gmail);
+
+    await instance.confirm('user-1', [{ leafName: 'Money in', source: 'AI_PROPOSED' }]);
+
+    expect(mocks.createLabel).toHaveBeenCalled();
+    expect(gmail.ensureLabel).not.toHaveBeenCalled();
+    expect(mocks.setGmailLabelId).not.toHaveBeenCalled();
+  });
+
+  it('renames the folder and nothing in Gmail when the export is off', async () => {
+    env.GMAIL_WRITE_ENABLED = false;
+    const existing = label('Job hunt');
+    mocks.labelForAccount.mockResolvedValue({ ...existing, gmail_label_id: 'Label_legacy' });
+    mocks.renameLabel.mockResolvedValue([{ ...existing, leaf_name: 'Career' }]);
+    const gmail = { ensureLabel: vi.fn(), applyLabel: vi.fn(), renameLabel: vi.fn() };
+    const { instance } = service(gmail);
+
+    await instance.rename('user-1', existing.id, 'Career');
+
+    // A legacy folder still carrying an id from before the downgrade is not a reason to write.
+    expect(gmail.renameLabel).not.toHaveBeenCalled();
+    expect(mocks.renameLabel).toHaveBeenCalled();
   });
 
   it('nests a manual label under its parent and refuses a fourth level', async () => {
