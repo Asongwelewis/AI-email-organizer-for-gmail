@@ -37,7 +37,7 @@
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",
-    "concurrently": "^9.1.2",
+    "concurrently": "^10.0.5",
     "cross-env": "^7.0.3",
     "dotenv": "^17.2.1",
     "eslint": "^9.31.0",
