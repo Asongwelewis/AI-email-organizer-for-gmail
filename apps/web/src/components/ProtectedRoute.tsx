@@ -10,7 +10,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (isLoading) return <RouteLoader />;
   if (!isAuthenticated) {
-    const safeReturnPath = ['/sorted', '/approve', '/activity'].includes(location.pathname)
+    const safeReturnPath = ['/sorted', '/approve', '/activity', '/account'].includes(
+      location.pathname,
+    )
       ? location.pathname
       : '/sorted';
     return <Navigate to="/login" replace state={{ returnTo: safeReturnPath }} />;

@@ -5,6 +5,7 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
+  Shield,
   Search,
 } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
@@ -56,6 +57,16 @@ export function AppShell() {
           <ThemeToggle variant="compact" className="shell__theme" />
           <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} />
           <span className="shell__email">{user.email}</span>
+          <NavLink
+            to="/account"
+            className={({ isActive }) =>
+              `button button--icon${isActive ? ' button--icon-active' : ''}`
+            }
+            aria-label="Account and privacy"
+            title="Account and privacy"
+          >
+            <Shield aria-hidden="true" strokeWidth={1.5} />
+          </NavLink>
           <button
             className="button button--icon"
             type="button"

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 /**
@@ -21,12 +21,23 @@ export function LegalDocument({
   summary: ReactNode;
   children: ReactNode;
 }) {
+  useEffect(() => {
+    document.title = `${title} · MailMind AI`;
+  }, [title]);
+
   return (
     <main className="legal-doc">
       <div className="legal-doc__column">
         <Link className="legal-doc__back" to="/">
           ← MailMind AI
         </Link>
+        <nav className="legal-doc__nav" aria-label="Information">
+          <Link to="/about">About</Link>
+          <Link to="/faq">FAQ</Link>
+          <Link to="/security">Security</Link>
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/support">Support</Link>
+        </nav>
         <h1>{title}</h1>
         <p className="legal-doc__updated">Last updated {updated}</p>
         <div className="legal-doc__summary">{summary}</div>

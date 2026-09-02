@@ -104,8 +104,15 @@ feature hooks add polling only while a Gmail sync or automation run is active.
 | `/`              | Product landing page                                     |
 | `/login`         | Google identity login                                    |
 | `/auth/callback` | Handles safe status values after backend OAuth redirects |
-| `/privacy`       | Current privacy-policy placeholder page                  |
-| `/terms`         | Current terms-of-service placeholder page                |
+| `/about`         | Product purpose and operating principles                 |
+| `/faq`           | Public answers about Gmail, classification, and deletion |
+| `/security`      | Browser, credential, telemetry, and deployment controls  |
+| `/cookies`       | Necessary cookies and local preference storage           |
+| `/privacy`       | Privacy policy and Google API data-use disclosure        |
+| `/terms`         | Terms of service                                         |
+| `/support`       | Support and vulnerability-reporting guidance             |
+| `/feedback`      | Public feedback form                                     |
+| `/data-deletion` | Account and data deletion flow                           |
 
 Unknown routes redirect to `/`.
 
@@ -122,6 +129,7 @@ or a message gets found. All of them render inside `ProtectedRoute` and `AppShel
 | `/review`   | Decide the filings held back for a person                                  |
 | `/approve`  | Review a proposed folder tree and approve what you keep                    |
 | `/activity` | Run records, newest first, with state, progress, stop reasons, error codes |
+| `/account`  | Signed-in connection, session, logout, and deletion controls               |
 
 `/setup` is reachable but deliberately absent from the navigation: it is a path you walk once,
 linked to from wherever an account turns out not to be ready.
