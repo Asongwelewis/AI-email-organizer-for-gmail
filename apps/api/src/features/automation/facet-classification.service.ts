@@ -180,6 +180,10 @@ export class FacetClassificationService {
      * into a stranger's taxonomy. An account that has approved nothing is refused here.
      */
     const vocabulary = await this.vocabularies.requireApproved(accountId);
+    const approvedValues = {
+      domain: new Set(vocabulary.domain.map((value) => value.name)),
+      intent: new Set(vocabulary.intent.map((value) => value.name)),
+    };
     const promptVersion = facetPromptVersion(vocabulary);
     const counters = emptyCounters();
     const now = new Date();
@@ -236,8 +240,18 @@ export class FacetClassificationService {
           subject: message.subject,
           senderEmail: message.sender_email,
         });
+        // Rules survive vocabulary changes for auditability, but a removed value must never be
+        // allowed to re-enter a new classification run.
+        const domainRule =
+          resolved.domain && approvedValues.domain.has(resolved.domain.value)
+            ? resolved.domain
+            : null;
+        const intentRule =
+          resolved.intent && approvedValues.intent.has(resolved.intent.value)
+            ? resolved.intent
+            : null;
         const entity = entityFor(message.sender_email);
-        for (const hit of [resolved.domain, resolved.intent]) {
+        for (const hit of [domainRule, intentRule]) {
           if (!hit) continue;
           // The rule generalised past the sender it was learned on. This is the number that says
           // whether facets are earning their keep.
@@ -245,7 +259,7 @@ export class FacetClassificationService {
             counters.crossEntityRuleHits += 1;
           }
         }
-        if (resolved.domain && resolved.intent) {
+        if (domainRule && intentRule) {
           counters.ruleDecided += 1;
           await this.persist(
             accountId,
@@ -253,21 +267,21 @@ export class FacetClassificationService {
             entity,
             'RULE',
             {
-              domain: resolved.domain.value,
-              domainConfidence: resolved.domain.rule.confidence,
-              intent: resolved.intent.value,
-              intentConfidence: resolved.intent.rule.confidence,
+              domain: domainRule.value,
+              domainConfidence: domainRule.rule.confidence,
+              intent: intentRule.value,
+              intentConfidence: intentRule.rule.confidence,
             },
             promptVersion,
           );
-          this.countAssignments(counters, entity, resolved.domain.value, resolved.intent.value);
+          this.countAssignments(counters, entity, domainRule.value, intentRule.value);
           continue;
         }
         undecided.push({
           message,
           known: {
-            domain: resolved.domain?.value,
-            intent: resolved.intent?.value,
+            domain: domainRule?.value,
+            intent: intentRule?.value,
           },
         });
       }
@@ -622,7 +636,6 @@ export class FacetClassificationService {
       is_draft: false,
       is_sent: false,
       is_trashed: false,
-      sender_email: { not: null },
       NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
     };
   }

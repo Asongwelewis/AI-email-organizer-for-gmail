@@ -92,7 +92,9 @@ describe('PivotPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /move what it wants up/i }));
 
-    await waitFor(() => expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5));
+    await waitFor(() =>
+      expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5, 'all'),
+    );
     expect(mocks.applyPivot).not.toHaveBeenCalled();
     expect(mocks.setPivotSettings).not.toHaveBeenCalled();
   });

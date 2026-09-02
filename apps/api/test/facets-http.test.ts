@@ -185,14 +185,21 @@ describe('facet HTTP routes', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.view).toHaveBeenCalledWith('user-id', ['domain', 'intent', 'entity'], 3);
+    expect(mocks.view).toHaveBeenCalledWith('user-id', ['domain', 'intent', 'entity'], 3, '24h');
+  });
+
+  it('passes an explicitly selected time window through to the pivot view', async () => {
+    const response = await request(app).get('/api/facets/pivot/view?range=7d');
+
+    expect(response.status).toBe(200);
+    expect(mocks.view).toHaveBeenCalledWith('user-id', undefined, undefined, '7d');
   });
 
   it('falls back to the default ordering when the query names none', async () => {
     const response = await request(app).get('/api/facets/pivot/view');
 
     expect(response.status).toBe(200);
-    expect(mocks.view).toHaveBeenCalledWith('user-id', undefined, undefined);
+    expect(mocks.view).toHaveBeenCalledWith('user-id', undefined, undefined, '24h');
   });
 
   it('refuses an ordering the query string invented', async () => {
@@ -217,7 +224,7 @@ describe('facet HTTP routes', () => {
     expect(mocks.folderMessages).toHaveBeenCalledWith(
       'user-id',
       'entity=netflix|intent=payment-failed',
-      { limit: 25 },
+      { limit: 25, range: '24h' },
     );
   });
 
@@ -225,7 +232,10 @@ describe('facet HTTP routes', () => {
     const cursor = '11111111-1111-4111-8111-111111111111';
     await request(app).get(`/api/facets/messages?facetKey=entity%3Dnetflix&cursor=${cursor}`);
 
-    expect(mocks.folderMessages).toHaveBeenCalledWith('user-id', 'entity=netflix', { cursor });
+    expect(mocks.folderMessages).toHaveBeenCalledWith('user-id', 'entity=netflix', {
+      cursor,
+      range: '24h',
+    });
   });
 
   /**

@@ -215,6 +215,55 @@
   outline: none;
 }
 
+.sorted__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: end;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface-chrome);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--highlight-inset);
+}
+
+.time-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--app-ink-soft);
+}
+
+.time-range select {
+  min-height: 2.5rem;
+  padding: 0.4rem 2rem 0.4rem 0.65rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: inherit;
+  cursor: pointer;
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+}
+
+.time-range select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.sorted__scope {
+  padding-bottom: 0.55rem;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
 /**
  * The macOS push button: a hairline, an inner top highlight, and a single hairline shadow. The
  * highlight is what stops it reading as a flat rectangle with a border drawn round it.

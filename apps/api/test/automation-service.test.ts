@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   userLabelCount: vi.fn(),
   userLabelUpdate: vi.fn(),
   gmailLabelFindMany: vi.fn(),
+  facetVocabularyApproved: vi.fn(),
   classifyAccount: vi.fn(),
   fileAccount: vi.fn(),
   activityStart: vi.fn(),
@@ -48,6 +49,9 @@ vi.mock('../src/integrations/gmail/gmail.service.js', () => ({
 vi.mock('../src/config/logger.js', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   safeErrorDetails: () => ({ errorType: 'Error' }),
+}));
+vi.mock('../src/features/label-discovery/facet-vocabulary.repository.js', () => ({
+  facetVocabularyRepository: { approved: mocks.facetVocabularyApproved },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
@@ -150,6 +154,10 @@ beforeEach(() => {
   mocks.auditRecord.mockResolvedValue(undefined);
   mocks.runCreate.mockResolvedValue({ id: 'classification-run-1' });
   mocks.runUpdate.mockResolvedValue({});
+  mocks.facetVocabularyApproved.mockResolvedValue({
+    domain: [{ name: 'finance', definition: 'Money, banking, payments, invoices, and receipts.' }],
+    intent: [{ name: 'newsletter', definition: 'A periodic or broadcast roundup of information.' }],
+  });
 });
 
 afterEach(() => {

@@ -90,8 +90,10 @@ export function PivotPage() {
   const effectiveMin = minMessages ?? settingsQuery.data?.minMessages ?? 5;
 
   const viewQuery = useQuery({
-    queryKey: [...queryKeys.pivotView(effectiveOrder), effectiveMin],
-    queryFn: () => api.getPivotView(effectiveOrder, effectiveMin),
+    queryKey: [...queryKeys.pivotView(effectiveOrder, 'all'), effectiveMin],
+    // Folder design is based on the full synchronized mailbox; Sorted applies its recent-mail
+    // window separately so a quiet week does not erase a durable folder shape.
+    queryFn: () => api.getPivotView(effectiveOrder, effectiveMin, 'all'),
     enabled: effectiveOrder.length > 0,
   });
 

@@ -12,8 +12,13 @@ import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
 import {
   PIVOT_PRESETS,
+  DEFAULT_EMAIL_TIME_RANGE,
+  EMAIL_TIME_RANGE_LABELS,
+  EMAIL_TIME_RANGES,
+  isEmailTimeRange,
   pivotOrderKey,
   pivotOrderLabel,
+  type EmailTimeRange,
   type PivotFacet,
   type PivotNode,
 } from '@web/types/facets';
@@ -33,10 +38,26 @@ import {
  */
 
 /** One level at a time. Folders are nested by their parent's facet key. */
+const TOP_FOLDER_LIMIT = 10;
+
 function childrenOf(nodes: PivotNode[], parentFacetKey: string | null): PivotNode[] {
   return nodes
     .filter((node) => node.parentFacetKey === parentFacetKey)
-    .sort((left, right) => right.subtreeMessageCount - left.subtreeMessageCount);
+    .sort(
+      (left, right) =>
+        (right.latestReceivedAt ?? '').localeCompare(left.latestReceivedAt ?? '') ||
+        right.subtreeMessageCount - left.subtreeMessageCount ||
+        left.fullPath.localeCompare(right.fullPath),
+    );
+}
+
+function readStoredTimeRange(): EmailTimeRange {
+  try {
+    const stored = window.localStorage.getItem('mailmind_time_range');
+    return isEmailTimeRange(stored) ? stored : DEFAULT_EMAIL_TIME_RANGE;
+  } catch {
+    return DEFAULT_EMAIL_TIME_RANGE;
+  }
 }
 
 /** The path back to the top, built by walking parent keys. */
@@ -68,6 +89,9 @@ export function SortedPage() {
   const [params, setParams] = useSearchParams();
   const facetKey = params.get('folder');
   const [search, setSearch] = useState('');
+  const [storedTimeRange, setStoredTimeRange] = useState<EmailTimeRange>(readStoredTimeRange);
+  const rangeParam = params.get('range');
+  const timeRange: EmailTimeRange = isEmailTimeRange(rangeParam) ? rangeParam : storedTimeRange;
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.pivotSettings,
@@ -86,8 +110,8 @@ export function SortedPage() {
 
   const minMessages = settingsQuery.data?.minMessages;
   const viewQuery = useQuery({
-    queryKey: [...queryKeys.pivotView(order), minMessages ?? null],
-    queryFn: () => api.getPivotView(order, minMessages),
+    queryKey: [...queryKeys.pivotView(order, timeRange), minMessages ?? null],
+    queryFn: () => api.getPivotView(order, minMessages, timeRange),
     /*
      * The ordering can come from the URL, so it is known before the settings are. Waiting for them
      * anyway keeps the floor out of the first request — otherwise a shared link fetches the tree
@@ -118,7 +142,7 @@ export function SortedPage() {
   // name should not require retracing the path you filed it under.
   const visible = useMemo(() => {
     const level = childrenOf(nodes, current?.facetKey ?? null);
-    if (!term) return level;
+    if (!term) return level.slice(0, TOP_FOLDER_LIMIT);
     return nodes
       .filter((node) => node.leafName.toLowerCase().includes(term))
       .sort((left, right) => left.fullPath.localeCompare(right.fullPath));
@@ -140,6 +164,20 @@ export function SortedPage() {
   const switchOrder = (next: PivotFacet[]) => {
     setSearch('');
     setParams({ order: pivotOrderKey(next) }, { replace: false });
+  };
+
+  const switchTimeRange = (next: EmailTimeRange) => {
+    setSearch('');
+    setStoredTimeRange(next);
+    try {
+      window.localStorage.setItem('mailmind_time_range', next);
+    } catch {
+      // A blocked storage area should not prevent changing the current view.
+    }
+    const nextParams = new URLSearchParams(params);
+    nextParams.set('range', next);
+    nextParams.delete('folder');
+    setParams(nextParams, { replace: false });
   };
 
   // Whatever is saved belongs among the choices even when it is not one of the presets.
@@ -167,6 +205,28 @@ export function SortedPage() {
           />
         </label>
       </header>
+
+      <div className="sorted__filters">
+        <label className="time-range">
+          <span>Show mail from</span>
+          <select
+            aria-label="Show mail from"
+            value={timeRange}
+            onChange={(event) => {
+              if (isEmailTimeRange(event.target.value)) switchTimeRange(event.target.value);
+            }}
+          >
+            {EMAIL_TIME_RANGES.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {EMAIL_TIME_RANGE_LABELS[candidate]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="sorted__scope">
+          Showing the {timeRange === 'all' ? 'full' : 'most recent'} matching mailbox
+        </span>
+      </div>
 
       {/* Every arrangement of the same mail, side by side. None of them is the real one. */}
       <nav className="ordering" aria-label="Folder arrangement">
@@ -300,7 +360,11 @@ export function SortedPage() {
       ) : null}
 
       {current && !term ? (
-        <FolderMessages folder={current} connectedEmail={connectionQuery.data?.email ?? null} />
+        <FolderMessages
+          folder={current}
+          connectedEmail={connectionQuery.data?.email ?? null}
+          range={timeRange}
+        />
       ) : null}
     </section>
   );
@@ -309,13 +373,15 @@ export function SortedPage() {
 function FolderMessages({
   folder,
   connectedEmail,
+  range,
 }: {
   folder: PivotNode;
   connectedEmail: string | null;
+  range: EmailTimeRange;
 }) {
   const messagesQuery = useQuery({
-    queryKey: queryKeys.facetMessages(folder.facetKey),
-    queryFn: () => api.getFacetMessages(folder.facetKey),
+    queryKey: queryKeys.facetMessages(folder.facetKey, range),
+    queryFn: () => api.getFacetMessages(folder.facetKey, { range }),
   });
 
   if (messagesQuery.isPending) return <LoadingState label="Loading mail" />;

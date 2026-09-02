@@ -16,6 +16,7 @@ import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
 import { emailIdentity } from '@api/features/label-discovery/label-normalization.js';
 import { stableSubjectPhrase } from '@api/features/label-discovery/routing-rules.js';
 import { LABEL_ROOT } from '@api/features/label-discovery/taxonomy-planner.js';
+import { facetVocabularyRepository } from '@api/features/label-discovery/facet-vocabulary.repository.js';
 import { automationGmailService, type AutomationGmailService } from './automation-gmail.service.js';
 import {
   facetClassificationService,
@@ -211,6 +212,14 @@ export class AutomationService {
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
+    const vocabulary = await facetVocabularyRepository.approved(accountId);
+    if (vocabulary.domain.length === 0 || vocabulary.intent.length === 0) {
+      throw new AppError(
+        'FACET_VOCABULARY_NOT_APPROVED',
+        'Propose and approve a facet vocabulary for this mailbox before automation can run.',
+        409,
+      );
+    }
     /*
      * "There is somewhere to file into" is a precondition of filing, and only of filing. With the
      * Gmail export off a run classifies and stops, folders are computed from `message_facets` by
@@ -286,7 +295,7 @@ export class AutomationService {
     return {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
-      enabled: (settings?.enabled ?? env.AUTOMATION_ENABLED) && Boolean(env.GEMINI_API_KEY),
+      enabled: env.AUTOMATION_ENABLED && (settings?.enabled ?? true) && Boolean(env.GEMINI_API_KEY),
       /*
        * WHY it is off, not just that it is. Three different things switch automation off — the
        * deployment flag, this account's own setting, and a missing Gemini key — and a screen that
@@ -528,6 +537,7 @@ export class AutomationService {
           {
             OR: [
               { automation_state: null },
+              { automation_state: { is: { next_run_at: null, retry_at: null } } },
               { automation_state: { is: { next_run_at: { lte: now } } } },
               { automation_state: { is: { retry_at: { lte: now } } } },
             ],

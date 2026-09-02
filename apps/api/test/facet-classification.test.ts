@@ -302,6 +302,96 @@ describe('the facet classification pass', () => {
     });
   });
 
+  it('does not let a retired rule value bypass the approved vocabulary', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'A weekly update', sender: 'news@example.com' }),
+    ]);
+    mocks.patternFindMany.mockResolvedValue([
+      facetRule({ id: 'old', kind: 'SENDER_DOMAIN', value: 'example.com', domain: 'retired-area' }),
+      facetRule({
+        id: 'intent',
+        kind: 'SUBJECT_CONTAINS',
+        value: 'weekly update',
+        intent: 'newsletter',
+      }),
+    ]);
+    await service([
+      {
+        key: 'm1',
+        domain: 'development',
+        domainConfidence: 0.8,
+        intent: 'newsletter',
+        intentConfidence: 0.9,
+      },
+    ]).classifyAccount(ACCOUNT);
+
+    expect(mocks.classify).toHaveBeenCalledTimes(1);
+    expect(mocks.facetUpsert.mock.calls[0]![0].create).toMatchObject({
+      domain: 'development',
+      intent: 'newsletter',
+      source: 'MODEL',
+    });
+  });
+
+  it('evaluates rules against this mailbox vocabulary, not a global vocabulary', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'Custom update', sender: 'alerts@example.com' }),
+    ]);
+    mocks.patternFindMany.mockResolvedValue([
+      facetRule({
+        id: 'domain',
+        kind: 'SENDER_DOMAIN',
+        value: 'example.com',
+        domain: 'custom-area',
+      }),
+      facetRule({
+        id: 'intent',
+        kind: 'SUBJECT_CONTAINS',
+        value: 'custom update',
+        intent: 'custom-intent',
+      }),
+    ]);
+    const customVocabulary = {
+      domain: [{ name: 'custom-area', definition: 'A mailbox-specific area of life.' }],
+      intent: [{ name: 'custom-intent', definition: 'A mailbox-specific message intent.' }],
+    };
+    const counters = await new FacetClassificationService({ classify: mocks.classify }, {
+      requireApproved: async () => customVocabulary,
+    } as never).classifyAccount(ACCOUNT);
+
+    expect(counters.ruleDecided).toBe(1);
+    expect(mocks.classify).not.toHaveBeenCalled();
+    expect(mocks.facetUpsert.mock.calls[0]![0].create).toMatchObject({
+      domain: 'custom-area',
+      intent: 'custom-intent',
+    });
+  });
+
+  it('still sends a message with no sender address to the model', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      {
+        ...message({ id: 'a', subject: 'Course reminder', sender: 'placeholder@example.com' }),
+        sender_email: null,
+      },
+    ]);
+    await service([
+      {
+        key: 'm1',
+        domain: 'education',
+        domainConfidence: 0.9,
+        intent: 'webinar-event',
+        intentConfidence: 0.9,
+      },
+    ]).classifyAccount(ACCOUNT);
+
+    expect(mocks.classify).toHaveBeenCalledTimes(1);
+    expect(mocks.facetUpsert.mock.calls[0]![0].create).toMatchObject({
+      entity: null,
+      domain: 'education',
+      intent: 'webinar-event',
+    });
+  });
+
   it('counts a subject rule firing on an entity it was not learned on', async () => {
     mocks.messageFindMany.mockResolvedValue([
       message({

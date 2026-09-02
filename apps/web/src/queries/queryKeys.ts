@@ -10,8 +10,10 @@ export const queryKeys = {
   folderMessages: (labelId: string) => ['labels', labelId, 'messages'] as const,
   pivotSettings: ['facets', 'pivot'] as const,
   pivotPlan: ['facets', 'pivot', 'plan'] as const,
-  pivotView: (order: string[]) => ['facets', 'pivot', 'view', order.join(',')] as const,
-  facetMessages: (facetKey: string) => ['facets', 'messages', facetKey] as const,
+  pivotView: (order: string[], range = '24h') =>
+    ['facets', 'pivot', 'view', order.join(','), range] as const,
+  facetMessages: (facetKey: string, range = '24h') =>
+    ['facets', 'messages', facetKey, range] as const,
   facetVocabulary: ['facets', 'vocabulary'] as const,
   facetSearch: (
     query: string,

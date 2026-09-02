@@ -307,7 +307,7 @@ describe('applying the canonical pivot', () => {
 
 describe('the orderings that are never materialised', () => {
   it('answers a different ordering without writing or calling Gmail', async () => {
-    const view = await service().view(ACCOUNT, ['domain', 'intent', 'entity']);
+    const view = await service().view(ACCOUNT, ['domain', 'intent', 'entity'], undefined, 'all');
 
     expect(view.order).toEqual(['domain', 'intent', 'entity']);
     expect(view.nodes.length).toBeGreaterThan(0);
@@ -319,8 +319,13 @@ describe('the orderings that are never materialised', () => {
 
   // The same mail, reordered. Nothing about any message is recomputed to answer this.
   it('arranges the same mail two ways from one set of facet rows', async () => {
-    const entityFirst = await service().view(ACCOUNT, ['entity', 'intent']);
-    const domainFirst = await service().view(ACCOUNT, ['domain', 'intent', 'entity']);
+    const entityFirst = await service().view(ACCOUNT, ['entity', 'intent'], undefined, 'all');
+    const domainFirst = await service().view(
+      ACCOUNT,
+      ['domain', 'intent', 'entity'],
+      undefined,
+      'all',
+    );
 
     expect(entityFirst.nodes.find((node) => node.depth === 1)?.leafName).toBe('Netflix');
     expect(domainFirst.nodes.find((node) => node.depth === 1)?.leafName).toBe('Entertainment');
