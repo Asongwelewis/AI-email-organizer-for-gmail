@@ -15,8 +15,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       <header className="public-header">
         <BrandMark />
         <nav aria-label="Public navigation">
-          <a href="#principles">Principles</a>
-          <a href="#how-it-works">How it works</a>
+          <Link to="/about">About</Link>
+          <Link to="/faq">FAQ</Link>
+          <Link to="/security">Security</Link>
           <ThemeToggle variant="compact" />
           <Link className="header-login" to="/login">
             Sign in <ArrowUpRight aria-hidden="true" />
@@ -28,6 +29,10 @@ export function PublicLayout({ children }: { children: ReactNode }) {
         <BrandMark />
         <p>Thoughtful inbox organization. You stay in control.</p>
         <nav className="public-footer__links" aria-label="Footer">
+          <Link to="/about">About</Link>
+          <Link to="/faq">FAQ</Link>
+          <Link to="/security">Security</Link>
+          <Link to="/cookies">Cookies</Link>
           <Link to="/feedback" state={{ from: pathname }}>
             Send feedback
           </Link>
