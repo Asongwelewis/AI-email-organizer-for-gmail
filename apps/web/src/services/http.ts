@@ -20,6 +20,7 @@ import type {
   SearchFilters,
   SearchResults,
 } from '@web/types/facets';
+import type { EmailTimeRange } from '@web/types/facets';
 import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
 import type {
   ApprovePlanInput,
@@ -255,11 +256,16 @@ export const api = {
    * Any ordering at all, materialised or not — the same facet rows arranged differently, with no
    * Gmail call and no model call behind it.
    */
-  async getPivotView(order: PivotFacet[], minMessages?: number): Promise<PivotView> {
+  async getPivotView(
+    order: PivotFacet[],
+    minMessages?: number,
+    range: EmailTimeRange = '24h',
+  ): Promise<PivotView> {
     const response = await http.get<PivotView>('/facets/pivot/view', {
       params: {
         order: order.join(','),
         ...(minMessages === undefined ? {} : { minMessages }),
+        range,
       },
     });
     return response.data;
@@ -271,13 +277,14 @@ export const api = {
    */
   async getFacetMessages(
     facetKey: string,
-    options: { limit?: number; cursor?: string } = {},
+    options: { limit?: number; cursor?: string; range?: EmailTimeRange } = {},
   ): Promise<FolderMessages> {
     const response = await http.get<FolderMessages>('/facets/messages', {
       params: {
         facetKey,
         ...(options.limit === undefined ? {} : { limit: options.limit }),
         ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+        range: options.range ?? '24h',
       },
     });
     return response.data;

@@ -22,6 +22,7 @@ import {
   type PivotService,
 } from '@api/features/labels/pivot.service.js';
 import type { PivotFacet, PivotResult } from '@api/features/label-discovery/pivot.js';
+import { DEFAULT_EMAIL_TIME_RANGE, type EmailTimeRange } from '@mailmind/shared';
 import {
   messageSearchService,
   type FacetVocabulary,
@@ -151,9 +152,14 @@ export class FacetsService {
    * arranged the other way", and it costs no Gmail call and no model call — the same facet rows,
    * pivoted differently.
    */
-  async view(userId: string, order?: PivotFacet[], minMessages?: number): Promise<PivotResult> {
+  async view(
+    userId: string,
+    order?: PivotFacet[],
+    minMessages?: number,
+    range: EmailTimeRange = DEFAULT_EMAIL_TIME_RANGE,
+  ): Promise<PivotResult> {
     const account = await this.accounts.activeAccountForUser(userId);
-    return this.pivots.view(account.id, order, minMessages);
+    return this.pivots.view(account.id, order, minMessages, range);
   }
 
   /**
@@ -171,10 +177,13 @@ export class FacetsService {
   async folderMessages(
     userId: string,
     facetKey: string,
-    options: { limit?: number; cursor?: string } = {},
+    options: { limit?: number; cursor?: string; range?: EmailTimeRange } = {},
   ) {
     const account = await this.accounts.activeAccountForUser(userId);
-    return this.pivots.folderMessages(account.id, facetKey, options);
+    return this.pivots.folderMessages(account.id, facetKey, {
+      ...options,
+      range: options.range ?? DEFAULT_EMAIL_TIME_RANGE,
+    });
   }
 
   async apply(userId: string): Promise<PivotApplyResult> {

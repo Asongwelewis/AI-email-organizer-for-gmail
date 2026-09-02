@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { AppError } from '@api/errors/AppError.js';
 import { PIVOT_FACETS, type PivotFacet } from '@api/features/label-discovery/pivot.js';
+import { DEFAULT_EMAIL_TIME_RANGE, EMAIL_TIME_RANGES } from '@mailmind/shared';
 import { facetsService } from './facets.service.js';
 import { vocabularyService } from './vocabulary.service.js';
 
@@ -33,6 +34,7 @@ const settingsBody = z
 /** `?order=entity,intent&minMessages=5` — a query string, so the ordering is shareable as a link. */
 const viewQuery = z
   .object({
+    range: z.enum(EMAIL_TIME_RANGES).default(DEFAULT_EMAIL_TIME_RANGE),
     order: z
       .string()
       .transform((value) => value.split(',').map((part) => part.trim()))
@@ -49,6 +51,7 @@ const viewQuery = z
  */
 const messagesQuery = z
   .object({
+    range: z.enum(EMAIL_TIME_RANGES).default(DEFAULT_EMAIL_TIME_RANGE),
     facetKey: z
       .string()
       .min(3)
@@ -171,6 +174,7 @@ export class FacetsController {
         request.auth!.user.id,
         query.order as PivotFacet[] | undefined,
         query.minMessages,
+        query.range,
       ),
     );
   }
@@ -183,6 +187,7 @@ export class FacetsController {
       await facetsService.folderMessages(request.auth!.user.id, query.facetKey, {
         ...(query.limit === undefined ? {} : { limit: query.limit }),
         ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+        range: query.range,
       }),
     );
   }

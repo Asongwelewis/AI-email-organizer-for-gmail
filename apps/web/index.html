@@ -30,6 +30,13 @@
             stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'dark';
           if (choice === 'system') document.documentElement.removeAttribute('data-theme');
           else document.documentElement.setAttribute('data-theme', choice);
+          var resolved =
+            choice === 'dark' ||
+            (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+              ? '#1c1c1e'
+              : '#ececee';
+          var themeColor = document.querySelector('meta[name="theme-color"]:not([media])');
+          if (themeColor) themeColor.setAttribute('content', resolved);
         } catch (error) {
           /* Storage can throw outright in a private window. Dark is the default either way. */
           document.documentElement.setAttribute('data-theme', 'dark');

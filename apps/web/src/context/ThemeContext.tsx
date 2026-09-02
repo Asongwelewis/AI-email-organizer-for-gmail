@@ -35,7 +35,11 @@ function writeStoredPreference(preference: ThemePreference): void {
 }
 
 function systemPrefersDark(): boolean {
-  return window.matchMedia?.(DARK_QUERY).matches ?? false;
+  try {
+    return window.matchMedia?.(DARK_QUERY).matches ?? false;
+  } catch {
+    return false;
+  }
 }
 
 function resolve(preference: ThemePreference): ResolvedTheme {
@@ -71,12 +75,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Only meaningful while the preference is `system`, but the listener is kept attached either
   // way: switching back to `system` must not need a reload to start following the OS again.
   useEffect(() => {
-    const query = window.matchMedia?.(DARK_QUERY);
+    let query: MediaQueryList | undefined;
+    try {
+      query = window.matchMedia?.(DARK_QUERY);
+    } catch {
+      return;
+    }
     if (!query) return;
     const onChange = (event: MediaQueryListEvent) => setSystemIsDark(event.matches);
-    query.addEventListener('change', onChange);
+    if (typeof query.addEventListener === 'function') query.addEventListener('change', onChange);
+    else query.addListener(onChange);
     setSystemIsDark(query.matches);
-    return () => query.removeEventListener('change', onChange);
+    return () => {
+      if (typeof query.removeEventListener === 'function')
+        query.removeEventListener('change', onChange);
+      else query.removeListener(onChange);
+    };
   }, []);
 
   useEffect(() => {

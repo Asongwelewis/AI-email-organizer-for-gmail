@@ -56,6 +56,7 @@ const TREE: PivotNode[] = [
 describe('SortedPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    window.localStorage.clear();
     mocks.getPivotSettings.mockResolvedValue({
       canonicalPivot: ['domain', 'intent'],
       minMessages: 5,
@@ -81,6 +82,26 @@ describe('SortedPage', () => {
     expect(screen.getByText('Finance')).toBeInTheDocument();
     // A child is reached by opening its parent, not by being listed beside it.
     expect(screen.queryByText('Job match')).not.toBeInTheDocument();
+  });
+
+  it('caps the top-level folder grid at the ten most active folders', async () => {
+    mocks.getPivotView.mockResolvedValue({
+      order: ['domain', 'intent'],
+      nodes: Array.from({ length: 12 }, (_, index) =>
+        node({
+          facetKey: `domain=folder-${index}`,
+          leafName: `Folder ${index}`,
+          subtreeMessageCount: 12 - index,
+        }),
+      ),
+      unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
+      collapsed: 0,
+    });
+    renderScreen(<SortedPage />, '/sorted');
+
+    await screen.findByText('Folder 0');
+    expect(document.querySelectorAll('.folder-tile')).toHaveLength(10);
+    expect(screen.queryByText('Folder 10')).not.toBeInTheDocument();
   });
 
   /**
@@ -112,7 +133,9 @@ describe('SortedPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Career/ }));
 
-    await waitFor(() => expect(mocks.getFacetMessages).toHaveBeenCalledWith('domain=career'));
+    await waitFor(() =>
+      expect(mocks.getFacetMessages).toHaveBeenCalledWith('domain=career', { range: '24h' }),
+    );
     const link = await screen.findByRole('link', { name: /Your application was received/ });
     expect(link).toHaveAttribute('href', expect.stringContaining('#all/18f0abc'));
     expect(link).toHaveAttribute('href', expect.stringContaining('authuser=ada%40gmail.com'));
@@ -188,7 +211,9 @@ describe('SortedPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Brand › What it wants/ }));
 
-    await waitFor(() => expect(mocks.getPivotView).toHaveBeenCalledWith(['entity', 'intent'], 5));
+    await waitFor(() =>
+      expect(mocks.getPivotView).toHaveBeenCalledWith(['entity', 'intent'], 5, '24h'),
+    );
     // Nothing was applied and nothing was saved: an arrangement is a question, not a change.
     expect(mocks.setPivotSettings).not.toHaveBeenCalled();
   });
@@ -197,8 +222,22 @@ describe('SortedPage', () => {
   it('opens on the ordering the link names rather than the saved one', async () => {
     renderScreen(<SortedPage />, '/sorted?order=intent,entity');
 
-    await waitFor(() => expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5));
-    expect(mocks.getPivotView).not.toHaveBeenCalledWith(['domain', 'intent'], 5);
+    await waitFor(() =>
+      expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5, '24h'),
+    );
+    expect(mocks.getPivotView).not.toHaveBeenCalledWith(['domain', 'intent'], 5, '24h');
+  });
+
+  it('changes the default recent-mail window and refetches folders', async () => {
+    renderScreen(<SortedPage />, '/sorted');
+    await screen.findByText('Career');
+
+    await userEvent.selectOptions(screen.getByLabelText('Show mail from'), '7d');
+
+    await waitFor(() =>
+      expect(mocks.getPivotView).toHaveBeenCalledWith(['domain', 'intent'], 5, '7d'),
+    );
+    expect(window.localStorage.getItem('mailmind_time_range')).toBe('7d');
   });
 
   // `facet_pivot_settings` stays the remembered default — which arrangement this screen opens on.

@@ -160,6 +160,37 @@ describe('messages missing a facet', () => {
   });
 });
 
+describe('recent-mail filtering', () => {
+  it('keeps only messages in the selected window and exposes the newest timestamp', () => {
+    const now = new Date('2026-08-25T12:00:00.000Z');
+    const result = buildPivot(
+      [
+        {
+          id: 'old',
+          entity: 'netflix',
+          domain: 'entertainment',
+          intent: 'promotional',
+          receivedAt: new Date('2026-08-23T11:59:59.000Z'),
+        },
+        {
+          id: 'new',
+          entity: 'netflix',
+          domain: 'entertainment',
+          intent: 'promotional',
+          receivedAt: new Date('2026-08-25T11:00:00.000Z'),
+        },
+      ],
+      DEFAULT_PIVOT,
+      { minMessages: 1, since: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+    );
+
+    expect(result.nodes.find((node) => node.path === 'Netflix')?.subtreeMessageCount).toBe(1);
+    expect(result.nodes.find((node) => node.path === 'Netflix')?.latestReceivedAt).toBe(
+      '2026-08-25T11:00:00.000Z',
+    );
+  });
+});
+
 describe('resolving one message to its folder', () => {
   const result = buildPivot(mailbox, DEFAULT_PIVOT, { minMessages: 5 });
 

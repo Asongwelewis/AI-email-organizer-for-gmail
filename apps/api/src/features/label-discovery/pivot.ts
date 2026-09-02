@@ -37,6 +37,7 @@ export interface FacetedMessage {
   entity: string | null;
   domain: string | null;
   intent: string | null;
+  receivedAt?: Date | null;
 }
 
 export interface PivotNode {
@@ -55,6 +56,7 @@ export interface PivotNode {
   /** Messages in this folder and everything beneath it. */
   subtreeMessageCount: number;
   isLeaf: boolean;
+  latestReceivedAt: string | null;
 }
 
 export interface PivotResult {
@@ -111,16 +113,25 @@ function keyOf(order: PivotFacet[], values: string[]): string {
 export function buildPivot(
   messages: FacetedMessage[],
   order: PivotFacet[],
-  options: { minMessages: number },
+  options: { minMessages: number; since?: Date | null },
 ): PivotResult {
   const trimmed = order.slice(0, MAX_PIVOT_DEPTH);
   const minMessages = Math.max(1, options.minMessages);
+  const filteredMessages = options.since
+    ? messages.filter(
+        (message) =>
+          message.receivedAt !== null &&
+          message.receivedAt !== undefined &&
+          message.receivedAt >= options.since!,
+      )
+    : messages;
 
   // The deepest prefix of the ordering each message has values for. A message with no intent still
   // has an entity, so it belongs one level up rather than nowhere.
   const tuples: string[][] = [];
+  const latestTupleDates = new Map<string, Date>();
   let noFacetValue = 0;
-  for (const message of messages) {
+  for (const message of filteredMessages) {
     const values: string[] = [];
     for (const facet of trimmed) {
       const value = facetValue(message, facet);
@@ -134,6 +145,12 @@ export function buildPivot(
       continue;
     }
     tuples.push(values);
+    if (message.receivedAt) {
+      const tupleKey = values.join('\u0000');
+      const previous = latestTupleDates.get(tupleKey);
+      if (!previous || message.receivedAt > previous)
+        latestTupleDates.set(tupleKey, message.receivedAt);
+    }
   }
 
   // Cumulative count for every prefix: a folder's size is its whole subtree, not just its own mail.
@@ -149,6 +166,7 @@ export function buildPivot(
   // Place each message at the deepest surviving prefix of its own tuple. A prefix that does not
   // survive collapses into its parent, and the placement walk is what performs that collapse.
   const ownCounts = new Map<string, number>();
+  const latestDates = new Map<string, Date>();
   let belowThreshold = 0;
   for (const values of tuples) {
     let placed: string | null = null;
@@ -162,6 +180,14 @@ export function buildPivot(
       continue;
     }
     ownCounts.set(placed, (ownCounts.get(placed) ?? 0) + 1);
+    const receivedAt = latestTupleDates.get(values.join('\u0000'));
+    if (receivedAt) {
+      for (let depth = 1; depth <= values.length; depth += 1) {
+        const key = keyOf(trimmed, values.slice(0, depth));
+        const previous = latestDates.get(key);
+        if (!previous || receivedAt > previous) latestDates.set(key, receivedAt);
+      }
+    }
   }
 
   const nodes = new Map<string, PivotNode>();
@@ -191,6 +217,7 @@ export function buildPivot(
       messageCount: ownCounts.get(key) ?? 0,
       subtreeMessageCount: subtreeCounts.get(key) ?? 0,
       isLeaf: true,
+      latestReceivedAt: latestDates.get(key)?.toISOString() ?? null,
     });
   }
   for (const node of nodes.values()) {

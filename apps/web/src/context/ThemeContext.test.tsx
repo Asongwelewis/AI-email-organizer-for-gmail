@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -86,6 +86,17 @@ describe('ThemeProvider', () => {
     renderTheme();
     await userEvent.click(screen.getByRole('button', { name: 'Auto' }));
     expect(probe()).toBe('system/light');
+  });
+
+  it('follows an OS theme change while Auto is selected', async () => {
+    const listeners = mockSystemPrefersDark(true);
+    renderTheme();
+    await userEvent.click(screen.getByRole('button', { name: 'Auto' }));
+
+    expect(probe()).toBe('system/dark');
+    listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));
+
+    await waitFor(() => expect(probe()).toBe('system/light'));
   });
 
   it('remembers the choice, so a reload does not undo it', async () => {

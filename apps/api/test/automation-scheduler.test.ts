@@ -312,10 +312,13 @@ describe('which accounts a tick picks up', () => {
     // Due by the daily schedule, or due because a stopped run asked to be retried sooner. A
     // never-run account has neither and is due immediately.
     const dueClauses = where.AND[1].OR;
-    expect(dueClauses).toHaveLength(3);
+    expect(dueClauses).toHaveLength(4);
     expect(dueClauses[0]).toEqual({ automation_state: null });
-    expect(dueClauses[1].automation_state.is.next_run_at.lte).toBeInstanceOf(Date);
-    expect(dueClauses[2].automation_state.is.retry_at.lte).toBeInstanceOf(Date);
+    expect(dueClauses[1]).toEqual({
+      automation_state: { is: { next_run_at: null, retry_at: null } },
+    });
+    expect(dueClauses[2].automation_state.is.next_run_at.lte).toBeInstanceOf(Date);
+    expect(dueClauses[3].automation_state.is.retry_at.lte).toBeInstanceOf(Date);
   });
 });
 
@@ -632,13 +635,13 @@ describe('an unattended run and how it ends', () => {
       // One tick before the backoff elapses: the account is still being left alone.
       vi.setSystemTime(new Date(retryAt.getTime() - 60_000));
       await automation.eligibleScheduledAccounts();
-      const tooEarly = mocks.accountFindMany.mock.calls.at(-1)![0].where.AND[1].OR[2];
+      const tooEarly = mocks.accountFindMany.mock.calls.at(-1)![0].where.AND[1].OR[3];
       expect(tooEarly.automation_state.is.retry_at.lte.getTime()).toBeLessThan(retryAt.getTime());
 
       // The first tick after it: the bound has moved past the stamp, so the row comes back.
       vi.setSystemTime(new Date(retryAt.getTime() + 1));
       await automation.eligibleScheduledAccounts();
-      const dueNow = mocks.accountFindMany.mock.calls.at(-1)![0].where.AND[1].OR[2];
+      const dueNow = mocks.accountFindMany.mock.calls.at(-1)![0].where.AND[1].OR[3];
       expect(dueNow.automation_state.is.retry_at.lte.getTime()).toBeGreaterThan(retryAt.getTime());
     } finally {
       vi.useRealTimers();

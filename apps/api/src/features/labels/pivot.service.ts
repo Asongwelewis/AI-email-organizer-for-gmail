@@ -16,6 +16,11 @@ import {
   automationGmailService,
   type AutomationGmailService,
 } from '@api/features/automation/automation-gmail.service.js';
+import {
+  DEFAULT_EMAIL_TIME_RANGE,
+  emailTimeRangeSince,
+  type EmailTimeRange,
+} from '@mailmind/shared';
 
 /**
  * Materialises one facet ordering into folders, and computes every other ordering on read.
@@ -122,16 +127,33 @@ export class PivotService {
     };
   }
 
-  async facetedMessages(accountId: string): Promise<FacetedMessage[]> {
+  async facetedMessages(
+    accountId: string,
+    range: EmailTimeRange = 'all',
+  ): Promise<FacetedMessage[]> {
+    const since = emailTimeRangeSince(range);
     const rows = await prisma.message_facets.findMany({
-      where: { connected_google_account_id: accountId },
-      select: { gmail_message_id: true, entity: true, domain: true, intent: true },
+      where: {
+        connected_google_account_id: accountId,
+        message: {
+          deleted_at: null,
+          ...(since ? { internal_date: { gte: since } } : {}),
+        },
+      },
+      select: {
+        gmail_message_id: true,
+        entity: true,
+        domain: true,
+        intent: true,
+        message: { select: { internal_date: true } },
+      },
     });
     return rows.map((row) => ({
       id: row.gmail_message_id,
       entity: row.entity,
       domain: row.domain,
       intent: row.intent,
+      receivedAt: row.message?.internal_date ?? null,
     }));
   }
 
@@ -154,17 +176,25 @@ export class PivotService {
   async folderMessages(
     accountId: string,
     facetKey: string,
-    options: { limit?: number; cursor?: string } = {},
+    options: { limit?: number; cursor?: string; range?: EmailTimeRange } = {},
   ): Promise<{ messages: FolderMessage[]; nextCursor: string | null; total: number }> {
     const where = {
       connected_google_account_id: accountId,
       ...facetFilterFromKey(facetKey),
     };
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+    const since = emailTimeRangeSince(options.range ?? DEFAULT_EMAIL_TIME_RANGE);
+    const scopedWhere = {
+      ...where,
+      message: {
+        deleted_at: null,
+        ...(since ? { internal_date: { gte: since } } : {}),
+      },
+    };
     const [total, rows] = await Promise.all([
-      prisma.message_facets.count({ where }),
+      prisma.message_facets.count({ where: scopedWhere }),
       prisma.message_facets.findMany({
-        where,
+        where: scopedWhere,
         // Newest first, and by id after that so the cursor never straddles two messages that
         // arrived in the same second.
         orderBy: [{ message: { internal_date: 'desc' } }, { gmail_message_id: 'desc' }],
@@ -219,10 +249,12 @@ export class PivotService {
     accountId: string,
     order: PivotFacet[] = ALTERNATE_PIVOT,
     minMessages?: number,
+    range: EmailTimeRange = DEFAULT_EMAIL_TIME_RANGE,
   ): Promise<PivotResult> {
     const settings = await this.settings(accountId);
     return buildPivot(await this.facetedMessages(accountId), order, {
       minMessages: minMessages ?? settings.minMessages,
+      since: emailTimeRangeSince(range),
     });
   }
 

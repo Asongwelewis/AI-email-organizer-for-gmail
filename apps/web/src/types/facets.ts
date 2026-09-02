@@ -3,6 +3,13 @@
  * the sending brand, derived in code; `domain` and `intent` come from two closed vocabularies.
  */
 export type PivotFacet = 'entity' | 'domain' | 'intent';
+export {
+  DEFAULT_EMAIL_TIME_RANGE,
+  EMAIL_TIME_RANGE_LABELS,
+  EMAIL_TIME_RANGES,
+  isEmailTimeRange,
+} from '@mailmind/shared';
+export type { EmailTimeRange } from '@mailmind/shared';
 
 export const PIVOT_FACETS: readonly PivotFacet[] = ['entity', 'domain', 'intent'];
 
@@ -58,6 +65,7 @@ export interface PivotNode {
   messageCount: number;
   subtreeMessageCount: number;
   isLeaf: boolean;
+  latestReceivedAt?: string | null;
 }
 
 export interface PivotView {
