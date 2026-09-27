@@ -1,0 +1,57 @@
+name: Wake API for the nightly run
+
+# The daily automation is a timer inside the API process, and the API runs on Render's free plan,
+# which puts the process to sleep after 15 minutes without an inbound request. Asleep, the timer
+# does not tick, nothing touches the database, and Supabase pauses a free project after about a
+# week of that. On boot the API treats an unreachable database as fatal, so a paused project
+# became a month-long crash loop in September 2026 — see the startup check in apps/api/src/server.ts.
+#
+# This keeps the process awake through the nightly window instead of all day. The run is due at
+# AUTOMATION_SCHEDULE_HOUR_UTC (02:00 by default); the first request wakes the API, whose boot tick
+# picks the due account up at once, and the pings every ten minutes after it hold the instance up
+# while the run and any short backoff retries finish. Two hours a day is about 60 of the 750 free
+# instance hours a workspace shares, where staying awake all day would spend nearly all of them.
+#
+# `/ready` rather than `/health`: it runs `select 1`, so every ping is database activity too, and
+# Supabase stays unpaused even on a night the run itself has nothing to do.
+#
+# If AUTOMATION_SCHEDULE_HOUR_UTC changes, move the hours below with it.
+
+on:
+  schedule:
+    - cron: '*/10 2-3 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: wake-api
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Set a repository variable to point this elsewhere, e.g. the custom API domain.
+      API_URL: ${{ vars.MAILMIND_API_URL || 'https://ai-email-organizer-for-gmail.onrender.com' }}
+    steps:
+      - name: Wake the API and check its database
+        shell: bash
+        run: |
+          # A cold start takes 30-60 s before the process answers, and Render may drop the first
+          # connection while it boots, so retry rather than fail on the first attempt.
+          for attempt in 1 2 3 4 5; do
+            status=$(curl --silent --output response.json --write-out '%{http_code}' \
+              --max-time 90 "$API_URL/ready" || true)
+            if [ "$status" = "200" ]; then
+              cat response.json; echo
+              exit 0
+            fi
+            echo "attempt $attempt: /ready answered ${status:-no response}"
+            sleep 20
+          done
+          # 503 means the API is up and the database is not: the failure this workflow exists to
+          # prevent. Fail loudly so the run shows red rather than waiting for a user to notice.
+          cat response.json 2>/dev/null || true
+          exit 1
