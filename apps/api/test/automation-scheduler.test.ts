@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     runScheduledAccount: vi.fn(),
     captureApiException: vi.fn(),
     loggerError: vi.fn(),
+    loggerWarn: vi.fn(),
     auditRecord: vi.fn(),
     incrementalSync: vi.fn(),
     initialSync: vi.fn(),
@@ -62,7 +63,7 @@ vi.mock('../src/observability/sentry.js', () => ({
   captureApiException: mocks.captureApiException,
 }));
 vi.mock('../src/config/logger.js', () => ({
-  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
+  logger: { error: mocks.loggerError, warn: mocks.loggerWarn, info: vi.fn() },
   safeErrorDetails: () => ({ errorType: 'Error' }),
 }));
 vi.mock('../src/features/activity/activity.service.js', async () => {
@@ -200,6 +201,30 @@ describe('automation scheduler tick', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mocks.eligibleScheduledAccounts).not.toHaveBeenCalled();
+  });
+
+  // Skipping is right; skipping silently is how production went a month without a run. The warning
+  // is the only trace an idle scheduler leaves, and it has to be there once per boot, not per tick.
+  it('says at boot that it is idle when there is no Gemini key', async () => {
+    delete process.env['GEMINI_API_KEY'];
+    vi.useFakeTimers();
+    const { startAutomationScheduler, pollIntervalMs } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(pollIntervalMs * 3);
+
+    expect(mocks.loggerWarn).toHaveBeenCalledTimes(1);
+    expect(mocks.loggerWarn.mock.calls[0]?.[0]).toContain('GEMINI_API_KEY');
+  });
+
+  it('does not warn when it has what it needs to run', async () => {
+    vi.useFakeTimers();
+    const { startAutomationScheduler } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.loggerWarn).not.toHaveBeenCalled();
   });
 
   it('catches up immediately on boot and then polls on the configured interval', async () => {

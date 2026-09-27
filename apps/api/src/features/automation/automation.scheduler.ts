@@ -41,6 +41,15 @@ export function startAutomationScheduler(): void {
     { intervalMinutes: env.AUTOMATION_POLL_INTERVAL_MINUTES },
     'daily automation scheduler started',
   );
+  // Every tick returns early without a key, so the timer runs and nothing happens. From 29 Aug to
+  // 27 Sep 2026 that was the whole story of production: a month of due runs skipped with nothing
+  // in the logs to say so. Said once per boot rather than per tick, because the tick is every 15
+  // minutes and the fix is an operator setting, not something a retry will change.
+  if (!env.GEMINI_API_KEY) {
+    logger.warn(
+      'automation scheduler is idle: GEMINI_API_KEY is not set, so no scheduled run will start',
+    );
+  }
 }
 
 export function stopAutomationScheduler(): void {
