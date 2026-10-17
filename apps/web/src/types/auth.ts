@@ -12,10 +12,11 @@ export interface AuthenticatedUser {
 
 export interface AuthMeResponse {
   user: AuthenticatedUser;
-}
-
-export interface SessionRefreshResponse {
-  user: Omit<AuthenticatedUser, 'gmailConnected'>;
+  /**
+   * When the session cookie stops working. The browser cannot read that off an HttpOnly cookie,
+   * and the app needs it to know when what it remembered about this session is no longer true.
+   */
+  sessionExpiresAt?: string;
 }
 
 export type GoogleConnectionState =

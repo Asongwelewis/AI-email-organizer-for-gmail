@@ -72,7 +72,8 @@ printing their values.
 
 Session lifetime and rate-limit controls:
 
-- `REFRESH_SESSION_TTL_DAYS`
+- `REFRESH_SESSION_TTL_DAYS` — idle window, default 30. Sliding: use pushes the expiry forward.
+- `SESSION_MAX_LIFETIME_DAYS` — hard ceiling from sign-in that use never extends, default 90.
 - `OAUTH_STATE_TTL_MINUTES`
 - `AUTH_RATE_LIMIT_WINDOW_MINUTES`
 - `AUTH_RATE_LIMIT_MAX_REQUESTS`
@@ -404,8 +405,16 @@ permits only requests without an Origin or requests from an allowlisted origin; 
 credentialed CORS is not used.
 
 The `mailmind_session` cookie is HttpOnly, has path `/`, uses the configured Secure, SameSite, and
-optional Domain attributes, and expires after `REFRESH_SESSION_TTL_DAYS`. Clearing the cookie uses
-the same attributes.
+optional Domain attributes. A session is sliding: every request through `requireSession` checks
+whether `expires_at` has fallen at least a day behind `now + REFRESH_SESSION_TTL_DAYS`, and if so
+extends the row (never past `created_at + SESSION_MAX_LIFETIME_DAYS`) and re-issues the same token
+with the new `Max-Age` in the same response. Rotation through `POST /api/auth/refresh` carries the
+original `created_at`, so it cannot reset the ceiling. Clearing the cookie uses the same attributes.
+
+Shared rate limiters each count under their own key prefix in `rate_limit_hits`. They previously
+shared one row per IP, so ordinary page loads spent the sign-in and feedback budgets. The reads
+every page load makes (`GET /api/auth/me`, `GET /api/integrations/google/status`) use the
+per-instance `sessionReadLimiter`, keeping a database write out of the request a person waits on.
 
 Production logs are JSON and redact authorization headers, cookies, OAuth codes/state, Google
 tokens, session tokens, passwords, database URLs, and the token-encryption key.
@@ -459,6 +468,20 @@ constraints, indexes, privileges, and forced RLS that Prisma schema syntax canno
 
 Use `prisma migrate deploy` for non-development migration application. Do not use
 `prisma migrate reset` against a shared or remote Supabase project.
+
+In production the API checks for pending migrations during boot (`MIGRATE_ON_START`, on by default
+when `NODE_ENV=production`): one query against `_prisma_migrations` over the connection it already
+opened, and `prisma migrate deploy` only when a shipped migration is missing or unfinished. A failed
+migration stops the boot. This replaces running the CLI in front of every start, which on the free
+plan meant every wake-up, and it holds whatever start command the live service is configured with.
+
+### Database connections
+
+- `DATABASE_CONNECTION_LIMIT` — Prisma pool size; wins over `connection_limit` in `DATABASE_URL`.
+  Default 5. It used to be 1, which queued page loads behind background runs.
+- `DATABASE_HEARTBEAT_SECONDS` — an idle `select 1` while the process is awake, default 240, `0`
+  to disable. Keeps the pooler from dropping the connection a person's next request would need.
+  It does not keep a sleeping instance awake; only inbound traffic does that.
 
 ## Health and operations
 

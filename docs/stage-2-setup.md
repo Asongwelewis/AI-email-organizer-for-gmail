@@ -28,7 +28,9 @@ persistent backends. The username format is `prisma.PROJECT_REF`. URL-encode the
 it is not a Supabase API key. The direct database endpoint is normally IPv6 and may be unreachable
 from IPv4-only networks.
 
-The URL includes conservative `connection_limit`, `connect_timeout`, and `pool_timeout` values.
+The URL includes conservative `connect_timeout` and `pool_timeout` values. Leave
+`connection_limit` out: the API defaults to a pool of 5, and `DATABASE_CONNECTION_LIMIT` overrides
+it. A limit of 1 makes every page load wait behind the nightly run.
 The API also bounds interactive-transaction wait and execution time. Cold projects can take several
 seconds to wake, and the process establishes and warms Prisma before accepting traffic.
 

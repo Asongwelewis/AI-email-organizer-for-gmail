@@ -12,6 +12,8 @@ export interface AuthenticatedUser {
 export interface AuthenticatedSession {
   id: string;
   user: AuthenticatedUser;
+  /** ISO time the session stops being valid. Public: it is the cookie's own lifetime. */
+  expiresAt: string;
 }
 
 declare global {

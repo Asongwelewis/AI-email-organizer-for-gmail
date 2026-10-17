@@ -6,6 +6,7 @@ import {
   authGeneralLimiter,
   oauthCallbackLimiter,
   oauthStartLimiter,
+  sessionReadLimiter,
   sessionRefreshLimiter,
 } from '@api/middleware/rateLimiters.js';
 import { authController } from './auth.controller.js';
@@ -25,7 +26,7 @@ authRouter.get(
 );
 authRouter.get(
   '/me',
-  authGeneralLimiter,
+  sessionReadLimiter,
   requireSession,
   asyncHandler((req, res) => authController.me(req, res)),
 );

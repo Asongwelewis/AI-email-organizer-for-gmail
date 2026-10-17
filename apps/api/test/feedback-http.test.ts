@@ -9,7 +9,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/sessions/session.service.js', () => ({
-  sessionService: { authenticate: mocks.authenticate },
+  sessionService: {
+    authenticate: mocks.authenticate,
+    authenticateAndRenew: async (request: unknown) => ({
+      session: await mocks.authenticate(request),
+      renewedToken: null,
+    }),
+  },
 }));
 vi.mock('../src/features/feedback/feedback.service.js', () => ({
   feedbackService: { submit: mocks.submit },

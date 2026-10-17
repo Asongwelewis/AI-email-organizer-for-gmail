@@ -52,7 +52,8 @@ credentials.
 | -------------------------------- | ------------------------------------------------------------------------------------------ |
 | `COOKIE_DOMAIN`                  | Optional cookie domain.                                                                    |
 | `COOKIE_SAME_SITE`               | `lax` outside production. Production session cookies use `none` for cross-origin requests. |
-| `REFRESH_SESSION_TTL_DAYS`       | `14`                                                                                       |
+| `REFRESH_SESSION_TTL_DAYS`       | `30` — idle window; use slides it forward                                                  |
+| `SESSION_MAX_LIFETIME_DAYS`      | `90` — hard ceiling from sign-in                                                           |
 | `OAUTH_STATE_TTL_MINUTES`        | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES` | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_MAX_REQUESTS`   | `30`                                                                                       |

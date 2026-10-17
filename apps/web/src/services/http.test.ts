@@ -1,62 +1,61 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  __refreshTesting,
-  getBackendRedirectUrl,
-  http,
-  setAuthenticationFailureHandler,
-} from './http';
+import { api, getBackendRedirectUrl, http, setAuthenticationFailureHandler } from './http';
 
 const apiMock = new MockAdapter(http);
-const refreshMock = new MockAdapter(__refreshTesting.client);
 
 afterEach(() => {
   apiMock.reset();
-  refreshMock.reset();
-  __refreshTesting.reset();
+  setAuthenticationFailureHandler(null);
 });
 
-describe('session refresh interceptor', () => {
-  it('uses one refresh request for concurrent 401 responses and retries both requests', async () => {
-    let protectedCalls = 0;
-    apiMock.onGet('/protected').reply(() => {
-      protectedCalls += 1;
-      return protectedCalls <= 2 ? [401] : [200, { ok: true }];
-    });
-    refreshMock.onPost('/auth/refresh').reply(200, { user: { id: 'user-1' } });
-
-    const [first, second] = await Promise.all([http.get('/protected'), http.get('/protected')]);
-
-    expect(first.data).toEqual({ ok: true });
-    expect(second.data).toEqual({ ok: true });
-    expect(refreshMock.history.post).toHaveLength(1);
-  });
-
-  it('notifies auth failure once when a shared refresh fails', async () => {
+describe('session failure interceptor', () => {
+  /*
+   * There is no refresh to try. The API answers 401 only for a session that is missing, expired
+   * or revoked, and refreshing begins by checking that same session — so the old retry failed for
+   * the same reason every time, and only added a request in front of every signed-out visit.
+   */
+  it('treats a 401 as the end of the session and makes no second request', async () => {
     const onFailure = vi.fn();
     setAuthenticationFailureHandler(onFailure);
     apiMock.onGet('/protected').reply(401);
-    refreshMock.onPost('/auth/refresh').reply(401);
 
-    const results = await Promise.allSettled([http.get('/protected'), http.get('/protected')]);
+    await expect(http.get('/protected')).rejects.toMatchObject({ response: { status: 401 } });
 
-    expect(results.every((result) => result.status === 'rejected')).toBe(true);
-    expect(refreshMock.history.post).toHaveLength(1);
-    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(apiMock.history.get).toHaveLength(1);
+    expect(apiMock.history.post).toHaveLength(0);
   });
 
-  it('does not refresh forbidden responses', async () => {
-    apiMock.onGet('/protected').reply(403);
+  it('leaves the session alone on any other failure', async () => {
+    const onFailure = vi.fn();
+    setAuthenticationFailureHandler(onFailure);
+    apiMock.onGet('/forbidden').reply(403);
+    apiMock.onGet('/waking').reply(502);
 
-    await expect(http.get('/protected')).rejects.toBeDefined();
+    await expect(http.get('/forbidden')).rejects.toBeDefined();
+    await expect(http.get('/waking')).rejects.toBeDefined();
 
-    expect(refreshMock.history.post).toHaveLength(0);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not end the session over the requests that never needed one', async () => {
+    const onFailure = vi.fn();
+    setAuthenticationFailureHandler(onFailure);
+    apiMock.onPost('/feedback').reply(401);
+    apiMock.onPost('/auth/logout').reply(401);
+
+    await expect(
+      api.sendFeedback({ kind: 'IDEA', message: 'hello' } as never),
+    ).rejects.toBeDefined();
+    await expect(api.logout()).rejects.toBeDefined();
+
+    expect(onFailure).not.toHaveBeenCalled();
   });
 
   it('always sends browser credentials', () => {
     expect(http.defaults.withCredentials).toBe(true);
-    expect(__refreshTesting.client.defaults.withCredentials).toBe(true);
   });
 
   it('constructs safe backend navigation URLs from the API base', () => {

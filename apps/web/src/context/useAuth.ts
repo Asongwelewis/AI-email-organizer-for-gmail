@@ -7,13 +7,11 @@ export interface AuthContextValue {
   gmailConnection: GmailConnectionStatus | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  isRefreshing: boolean;
   isRedirecting: boolean;
   isDisconnecting: boolean;
   login: () => void;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
-  refreshSession: () => Promise<void>;
   connectGmail: () => void;
   disconnectGmail: () => Promise<void>;
   completeTutorial: (decision: 'COMPLETED' | 'SKIPPED') => Promise<void>;

@@ -55,6 +55,30 @@ describe('environment validation', () => {
     await expect(loadWith({ TAXONOMY_SAMPLE_SIZE: '5000' })).rejects.toThrow();
   });
 
+  it('refuses a session ceiling shorter than the idle window it caps', async () => {
+    await expect(
+      loadWith({ REFRESH_SESSION_TTL_DAYS: '30', SESSION_MAX_LIFETIME_DAYS: '14' }),
+    ).rejects.toThrow();
+  });
+
+  it('migrates on boot in production only, unless told otherwise', async () => {
+    expect((await loadWith({ MIGRATE_ON_START: undefined })).env.MIGRATE_ON_START).toBe(false);
+    const production = await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'none',
+      MIGRATE_ON_START: undefined,
+    });
+    expect(production.env.MIGRATE_ON_START).toBe(true);
+    const optedOut = await loadWith({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'none',
+      MIGRATE_ON_START: 'false',
+    });
+    expect(optedOut.env.MIGRATE_ON_START).toBe(false);
+  });
+
   it('accepts the cross-site cookie production deployments require', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'production',

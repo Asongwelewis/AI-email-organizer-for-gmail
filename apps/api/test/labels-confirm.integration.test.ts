@@ -44,7 +44,13 @@ vi.mock('../src/config/logger.js', () => ({
   safeErrorDetails: () => ({}),
 }));
 vi.mock('../src/sessions/session.service.js', () => ({
-  sessionService: { authenticate: mocks.authenticate },
+  sessionService: {
+    authenticate: mocks.authenticate,
+    authenticateAndRenew: async (request: unknown) => ({
+      session: await mocks.authenticate(request),
+      renewedToken: null,
+    }),
+  },
 }));
 vi.mock('../src/middleware/rateLimiters.js', () => {
   const passthrough = (_request: unknown, _response: unknown, next: () => void) => next();
