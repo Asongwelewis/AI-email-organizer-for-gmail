@@ -11,6 +11,7 @@ import {
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
+import { ServerWakeNotice } from '@web/components/app/ServerWakeNotice';
 import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
 
@@ -85,6 +86,7 @@ export function AppShell() {
           <div className="shell__toolbar">
             <ThemeToggle variant="compact" />
           </div>
+          <ServerWakeNotice />
           <Outlet />
         </div>
       </main>

@@ -157,6 +157,24 @@ describe('a rate limit shared across API instances', () => {
   });
 
   /**
+   * Every shared limiter keys its clients by IP over the same window length, so before the prefix
+   * they all landed on one row: a page load's `/auth/me` spent the feedback form's five-request
+   * budget, and ten app opens in ten minutes locked a person out of signing in.
+   */
+  it('keeps each limiter’s count apart from every other limiter’s', async () => {
+    const options = { windowMs: 60_000 } as never;
+    const signIn = new PrismaRateLimitStore('oauthStartLimiter');
+    const feedback = new PrismaRateLimitStore('feedbackLimiter');
+    signIn.init(options);
+    feedback.init(options);
+
+    for (let index = 0; index < 4; index += 1) await signIn.increment('198.51.100.7');
+
+    expect((await feedback.increment('198.51.100.7')).totalHits).toBe(1);
+    expect(await signIn.get('198.51.100.7')).toMatchObject({ totalHits: 4 });
+  });
+
+  /**
    * express-rate-limit reads this to detect double-counting misconfigurations. Claiming otherwise
    * is exactly the lie this store exists to stop telling.
    */

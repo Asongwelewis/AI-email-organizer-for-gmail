@@ -37,6 +37,24 @@ const environmentSchema = z
     WEB_APP_URL: z.string().url(),
     API_BASE_URL: z.string().url(),
     DATABASE_URL: z.string().min(1),
+    /**
+     * Connections Prisma may hold. Wins over a `connection_limit` in DATABASE_URL, because that
+     * parameter used to be the documented way to pin the pool to one connection — and with one,
+     * a page load queued behind whatever the nightly run was doing, for up to `pool_timeout`.
+     */
+    DATABASE_CONNECTION_LIMIT: z.coerce.number().int().min(1).max(50).optional(),
+    /**
+     * How often an idle API runs `select 1`, in seconds; 0 turns it off. The pooler drops a
+     * connection nobody has used for a while, and the first request after that paid for opening
+     * a new one — measured at 14 seconds on one `/auth/me`. It never wakes a sleeping instance:
+     * a timer inside the process is not inbound traffic.
+     */
+    DATABASE_HEARTBEAT_SECONDS: z.coerce.number().int().min(0).max(3600).default(240),
+    /**
+     * Apply pending migrations during boot. Defaults to on in production and off everywhere else,
+     * so a developer's `npm run dev` never migrates whatever database their .env points at.
+     */
+    MIGRATE_ON_START: booleanValue.optional(),
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_LOGIN_REDIRECT_URI: z.string().url(),
@@ -47,7 +65,16 @@ const environmentSchema = z
     COOKIE_SECURE: booleanValue,
     COOKIE_DOMAIN: optionalDomain,
     COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
-    REFRESH_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(14),
+    /**
+     * How long a session survives without being used. Sliding: every day it is used pushes the
+     * expiry this far ahead again, so nobody who opens the app is ever logged out by the calendar.
+     */
+    REFRESH_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
+    /**
+     * The hard ceiling, counted from sign-in, that no amount of use extends. A stolen cookie that
+     * keeps being used would otherwise stay valid forever.
+     */
+    SESSION_MAX_LIFETIME_DAYS: z.coerce.number().int().positive().default(90),
     OAUTH_STATE_TTL_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
@@ -170,7 +197,19 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
-    return { ...value, TOKEN_ENCRYPTION_KEY_BYTES: tokenEncryptionKey };
+    if (value.SESSION_MAX_LIFETIME_DAYS < value.REFRESH_SESSION_TTL_DAYS) {
+      context.addIssue({
+        code: 'custom',
+        path: ['SESSION_MAX_LIFETIME_DAYS'],
+        message: 'must be at least REFRESH_SESSION_TTL_DAYS',
+      });
+      return z.NEVER;
+    }
+    return {
+      ...value,
+      MIGRATE_ON_START: value.MIGRATE_ON_START ?? value.NODE_ENV === 'production',
+      TOKEN_ENCRYPTION_KEY_BYTES: tokenEncryptionKey,
+    };
   });
 
 const testDefaults = isTest

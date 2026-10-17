@@ -8,8 +8,8 @@ import {
   useGmailConnectionQuery,
   useLogoutAllMutation,
   useLogoutMutation,
-  useRefreshSessionMutation,
 } from '@web/queries/authQueries';
+import { forgetSession } from '@web/lib/sessionSnapshot';
 import { queryKeys } from '@web/queries/queryKeys';
 import { getBackendRedirectUrl, setAuthenticationFailureHandler } from '@web/services/http';
 import { AuthContext, type AuthContextValue } from './useAuth';
@@ -25,13 +25,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authQuery = useAuthMeQuery();
   const user = authQuery.data?.user ?? null;
   const gmailQuery = useGmailConnectionQuery(Boolean(user));
-  const refreshMutation = useRefreshSessionMutation();
   const logoutMutation = useLogoutMutation();
   const logoutAllMutation = useLogoutAllMutation();
   const disconnectMutation = useDisconnectGmailMutation();
   const tutorialMutation = useCompleteTutorialMutation();
 
   const clearAuthentication = useCallback(() => {
+    forgetSession();
     queryClient.setQueryData(queryKeys.authMe, null);
     queryClient.removeQueries({ queryKey: queryKeys.gmailConnection });
   }, [queryClient]);
@@ -45,20 +45,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await logoutMutation.mutateAsync();
+    forgetSession();
     queryClient.clear();
     navigateBrowser('/login');
   }, [logoutMutation, queryClient]);
 
   const logoutAll = useCallback(async () => {
     await logoutAllMutation.mutateAsync();
+    forgetSession();
     queryClient.clear();
     navigateBrowser('/login?status=all_sessions_ended');
   }, [logoutAllMutation, queryClient]);
-
-  const refreshSession = useCallback(async () => {
-    await refreshMutation.mutateAsync();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.authMe });
-  }, [queryClient, refreshMutation]);
 
   const disconnectGmail = useCallback(async () => {
     await disconnectMutation.mutateAsync();
@@ -101,7 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : null),
       isAuthenticated: Boolean(user),
       isLoading: authQuery.isLoading,
-      isRefreshing: refreshMutation.isPending,
       isRedirecting,
       isDisconnecting: disconnectMutation.isPending,
       login: () => {
@@ -110,7 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       logout,
       logoutAll,
-      refreshSession,
       connectGmail: () => {
         setIsRedirecting(true);
         navigateBrowser(getBackendRedirectUrl('/integrations/google/connect'));
@@ -128,8 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeTutorial,
       logout,
       logoutAll,
-      refreshMutation.isPending,
-      refreshSession,
       user,
     ],
   );

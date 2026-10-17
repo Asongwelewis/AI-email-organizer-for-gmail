@@ -34,7 +34,12 @@ export class AuthController {
 
   async me(request: Request, response: Response): Promise<void> {
     const auth = request.auth!;
-    response.json(await authService.me(auth.user.id, auth.user));
+    // The expiry is the cookie's own lifetime, which the browser cannot read off an HttpOnly
+    // cookie. The PWA uses it to stop trusting what it remembered about a session that is over.
+    response.json({
+      ...(await authService.me(auth.user.id, auth.user)),
+      sessionExpiresAt: auth.expiresAt,
+    });
   }
 
   async refresh(request: Request, response: Response): Promise<void> {

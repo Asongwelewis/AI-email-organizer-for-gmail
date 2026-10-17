@@ -54,9 +54,31 @@ never use a `VITE_` prefix. Partial upload configuration fails the build. Hosted
 also require the public DSN and release. Uploaded maps are removed from `dist` before deployment.
 See [Sentry operations](sentry.md) for the Vercel/Render release and verification procedure.
 
-Both the normal client and the refresh client set `withCredentials: true`. On a 401 response, the
-normal client attempts one shared session refresh, retries the original request once, and clears
-local authentication state when refresh fails. Refresh calls are kept out of the interceptor loop.
+The client sets `withCredentials: true`. A 401 ends the session locally: the interceptor clears
+authentication state and makes no second request. There is no client-side refresh — the API
+answers 401 only for a session that is missing, expired or revoked, which is exactly what a refresh
+would have failed on. Sessions stay alive by being used: the API slides the expiry forward on
+authenticated requests and re-issues the cookie itself. `skipAuthFailure` marks the two requests
+whose 401 says nothing about the session (logout and the public feedback form).
+
+### Opening fast on a sleeping server
+
+The API runs on a free plan that sleeps when idle and takes up to a minute to wake. So the app
+does not wait for it to start rendering:
+
+- `lib/sessionSnapshot.ts` remembers the `/auth/me` answer, the pivot settings and the last folder
+  tree in `localStorage`, and the queries use them as `placeholderData`. A returning user lands on
+  their folders immediately while the real requests run, and settings and tree are fetched side by
+  side instead of one after the other.
+- Only the profile and folder names/counts are kept — never subjects, senders or message ids, and
+  never the mail inside a folder. The service worker's ban on caching API responses still holds.
+- Everything is forgotten on logout, on any 401, and is never read back once `sessionExpiresAt`
+  (returned by `/auth/me`) has passed — so a shared device whose session ran out shows the sign-in
+  screen, not the previous person's folders.
+- A failed session check that is not a 401/403 (a timeout or 502 while the server wakes) is
+  retried rather than treated as signed out.
+- After four seconds of continuous loading, `ServerWakeNotice` (and the session loader) say the
+  server is waking up, so a long wait does not read as broken.
 
 OAuth starts by navigating the browser to backend endpoints rather than handling Google OAuth in
 the SPA:

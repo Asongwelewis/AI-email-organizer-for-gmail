@@ -4,6 +4,7 @@ import {
   authGeneralLimiter,
   oauthCallbackLimiter,
   oauthStartLimiter,
+  sessionReadLimiter,
 } from '@api/middleware/rateLimiters.js';
 import { requireSession } from '@api/sessions/session.middleware.js';
 import { asyncHandler } from '@api/utils/asyncHandler.js';
@@ -25,7 +26,7 @@ googleIntegrationRouter.get(
 );
 googleIntegrationRouter.get(
   '/status',
-  authGeneralLimiter,
+  sessionReadLimiter,
   requireSession,
   asyncHandler((req, res) => googleIntegrationController.status(req, res)),
 );

@@ -4,7 +4,11 @@ import { env } from '@api/config/env.js';
 
 export const SESSION_COOKIE_NAME = 'mailmind_session';
 
-export function sessionCookieOptions(): CookieOptions {
+/**
+ * `expiresAt` makes the cookie expire with the session row. Without it the cookie gets the full
+ * idle window, which is what a brand-new session has.
+ */
+export function sessionCookieOptions(expiresAt?: Date): CookieOptions {
   const isProduction = env.NODE_ENV === 'production';
 
   return {
@@ -13,12 +17,14 @@ export function sessionCookieOptions(): CookieOptions {
     sameSite: env.COOKIE_SAME_SITE,
     path: '/',
     ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
-    maxAge: env.REFRESH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    maxAge: expiresAt
+      ? Math.max(0, expiresAt.getTime() - Date.now())
+      : env.REFRESH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
   };
 }
 
-export function setSessionCookie(response: Response, rawToken: string): void {
-  response.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions());
+export function setSessionCookie(response: Response, rawToken: string, expiresAt?: Date): void {
+  response.cookie(SESSION_COOKIE_NAME, rawToken, sessionCookieOptions(expiresAt));
 }
 
 export function clearSessionCookie(response: Response): void {

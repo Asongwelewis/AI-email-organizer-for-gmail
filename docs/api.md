@@ -108,14 +108,22 @@ Requires a session.
     "status": "ACTIVE",
     "gmailConnected": false,
     "tutorialCompletedAt": null
-  }
+  },
+  "sessionExpiresAt": "2026-11-16T12:00:00.000Z"
 }
 ```
 
+`sessionExpiresAt` is when the session cookie stops working. The browser cannot read that from an
+HttpOnly cookie, and the PWA uses it to stop trusting what it remembered once the session is over.
+Like every route behind `requireSession`, this one may slide the session forward and answer with a
+fresh `Set-Cookie` for the same token.
+
 ### `POST /api/auth/refresh`
 
-Rotates a valid session token and resets the session cookie. Requires trusted Origin. Returns the
-session user:
+Rotates a valid session token and resets the session cookie. Requires trusted Origin. The PWA no
+longer calls it — sessions slide on use instead — and the replacement keeps the original sign-in
+time, so rotation cannot extend a session past `SESSION_MAX_LIFETIME_DAYS`. Returns the session
+user:
 
 ```json
 {
