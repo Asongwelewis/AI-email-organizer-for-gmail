@@ -21,6 +21,14 @@ export class SessionRepository {
     });
   }
 
+  /** Slides a live session's expiry forward. Revoked or already-expired rows are left alone. */
+  extend(id: string, expiresAt: Date, now: Date) {
+    return prisma.sessions.updateMany({
+      where: { id, revoked_at: null, expires_at: { gt: now } },
+      data: { expires_at: expiresAt, last_used_at: now },
+    });
+  }
+
   revoke(id: string, reason: string, now = new Date()) {
     return prisma.sessions.updateMany({
       where: { id, revoked_at: null },
@@ -35,7 +43,7 @@ export class SessionRepository {
     });
   }
 
-  async rotate(id: string, tokenHash: string, expiresAt: Date) {
+  async rotate(id: string, tokenHash: string, expiresAt: Date, createdAt: Date) {
     return prisma.$transaction(async (transaction) => {
       const revoked = await transaction.sessions.updateMany({
         where: { id, revoked_at: null, expires_at: { gt: new Date() } },
@@ -50,6 +58,7 @@ export class SessionRepository {
           user_agent: previous.user_agent,
           ip_hash: previous.ip_hash,
           expires_at: expiresAt,
+          created_at: createdAt,
         },
         include: { users: true },
       });

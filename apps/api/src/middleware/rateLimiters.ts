@@ -35,14 +35,14 @@ type LimiterScope = 'shared' | 'per-instance';
  * endpoints: a brief 500 is the safer failure. Narrowing the shared set also narrows what a
  * database outage can take down with it.
  */
-function limiter(limit: number, scope: LimiterScope = 'shared') {
+function limiter(name: string, limit: number, scope: LimiterScope = 'shared') {
   const shared = scope === 'shared' && env.NODE_ENV !== 'test';
   return rateLimit({
     windowMs: env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
     limit,
     standardHeaders: true,
     legacyHeaders: false,
-    ...(shared ? { store: new PrismaRateLimitStore() } : {}),
+    ...(shared ? { store: new PrismaRateLimitStore(name) } : {}),
     handler: (_request, response) => {
       response.status(429).json({
         error: {
@@ -54,19 +54,48 @@ function limiter(limit: number, scope: LimiterScope = 'shared') {
   });
 }
 
-export const oauthStartLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));
-export const oauthCallbackLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 20));
-export const sessionRefreshLimiter = limiter(env.AUTH_RATE_LIMIT_MAX_REQUESTS);
-export const authGeneralLimiter = limiter(Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30));
-export const gmailSyncLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));
+export const oauthStartLimiter = limiter(
+  'oauthStartLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
+);
+export const oauthCallbackLimiter = limiter(
+  'oauthCallbackLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 20),
+);
+export const sessionRefreshLimiter = limiter(
+  'sessionRefreshLimiter',
+  env.AUTH_RATE_LIMIT_MAX_REQUESTS,
+);
+export const authGeneralLimiter = limiter(
+  'authGeneralLimiter',
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30),
+);
+/**
+ * The reads every page load makes before it can show anything: `GET /auth/me` and the Gmail
+ * connection status. In memory, because a database write in front of them was a round trip on
+ * the one request a person is staring at a spinner for — and the session token they check is 256
+ * random bits, so there is nothing for a per-instance budget to let anybody guess.
+ */
+export const sessionReadLimiter = limiter(
+  'sessionReadLimiter',
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 60),
+  'per-instance',
+);
+export const gmailSyncLimiter = limiter(
+  'gmailSyncLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
+);
 export const classificationReadLimiter = limiter(
+  'classificationReadLimiter',
   Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30),
   'per-instance',
 );
 export const classificationMutationLimiter = limiter(
+  'classificationMutationLimiter',
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
 );
 export const labelsReadLimiter = limiter(
+  'labelsReadLimiter',
   Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30),
   'per-instance',
 );
@@ -74,10 +103,14 @@ export const labelsReadLimiter = limiter(
 // rather than per window. At the default ten-minute window a 30-request cap would 429 a client
 // fifteen seconds into a twenty-minute backfill.
 export const activityPollLimiter = limiter(
+  'activityPollLimiter',
   Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60 * 2),
   'per-instance',
 );
-export const labelsMutationLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10));
+export const labelsMutationLimiter = limiter(
+  'labelsMutationLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
+);
 
 /**
  * The only limiter in front of an unauthenticated write, and the smallest.
@@ -86,4 +119,7 @@ export const labelsMutationLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_RE
  * retry until the load balancer picks a different process. Five per window is generous for a
  * person with something to say and tedious for anything filling the table.
  */
-export const feedbackLimiter = limiter(Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 5));
+export const feedbackLimiter = limiter(
+  'feedbackLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 5),
+);

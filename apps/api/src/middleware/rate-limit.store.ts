@@ -29,6 +29,18 @@ export class PrismaRateLimitStore implements Store {
   private sinceSweep = 0;
 
   /**
+   * `prefix` is which limiter is counting. Every shared limiter keys its clients by IP and they
+   * all share one window length, so without it they all incremented the same row: two page loads'
+   * worth of `/auth/me` were spending the five-request feedback budget and the ten-request
+   * sign-in budget, and a person who opened the app ten times in ten minutes could not sign in.
+   */
+  constructor(readonly prefix = '') {}
+
+  private scoped(key: string): string {
+    return this.prefix ? `${this.prefix}:${key}` : key;
+  }
+
+  /**
    * False, and it matters: express-rate-limit uses this to detect double-counting
    * misconfigurations, and claiming otherwise is exactly the lie this store exists to stop
    * telling.
@@ -48,7 +60,8 @@ export class PrismaRateLimitStore implements Store {
     return new Date(windowStart.getTime() + this.windowMs);
   }
 
-  async increment(key: string): Promise<ClientRateLimitInfo> {
+  async increment(clientKey: string): Promise<ClientRateLimitInfo> {
+    const key = this.scoped(clientKey);
     const windowStart = this.windowStart();
     const resetTime = this.resetTime(windowStart);
     const row = await prisma.rate_limit_hits.upsert({
@@ -69,7 +82,8 @@ export class PrismaRateLimitStore implements Store {
     return { totalHits: row.hits, resetTime };
   }
 
-  async decrement(key: string): Promise<void> {
+  async decrement(clientKey: string): Promise<void> {
+    const key = this.scoped(clientKey);
     const windowStart = this.windowStart();
     // `updateMany` rather than `update`: a decrement for a window that has already rolled over has
     // nothing to decrement, and that is not an error.
@@ -79,11 +93,12 @@ export class PrismaRateLimitStore implements Store {
     });
   }
 
-  async resetKey(key: string): Promise<void> {
-    await prisma.rate_limit_hits.deleteMany({ where: { key } });
+  async resetKey(clientKey: string): Promise<void> {
+    await prisma.rate_limit_hits.deleteMany({ where: { key: this.scoped(clientKey) } });
   }
 
-  async get(key: string): Promise<ClientRateLimitInfo | undefined> {
+  async get(clientKey: string): Promise<ClientRateLimitInfo | undefined> {
+    const key = this.scoped(clientKey);
     const windowStart = this.windowStart();
     const row = await prisma.rate_limit_hits.findUnique({
       where: {

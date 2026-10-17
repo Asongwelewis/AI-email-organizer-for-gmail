@@ -107,8 +107,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      # MIGRATE_ON_START runs the boot-time migration check against the migrated database, so the
+      # query that replaced `migrate deploy` in front of every production start is exercised here
+      # rather than first in production.
       - name: Verify built API liveness and readiness
         shell: bash
+        env:
+          MIGRATE_ON_START: 'true'
         run: |
           node apps/api/dist/index.js > api.log 2>&1 &
           api_pid=$!

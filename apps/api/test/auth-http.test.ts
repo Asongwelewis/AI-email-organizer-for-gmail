@@ -30,6 +30,10 @@ vi.mock('../src/auth/auth.service.js', () => ({
 vi.mock('../src/sessions/session.service.js', () => ({
   sessionService: {
     authenticate: mocks.authenticate,
+    authenticateAndRenew: async (request: unknown) => ({
+      session: await mocks.authenticate(request),
+      renewedToken: null,
+    }),
     rotate: mocks.rotate,
     revokeCurrent: mocks.revokeCurrent,
     revokeAll: mocks.revokeAll,
@@ -51,6 +55,7 @@ const authenticated = {
     status: 'ACTIVE' as const,
     tutorialCompletedAt: null,
   },
+  expiresAt: '2026-11-16T12:00:00.000Z',
 };
 
 const testApp = express();
@@ -130,6 +135,8 @@ describe('authentication HTTP routes', () => {
     expect(valid.status).toBe(200);
     expect(mocks.me).toHaveBeenCalledWith('authenticated-user-id', authenticated.user);
     expect(valid.body.user.id).toBe('authenticated-user-id');
+    // The browser cannot read an HttpOnly cookie's lifetime, so the session says it out loud.
+    expect(valid.body.sessionExpiresAt).toBe('2026-11-16T12:00:00.000Z');
   });
 
   it('rotates refresh sessions and never returns the replacement token in JSON', async () => {

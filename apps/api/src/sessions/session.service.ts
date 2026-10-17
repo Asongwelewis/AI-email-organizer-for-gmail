@@ -10,17 +10,36 @@ import { SESSION_COOKIE_NAME } from './session.cookies.js';
 import type { AuthenticatedSession } from './session.types.js';
 
 const TOUCH_INTERVAL_MS = 10 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-function expiration(): Date {
-  return new Date(Date.now() + env.REFRESH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+/**
+ * How far behind its target an expiry may fall before it is pushed forward. Once a day, so an
+ * active session costs one extra write a day rather than one per request.
+ */
+const RENEW_INTERVAL_MS = DAY_MS;
+
+type SessionRecord = NonNullable<Awaited<ReturnType<typeof sessionRepository.findByTokenHash>>>;
+
+/**
+ * Where a session's expiry belongs right now: the idle window from now, but never past the hard
+ * ceiling counted from sign-in. Sliding without the ceiling would let a stolen cookie that keeps
+ * being used live forever.
+ */
+export function slidingExpiry(createdAt: Date, now = new Date()): Date {
+  const idle = now.getTime() + env.REFRESH_SESSION_TTL_DAYS * DAY_MS;
+  const ceiling = createdAt.getTime() + env.SESSION_MAX_LIFETIME_DAYS * DAY_MS;
+  return new Date(Math.min(idle, ceiling));
 }
 
-function context(
-  session: Awaited<ReturnType<typeof sessionRepository.findByTokenHash>>,
-): AuthenticatedSession {
+function expiration(): Date {
+  return slidingExpiry(new Date());
+}
+
+function context(session: SessionRecord | null): AuthenticatedSession {
   if (!session) throw authenticationRequired();
   return {
     id: session.id,
+    expiresAt: session.expires_at.toISOString(),
     user: {
       id: session.users.id,
       email: session.users.email,
@@ -65,6 +84,7 @@ export class SessionService {
           status: result.user.status,
           tutorialCompletedAt: result.user.tutorial_completed_at?.toISOString() ?? null,
         },
+        expiresAt: result.session.expires_at.toISOString(),
       } satisfies AuthenticatedSession,
     };
   }
@@ -75,7 +95,10 @@ export class SessionService {
     return typeof token === 'string' && token.length > 0 ? token : undefined;
   }
 
-  async authenticate(request: Request): Promise<AuthenticatedSession> {
+  /** The live session record behind this request's cookie, or the reason there is none. */
+  private async validRecord(
+    request: Request,
+  ): Promise<{ rawToken: string; record: SessionRecord }> {
     const rawToken = this.getRawToken(request);
     if (!rawToken) throw authenticationRequired();
     const session = await sessionRepository.findByTokenHash(sha256(rawToken));
@@ -92,9 +115,45 @@ export class SessionService {
     if (session.users.status === 'DELETED') {
       throw new AppError('AUTH_USER_DELETED', 'This account is unavailable.', 403);
     }
+    return { rawToken, record: session };
+  }
+
+  private touch(record: SessionRecord, now: Date): void {
+    void sessionRepository.touch(record.id, new Date(now.getTime() - TOUCH_INTERVAL_MS), now);
+  }
+
+  /**
+   * Checks the session without extending it. For callers that cannot re-issue the cookie in the
+   * same response — extending the row there would leave the browser's copy expiring first.
+   */
+  async authenticate(request: Request): Promise<AuthenticatedSession> {
+    const { record } = await this.validRecord(request);
+    this.touch(record, new Date());
+    return context(record);
+  }
+
+  /**
+   * Checks the session and slides its expiry forward, at most once a day.
+   *
+   * It used to be fixed at sign-in: `touch` recorded use and nothing ever moved `expires_at`, so
+   * someone who opened the app every day was still logged out on day fourteen. `renewedToken` is
+   * set when the row was extended, and the caller then re-issues the cookie with the same token
+   * and the new lifetime — no rotation is needed to change how long a cookie lives.
+   */
+  async authenticateAndRenew(
+    request: Request,
+  ): Promise<{ session: AuthenticatedSession; renewedToken: string | null }> {
+    const { rawToken, record } = await this.validRecord(request);
     const now = new Date();
-    void sessionRepository.touch(session.id, new Date(now.getTime() - TOUCH_INTERVAL_MS), now);
-    return context(session);
+    const target = slidingExpiry(record.created_at, now);
+    if (target.getTime() - record.expires_at.getTime() >= RENEW_INTERVAL_MS) {
+      const extended = await sessionRepository.extend(record.id, target, now);
+      if (extended.count === 1) {
+        return { session: context({ ...record, expires_at: target }), renewedToken: rawToken };
+      }
+    }
+    this.touch(record, now);
+    return { session: context(record), renewedToken: null };
   }
 
   async revokeCurrent(request: Request): Promise<AuthenticatedSession | null> {
@@ -111,12 +170,14 @@ export class SessionService {
   }
 
   async rotate(request: Request) {
-    const authenticated = await this.authenticate(request);
+    const { record } = await this.validRecord(request);
     const rawToken = generateSecureToken();
+    // The replacement inherits the original sign-in time, so rotating cannot reset the ceiling.
     const replacement = await sessionRepository.rotate(
-      authenticated.id,
+      record.id,
       sha256(rawToken),
-      expiration(),
+      slidingExpiry(record.created_at),
+      record.created_at,
     );
     if (!replacement)
       throw new AppError('AUTH_SESSION_REVOKED', 'Your session is no longer active.', 401);
