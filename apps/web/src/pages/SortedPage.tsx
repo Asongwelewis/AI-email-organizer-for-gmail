@@ -8,6 +8,7 @@ import { FolderTile } from '@web/components/app/FolderTile';
 import { MailList } from '@web/components/app/MailList';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
+import { rememberedQuery } from '@web/lib/sessionSnapshot';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
 import {
@@ -93,9 +94,14 @@ export function SortedPage() {
   const rangeParam = params.get('range');
   const timeRange: EmailTimeRange = isEmailTimeRange(rangeParam) ? rangeParam : storedTimeRange;
 
+  /*
+   * Both of these open on what was last seen and refetch behind it. The tree waits on the
+   * settings for its floor, so without a remembered answer a launch was three requests in a row —
+   * session, settings, tree — each a full round trip to a server that may still be waking up.
+   */
   const settingsQuery = useQuery({
     queryKey: queryKeys.pivotSettings,
-    queryFn: () => api.getPivotSettings(),
+    ...rememberedQuery('pivotSettings', 'account', () => api.getPivotSettings()),
   });
 
   // The ordering lives in the URL, so a view is a link. The saved default is where the screen
@@ -111,7 +117,10 @@ export function SortedPage() {
   const minMessages = settingsQuery.data?.minMessages;
   const viewQuery = useQuery({
     queryKey: [...queryKeys.pivotView(order, timeRange), minMessages ?? null],
-    queryFn: () => api.getPivotView(order, minMessages, timeRange),
+    // Folder names and counts only; the mail inside a folder is never remembered.
+    ...rememberedQuery('pivotView', JSON.stringify([order, timeRange, minMessages ?? null]), () =>
+      api.getPivotView(order, minMessages, timeRange),
+    ),
     /*
      * The ordering can come from the URL, so it is known before the settings are. Waiting for them
      * anyway keeps the floor out of the first request — otherwise a shared link fetches the tree

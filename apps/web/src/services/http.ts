@@ -6,7 +6,6 @@ import type {
   GmailConnectionStatus,
   GmailSyncResult,
   GmailSyncStatus,
-  SessionRefreshResponse,
 } from '@web/types/auth';
 import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type {
@@ -33,12 +32,12 @@ import type {
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
-    skipAuthRefresh?: boolean;
+    /** A 401 on this request is about the request, not a sign that the session ended. */
+    skipAuthFailure?: boolean;
   }
 
   export interface InternalAxiosRequestConfig {
-    skipAuthRefresh?: boolean;
-    authRetryAttempted?: boolean;
+    skipAuthFailure?: boolean;
   }
 }
 
@@ -47,54 +46,29 @@ export const http = axios.create({
   withCredentials: true,
 });
 
-const refreshClient = axios.create({
-  baseURL: apiBaseUrl,
-  withCredentials: true,
-});
-
-let refreshPromise: Promise<void> | null = null;
 let authenticationFailureHandler: (() => void) | null = null;
 
 export function setAuthenticationFailureHandler(handler: (() => void) | null): void {
   authenticationFailureHandler = handler;
 }
 
-async function refreshSessionOnce(): Promise<void> {
-  refreshPromise ??= refreshClient
-    .post('/auth/refresh')
-    .then(() => undefined)
-    .catch((error: unknown) => {
-      authenticationFailureHandler?.();
-      throw error;
-    })
-    .finally(() => {
-      refreshPromise = null;
-    });
-  return refreshPromise;
-}
-
+/*
+ * A 401 means the session is over, and the app forgets it.
+ *
+ * This used to call `POST /auth/refresh` and retry, and that could never work: the API answers 401
+ * only when the session is missing, expired or revoked, and refresh begins by checking that same
+ * session, so it failed for the same reason every time. All it did was put a second doomed request
+ * in front of every signed-out visit. Sessions now stay alive by being used — the API slides the
+ * expiry forward and re-issues the cookie as part of any authenticated request.
+ */
 http.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
-    const status = error.response?.status;
+  (error: AxiosError) => {
     const config = error.config as InternalAxiosRequestConfig | undefined;
-    if (
-      status !== 401 ||
-      !config ||
-      config.skipAuthRefresh ||
-      config.authRetryAttempted ||
-      config.url?.includes('/auth/refresh')
-    ) {
-      return Promise.reject(error);
+    if (error.response?.status === 401 && !config?.skipAuthFailure) {
+      authenticationFailureHandler?.();
     }
-
-    config.authRetryAttempted = true;
-    try {
-      await refreshSessionOnce();
-      return await http(config);
-    } catch (refreshError) {
-      return Promise.reject(refreshError);
-    }
+    return Promise.reject(error);
   },
 );
 
@@ -104,13 +78,8 @@ export const api = {
     return response.data;
   },
 
-  async refreshSession(): Promise<SessionRefreshResponse> {
-    const response = await refreshClient.post<SessionRefreshResponse>('/auth/refresh');
-    return response.data;
-  },
-
   async logout(): Promise<void> {
-    await http.post('/auth/logout', undefined, { skipAuthRefresh: true });
+    await http.post('/auth/logout', undefined, { skipAuthFailure: true });
   },
 
   async logoutAll(): Promise<void> {
@@ -346,12 +315,11 @@ export const api = {
   /**
    * The one call that works signed out — it is for whoever was handed the link.
    *
-   * `skipAuthRefresh`, because the interceptor's job is to rescue a request that failed on an
-   * expired session, and this one never had a session to expire. Without it a visitor's 4xx would
-   * fire a pointless refresh attempt and report the refresh's failure instead of the real problem.
+   * `skipAuthFailure`, because the interceptor treats a 401 as the end of a session, and this one
+   * never needed a session to begin with.
    */
   async sendFeedback(input: FeedbackInput): Promise<void> {
-    await http.post('/feedback', input, { skipAuthRefresh: true });
+    await http.post('/feedback', input, { skipAuthFailure: true });
   },
 };
 
@@ -360,11 +328,3 @@ export function getBackendRedirectUrl(path: '/auth/google' | '/integrations/goog
   url.searchParams.set('redirect', '/auth/callback');
   return url.toString();
 }
-
-export const __refreshTesting = {
-  client: refreshClient,
-  reset() {
-    refreshPromise = null;
-    authenticationFailureHandler = null;
-  },
-};

@@ -1671,6 +1671,20 @@ img {
   text-transform: uppercase;
 }
 
+/* Plain sentence, not a label: it explains a wait rather than naming one. */
+.route-loader p.route-loader__hint {
+  max-width: 22rem;
+  margin-top: 0.75rem;
+  padding: 0 1rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  letter-spacing: normal;
+  line-height: 1.45;
+  text-align: center;
+  text-transform: none;
+  opacity: 0.72;
+}
+
 .legal-page {
   text-align: center;
 }

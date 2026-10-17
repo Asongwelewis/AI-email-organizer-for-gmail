@@ -184,8 +184,13 @@ only.
 
 **Frontend state.** TanStack Query owns server state with retries and refetch-on-focus disabled by
 default; feature hooks poll every 2s only while a run is active. `AuthProvider` treats
-`GET /api/auth/me` as source of truth. The Axios client attempts one shared session refresh on 401,
-retries once, then clears local auth state.
+`GET /api/auth/me` as source of truth, but the PWA opens on the session and folder tree it
+remembers (`lib/sessionSnapshot.ts`: profile, folder names and counts — never mail; forgotten on
+logout, on any 401, and once `sessionExpiresAt` passes) and confirms them in the background, because
+the free-plan API can take most of a minute to wake. A 401 clears local auth state; there is no
+client-side refresh. Sessions slide instead: `requireSession` pushes `expires_at` forward at most
+once a day (idle window `REFRESH_SESSION_TTL_DAYS`, hard ceiling `SESSION_MAX_LIFETIME_DAYS` from
+sign-in) and re-issues the cookie in the same response.
 
 ## Database
 
