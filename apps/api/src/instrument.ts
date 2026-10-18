@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/node';
 
 import {
   scrubSentryBreadcrumb,
+  scrubSentryErrorEvent,
   scrubSentryEvent,
   scrubSentrySpan,
 } from './observability/sentryPrivacy.js';
@@ -81,7 +82,7 @@ if (dsn) {
         }),
       ];
     },
-    beforeSend: scrubSentryEvent,
+    beforeSend: scrubSentryErrorEvent,
     beforeSendTransaction: scrubSentryEvent,
     beforeSendSpan: scrubSentrySpan,
     beforeBreadcrumb: scrubSentryBreadcrumb,

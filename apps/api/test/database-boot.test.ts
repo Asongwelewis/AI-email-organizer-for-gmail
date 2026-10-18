@@ -11,7 +11,7 @@ vi.mock('../src/config/logger.js', () => ({
 }));
 
 const { pendingMigrations, shippedMigrations } = await import('../src/database/migrations.js');
-const { prisma, startDatabaseHeartbeat, stopDatabaseHeartbeat } =
+const { prisma, retryTransientRead, startDatabaseHeartbeat, stopDatabaseHeartbeat } =
   await import('../src/database/prisma.js');
 
 /**
@@ -80,5 +80,40 @@ describe('the database heartbeat', () => {
     startDatabaseHeartbeat(0);
     await vi.advanceTimersByTimeAsync(600_000);
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * The pooler can close a connection the pool still holds, and the next query to draw it fails. A
+ * read changes nothing, so it is asked once more on a fresh connection; a write never is, because it
+ * may already have landed.
+ */
+describe('a read whose connection dropped', () => {
+  const dropped = () =>
+    Object.assign(new Error('Server has closed the connection.'), { code: 'P1017' });
+
+  it('is asked once more and answers', async () => {
+    const run = vi.fn().mockRejectedValueOnce(dropped()).mockResolvedValueOnce(['row']);
+    await expect(retryTransientRead('findMany', run, 0)).resolves.toEqual(['row']);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after the second attempt', async () => {
+    const run = vi.fn().mockRejectedValue(dropped());
+    await expect(retryTransientRead('count', run, 0)).rejects.toMatchObject({ code: 'P1017' });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('never repeats a write', async () => {
+    const run = vi.fn().mockRejectedValue(dropped());
+    await expect(retryTransientRead('create', run, 0)).rejects.toMatchObject({ code: 'P1017' });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  // A missing table is a fact about the schema, not about the connection; asking again changes nothing.
+  it('does not retry an error that is about the query rather than the connection', async () => {
+    const run = vi.fn().mockRejectedValue(Object.assign(new Error('no table'), { code: 'P2021' }));
+    await expect(retryTransientRead('findMany', run, 0)).rejects.toMatchObject({ code: 'P2021' });
+    expect(run).toHaveBeenCalledOnce();
   });
 });
