@@ -51,8 +51,9 @@ const NOW = new Date('2026-10-18T12:00:00.000Z').getTime();
 function setup() {
   const gmail = { hasNewHistory: vi.fn(), incrementalSync: vi.fn() };
   const classification = { classifyAccount: vi.fn() };
-  const service = new MailWatchService(gmail as never, classification as never);
-  return { gmail, classification, service };
+  const notifier = { recordNewMail: vi.fn().mockResolvedValue(0) };
+  const service = new MailWatchService(gmail as never, classification as never, notifier);
+  return { gmail, classification, notifier, service };
 }
 
 const stored = (minutesAgo: number) =>
@@ -117,6 +118,28 @@ describe('checking a mailbox for new mail', () => {
     expect(result.outcome).toBe('CHECKED');
     expect(gmail.incrementalSync).not.toHaveBeenCalled();
     expect(classification.classifyAccount).toHaveBeenCalledOnce();
+  });
+
+  it('announces new mail after every check', async () => {
+    const { gmail, notifier, service } = setup();
+    gmail.hasNewHistory.mockResolvedValue(false);
+    notifier.recordNewMail.mockResolvedValue(2);
+
+    const result = await service.check('account-1', 'user-1', NOW);
+
+    expect(notifier.recordNewMail).toHaveBeenCalledWith('account-1', NOW);
+    expect(result).toEqual({ outcome: 'UNCHANGED', announced: 2 });
+  });
+
+  // Mail sorted and not announced is better than mail not sorted.
+  it('keeps sorting when announcing fails', async () => {
+    const { gmail, notifier, service } = setup();
+    gmail.hasNewHistory.mockResolvedValue(false);
+    notifier.recordNewMail.mockRejectedValue(new Error('push service down'));
+
+    await expect(service.check('account-1', 'user-1', NOW)).resolves.toEqual({
+      outcome: 'UNCHANGED',
+    });
   });
 
   it('stands aside while a full run is working on the same mailbox', async () => {

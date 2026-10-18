@@ -114,6 +114,22 @@ describe('environment validation', () => {
     ).toBe(0);
   });
 
+  it('takes both Web Push keys or neither', async () => {
+    await expect(
+      loadWith({ WEB_PUSH_VAPID_PUBLIC_KEY: 'public', WEB_PUSH_VAPID_PRIVATE_KEY: undefined }),
+    ).rejects.toThrow();
+    const { env } = await loadWith({
+      WEB_PUSH_VAPID_PUBLIC_KEY: undefined,
+      WEB_PUSH_VAPID_PRIVATE_KEY: undefined,
+    });
+    expect(env.WEB_PUSH_VAPID_PUBLIC_KEY).toBeUndefined();
+  });
+
+  it('accepts a mailto subject for push', async () => {
+    const { env } = await loadWith({ WEB_PUSH_SUBJECT: 'mailto:push@example.com' });
+    expect(env.WEB_PUSH_SUBJECT).toBe('mailto:push@example.com');
+  });
+
   it('accepts the cross-site cookie production deployments require', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'production',

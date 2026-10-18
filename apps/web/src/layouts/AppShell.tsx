@@ -1,36 +1,53 @@
-import {
-  CheckCheck,
-  FolderTree,
-  History,
-  LayoutGrid,
-  ListChecks,
-  LogOut,
-  Shield,
-  Search,
-} from 'lucide-react';
+import { FolderTree, History, Inbox, LogOut, Menu, Search, Shield, Star } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
+import { NotificationCenter } from '@web/components/app/NotificationCenter';
 import { ServerWakeNotice } from '@web/components/app/ServerWakeNotice';
 import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
+import { formatCount } from '@web/lib/format';
+import { useNotificationFeed } from '@web/queries/notifications';
 
 /**
  * One layout, one breakpoint. Below 768px the navigation is a bottom tab bar; above it, a left
  * rail beside a max-width column. The same destinations either way — a phone layout stretched
  * across a desktop is the failure this avoids.
  *
+ * The five tabs are what is opened every day. Everything else — notifications first — sits behind
+ * the menu icon on the left of every screen, which carries the unread count so new mail is visible
+ * from anywhere without spending a sixth tab on it.
+ *
  * Setup is deliberately not in here. It is a path you walk once, linked to from wherever an
  * account turns out not to be ready; a permanent tab for it would be clutter forever after.
  */
 const NAV = [
-  { to: '/sorted', label: 'Sorted', Icon: LayoutGrid },
+  { to: '/inbox', label: 'Inbox', Icon: Inbox },
   { to: '/find', label: 'Find', Icon: Search },
+  { to: '/favorites', label: 'Favourites', Icon: Star },
   { to: '/folders', label: 'Folders', Icon: FolderTree },
-  { to: '/review', label: 'Review', Icon: ListChecks },
-  { to: '/approve', label: 'Approve', Icon: CheckCheck },
   { to: '/activity', label: 'Activity', Icon: History },
 ] as const;
+
+function MenuButton() {
+  const feed = useNotificationFeed();
+  const unread = feed.data?.unreadCount ?? 0;
+  return (
+    <NavLink
+      to="/menu"
+      className={({ isActive }) => `menu-button${isActive ? ' menu-button--active' : ''}`}
+      aria-label={unread > 0 ? `Menu, ${unread} unread notifications` : 'Menu'}
+      title="Menu"
+    >
+      <Menu aria-hidden="true" strokeWidth={1.75} />
+      {unread > 0 ? (
+        <span className="menu-button__badge" aria-hidden="true">
+          {unread > 99 ? '99+' : formatCount(unread)}
+        </span>
+      ) : null}
+    </NavLink>
+  );
+}
 
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -39,6 +56,7 @@ export function AppShell() {
 
   return (
     <div className="shell">
+      <NotificationCenter />
       <nav className="shell__rail" aria-label="Primary">
         <span className="shell__brand">MailMind</span>
         <ul className="shell__nav">
@@ -81,10 +99,11 @@ export function AppShell() {
 
       <main className="shell__main">
         <div className="shell__column">
-          {/* Below the rail's breakpoint the account row is hidden, so the control needs a home
-              inside the content column rather than only in the desktop sidebar. */}
+          {/* The menu sits on the left at every width. Below the rail's breakpoint the account
+              row is hidden, so the theme control needs a home here as well. */}
           <div className="shell__toolbar">
-            <ThemeToggle variant="compact" />
+            <MenuButton />
+            <ThemeToggle variant="compact" className="shell__toolbar-theme" />
           </div>
           <ServerWakeNotice />
           <Outlet />

@@ -117,7 +117,6 @@ export function PivotPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.pivotSettings });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.labels });
       void queryClient.invalidateQueries({ queryKey: queryKeys.activityRuns });
     },
   });
@@ -143,8 +142,8 @@ export function PivotPage() {
       </header>
       <p className="screen__lede">
         Your mail already knows what it is about. This decides how it is arranged — put the levels
-        in the order you want and see the tree it makes. Every arrangement stays available on
-        Sorted; this one is just where that screen opens.
+        in the order you want and see the tree it makes. Every arrangement stays available on Inbox;
+        this one is just where that screen opens.
       </p>
 
       {settingsQuery.isError ? (
@@ -227,7 +226,7 @@ export function PivotPage() {
         {effectiveOrder.length > 0 ? (
           <Link
             className="button"
-            to={`/sorted?order=${encodeURIComponent(pivotOrderKey(effectiveOrder))}`}
+            to={`/inbox?order=${encodeURIComponent(pivotOrderKey(effectiveOrder))}`}
           >
             Open this arrangement
           </Link>
@@ -237,7 +236,7 @@ export function PivotPage() {
       {saveMutation.isError ? <ErrorNotice error={saveMutation.error} /> : null}
       {saveMutation.isSuccess && !changed ? (
         <p className="notice" role="status">
-          Saved. Sorted opens on this arrangement now — the others are still one click away.
+          Saved. Inbox opens on this arrangement now — the others are still one click away.
         </p>
       ) : null}
 

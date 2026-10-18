@@ -116,6 +116,15 @@ export const activityPollLimiter = limiter(
   Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60 * 2),
   'per-instance',
 );
+/**
+ * Starring folders and marking notifications read: small writes to a person's own rows, made by
+ * tapping. The shared ten-per-window mutation budget would refuse the eleventh star.
+ */
+export const preferenceMutationLimiter = limiter(
+  'preferenceMutationLimiter',
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 300),
+  'per-instance',
+);
 export const labelsMutationLimiter = limiter(
   'labelsMutationLimiter',
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),

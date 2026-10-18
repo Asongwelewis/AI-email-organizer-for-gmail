@@ -12,7 +12,7 @@ function renderCallback(entry: string) {
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/sorted" element={<div>Sorted destination</div>} />
+          <Route path="/inbox" element={<div>Inbox destination</div>} />
           <Route path="/login" element={<div>Login destination</div>} />
         </Routes>
       </MemoryRouter>
@@ -41,11 +41,11 @@ describe('AuthCallbackPage', () => {
     vi.useRealTimers();
   });
 
-  it('redirects login success to the sorted screen after the transition', async () => {
+  it('redirects login success to the inbox after the transition', async () => {
     vi.useFakeTimers();
     renderCallback('/auth/callback?status=login_success');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
+    expect(screen.getByText('Inbox destination')).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -54,7 +54,7 @@ describe('AuthCallbackPage', () => {
     renderCallback('/auth/callback?status=gmail_denied');
     expect(screen.getByRole('heading', { name: 'Gmail stayed private.' })).toBeInTheDocument();
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
+    expect(screen.getByText('Inbox destination')).toBeInTheDocument();
     vi.useRealTimers();
   });
 });

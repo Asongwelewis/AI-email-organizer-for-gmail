@@ -69,7 +69,7 @@
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   height: calc(var(--app-tabs) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--surface-chrome-opaque);
@@ -122,11 +122,236 @@
   margin: 0 auto;
 }
 
-/* The mobile home for the theme control; on desktop the rail's account row takes it over. */
+/* The menu on the left at every width; the theme control on the right below the rail breakpoint. */
 .shell__toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 1rem;
+}
+
+.menu-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--app-ink, var(--ink));
+  border-radius: var(--radius-md);
+  transition: background 140ms ease-out;
+}
+
+.menu-button:hover,
+.menu-button--active {
+  background: var(--accent-soft);
+}
+
+.menu-button svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.menu-button__badge {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.1rem;
+  min-width: 1.15rem;
+  padding: 0 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.15rem;
+  color: #ffffff;
+  text-align: center;
+  background: var(--status-danger-ink);
+  border-radius: 999px;
+}
+
+.menu-profile {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.menu-profile__name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.menu-profile__email {
+  margin: 0.1rem 0 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.menu-item {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  min-height: 3.25rem;
+  padding: 0 1rem;
+  color: inherit;
+  text-decoration: none;
+  background: var(--surface-content);
+}
+
+.menu-item + .menu-item {
+  border-top: 1px solid var(--line);
+}
+
+.menu-item:hover {
+  background: var(--surface-inset);
+}
+
+.menu-item svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.menu-item__label {
+  flex: 1;
+}
+
+.menu-item__badge {
+  min-width: 1.5rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-align: center;
+  background: var(--status-danger-ink);
+  border-radius: 999px;
+}
+
+.menu-item__chevron {
+  opacity: 0.45;
+}
+
+.menu-theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1.25rem 0;
+}
+
+.menu-logout {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.push-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.push-switch__icon svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--accent);
+}
+
+.push-switch__body {
+  flex: 1;
+  min-width: 14rem;
+}
+
+.push-switch__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.push-switch__detail,
+.push-switch__error {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--app-ink-soft);
+}
+
+.push-switch__error {
+  color: var(--status-danger-ink);
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.notification--unread {
+  border-color: var(--status-info-line);
+  background: var(--status-info-bg);
+}
+
+.notification__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.notification__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.notification__sender {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification__time {
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+  white-space: nowrap;
+}
+
+.notification__subject {
+  margin: 0.3rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.notification__folder {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+.notification__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .sorted__show-all {
@@ -424,6 +649,61 @@
 
 .folder-tile:active {
   transform: scale(0.98);
+}
+
+/* The star is a sibling of the tile, pinned to its bottom-left corner over room the tile leaves. */
+.folder-tile-wrap {
+  position: relative;
+  display: flex;
+}
+
+.folder-tile-wrap > .folder-tile {
+  flex: 1;
+}
+
+.folder-tile--starrable {
+  padding-bottom: 2.75rem;
+}
+
+.folder-tile__star {
+  position: absolute;
+  bottom: 0.45rem;
+  left: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: hsl(var(--tile-hue, 218) var(--tile-sl-ink));
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  opacity: 0.7;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.folder-tile__star svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.folder-tile__star:hover,
+.folder-tile__star:focus-visible {
+  opacity: 1;
+}
+
+.folder-tile__star:active {
+  transform: scale(0.88);
+}
+
+/* Gold in both themes: a filled star is the one thing on a tile that should never blend in. */
+.folder-tile__star--on {
+  color: #e8a400;
+  opacity: 1;
 }
 
 .folder-tile__top {
@@ -1011,7 +1291,7 @@
     max-width: 26rem;
   }
 
-  .shell__toolbar {
+  .shell__toolbar-theme {
     display: none;
   }
 }

@@ -12,7 +12,7 @@ vi.mock('@web/services/http', () => ({
 
 const sendFeedback = vi.mocked(api.sendFeedback);
 
-const NOTE = 'Reconnecting Gmail does not clear GMAIL_REAUTH_REQUIRED on the Sorted screen.';
+const NOTE = 'Reconnecting Gmail does not clear GMAIL_REAUTH_REQUIRED on the Inbox screen.';
 
 function renderPage(from = '/') {
   return render(
@@ -34,7 +34,7 @@ describe('FeedbackPage', () => {
    */
   it('sends a note with no account and no contact address', async () => {
     const user = userEvent.setup();
-    renderPage('/sorted');
+    renderPage('/inbox');
 
     await user.type(screen.getByLabelText(/what happened/i), NOTE);
     await user.click(screen.getByRole('button', { name: /send feedback/i }));
@@ -43,7 +43,7 @@ describe('FeedbackPage', () => {
     expect(sendFeedback).toHaveBeenCalledWith({
       kind: 'PROBLEM',
       message: NOTE,
-      page: '/sorted',
+      page: '/inbox',
     });
     // No `contact` key at all, rather than an empty one: they declined a reply.
     expect(Object.keys(sendFeedback.mock.calls[0]![0])).not.toContain('contact');

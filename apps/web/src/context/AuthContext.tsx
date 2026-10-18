@@ -9,14 +9,31 @@ import {
   useLogoutAllMutation,
   useLogoutMutation,
 } from '@web/queries/authQueries';
+import { unsubscribeThisBrowser } from '@web/lib/push';
 import { forgetSession } from '@web/lib/sessionSnapshot';
 import { queryKeys } from '@web/queries/queryKeys';
-import { getBackendRedirectUrl, setAuthenticationFailureHandler } from '@web/services/http';
+import { api, getBackendRedirectUrl, setAuthenticationFailureHandler } from '@web/services/http';
 import { AuthContext, type AuthContextValue } from './useAuth';
 import type { AuthMeResponse } from '@web/types/auth';
 
 function navigateBrowser(path: string): void {
   window.location.assign(path);
+}
+
+/**
+ * Stops this browser receiving the account's new-mail notifications before the session ends.
+ *
+ * On a shared computer the next person to sign in would otherwise keep getting the previous
+ * person's mail in their notification centre. Best effort and bounded: it must never be the reason
+ * a logout hangs, and the server drops dead subscriptions on its own anyway.
+ */
+async function releaseThisDevice(): Promise<void> {
+  const release = (async () => {
+    const endpoint = await unsubscribeThisBrowser();
+    if (endpoint) await api.unsubscribePush(endpoint);
+  })();
+  const limit = new Promise<void>((resolve) => window.setTimeout(resolve, 3000));
+  await Promise.race([release.catch(() => undefined), limit]);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearAuthentication]);
 
   const logout = useCallback(async () => {
+    await releaseThisDevice();
     await logoutMutation.mutateAsync();
     forgetSession();
     queryClient.clear();
@@ -51,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logoutMutation, queryClient]);
 
   const logoutAll = useCallback(async () => {
+    await releaseThisDevice();
     await logoutAllMutation.mutateAsync();
     forgetSession();
     queryClient.clear();

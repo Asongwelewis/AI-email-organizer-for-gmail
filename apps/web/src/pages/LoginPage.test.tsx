@@ -21,7 +21,7 @@ function renderLogin(entry = '/login') {
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/sorted" element={<div>Sorted destination</div>} />
+          <Route path="/inbox" element={<div>Inbox destination</div>} />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>,
@@ -63,9 +63,9 @@ describe('LoginPage', () => {
     expect(screen.queryByText('database-secret')).not.toBeInTheDocument();
   });
 
-  it('redirects an authenticated user to the sorted screen', () => {
+  it('redirects an authenticated user to the inbox', () => {
     authState.isAuthenticated = true;
     renderLogin();
-    expect(screen.getByText('Sorted destination')).toBeInTheDocument();
+    expect(screen.getByText('Inbox destination')).toBeInTheDocument();
   });
 });

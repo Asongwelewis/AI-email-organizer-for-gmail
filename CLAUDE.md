@@ -173,6 +173,23 @@ public `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` in production, with
 `.github/workflows/wake-api.yml` pinging every ten minutes as the backstop that can wake a sleeping
 instance. Around the clock that is ~744 of the 750 free hours a Render workspace shares a month.
 
+**Inbox, favourites and notifications are the everyday screens.** Sorted is called **Inbox**
+(`/inbox`; `/sorted` redirects with its query string). The **Review** and **Approve** pages are
+gone from the PWA for now and will be redesigned; their API routes (`/api/automation/review*`,
+`/api/labels/*`) stay, because the review approve path is also how the Gmail export applies a
+label. **Favourites** (`favorite_folders`) star a folder by its `facet_key` plus the arrangement it
+was starred in; counts are read live from `message_facets` over all mail, and every folder tile —
+present and future — carries the star. **Notifications**: after every check the watcher calls
+`notificationsService.recordNewMail`, which asks the database rather than the check what is new —
+unread `INBOX` mail stored and received in the last two hours with no `notifications` row — inserts
+with `createManyAndReturn({ skipDuplicates })` so racing instances announce a message once, and
+sends a Web Push (`web-push`, VAPID keys `WEB_PUSH_VAPID_*`) to that user's `push_subscriptions`:
+one per message, or one summary for a burst. `public/push-handler.js` (imported into the generated
+service worker) shows it in the OS notification centre — the Windows Action Center via Chrome or
+Edge — unless a MailMind window is focused, in which case the open app shows a Sonner toast
+instead. A notification row points at the stored message and copies none of it. Logout unsubscribes
+the device first, so a shared computer does not keep receiving the last person's mail.
+
 **One filing engine.** `automation.service` orchestrates and owns no classification of its own: a
 run refreshes the mailbox and calls `facetClassificationService.classifyAccount`, then
 `facetFilingService.fileAccount` only when the Gmail export is enabled. `POST /api/automation/run`

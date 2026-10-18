@@ -9,8 +9,9 @@ import { MailList } from '@web/components/app/MailList';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
 import { rememberedQuery } from '@web/lib/sessionSnapshot';
+import { useFavorites } from '@web/queries/favorites';
 import { queryKeys } from '@web/queries/queryKeys';
-import { apiBaseUrl } from '@web/config/env';
+import { brandIconUrl } from '@web/lib/brandIcon';
 import { api } from '@web/services/http';
 import {
   PIVOT_PRESETS,
@@ -44,8 +45,7 @@ import {
  * which companies send this person mail. Only brand folders have one.
  */
 function folderIconUrl(node: PivotNode): string | null {
-  if (node.facet !== 'entity' || !node.iconDomain) return null;
-  return `${apiBaseUrl}/facets/icons/${encodeURIComponent(node.iconDomain)}`;
+  return node.facet === 'entity' ? brandIconUrl(node.iconDomain) : null;
 }
 
 /** How often an open screen picks up mail the watcher has sorted since it loaded. */
@@ -104,7 +104,7 @@ function parseOrder(value: string | null): PivotFacet[] | null {
   return parsed.length > 0 ? parsed : null;
 }
 
-export function SortedPage() {
+export function InboxPage() {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const facetKey = params.get('folder');
@@ -164,6 +164,7 @@ export function SortedPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.pivotSettings }),
   });
 
+  const { isFavorite, toggleFavorite } = useFavorites();
   const nodes = useMemo(() => viewQuery.data?.nodes ?? [], [viewQuery.data]);
   const trail = useMemo(() => trailTo(nodes, facetKey), [nodes, facetKey]);
   const current = trail.at(-1) ?? null;
@@ -230,7 +231,7 @@ export function SortedPage() {
   return (
     <section className="screen">
       <header className="screen__head">
-        <h1 className="screen__title">Sorted</h1>
+        <h1 className="screen__title">Inbox</h1>
         <label className="search">
           <Search aria-hidden="true" strokeWidth={1.5} />
           <input
@@ -378,6 +379,8 @@ export function SortedPage() {
               childCount={childrenOf(nodes, folder.facetKey).length}
               unreadCount={folder.subtreeUnreadCount}
               iconUrl={folderIconUrl(folder)}
+              favorite={isFavorite(folder.facetKey)}
+              onToggleFavorite={() => toggleFavorite(folder.facetKey, order)}
               onOpen={() => openFolder(folder.facetKey)}
             />
           ))}
