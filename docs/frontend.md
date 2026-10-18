@@ -61,6 +61,14 @@ would have failed on. Sessions stay alive by being used: the API slides the expi
 authenticated requests and re-issues the cookie itself. `skipAuthFailure` marks the two requests
 whose 401 says nothing about the session (logout and the public feedback form).
 
+### Time windows
+
+"Last 24 hours", "7 days", "30 days" and "All mail" filter the same folders: the tree is shaped by
+the whole mailbox on the server, and the window decides which mail each folder counts and which
+folders have anything in it. A level shows its 24 newest folders first, with "Show all N folders"
+for the rest — the grid used to stop at ten with no way past it. (Until October 2026 "Last 24
+hours" also reached back only one hour.)
+
 ### Live mail
 
 There is no "Run now" or "Check for new mail" button. The API checks Gmail every minute and sorts new
