@@ -43,9 +43,9 @@ export function startKeepAwake(
   intervalMinutes = env.KEEP_AWAKE_INTERVAL_MINUTES,
   fetcher: typeof fetch = fetch,
 ): void {
-  // Production only: a developer's laptop has nothing to keep awake, and pinging the configured
-  // API_BASE_URL from it would be pinging production.
-  if (timer || intervalMinutes <= 0 || env.NODE_ENV !== 'production') return;
+  // Deployments only: a developer's laptop has nothing to keep awake, and pinging the configured
+  // API_BASE_URL from it would be pinging production. Not NODE_ENV alone — see `IS_DEPLOYED`.
+  if (timer || intervalMinutes <= 0 || !env.IS_DEPLOYED) return;
   timer = setInterval(() => void pingSelf(fetcher), intervalMinutes * 60_000);
   timer.unref();
   logger.info({ intervalMinutes }, 'keep-awake ping started');
