@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   return {
     eligibleScheduledAccounts: vi.fn(),
     runScheduledAccount: vi.fn(),
+    watchEligibleAccounts: vi.fn(),
+    watchCheck: vi.fn(),
     captureApiException: vi.fn(),
     loggerError: vi.fn(),
     loggerWarn: vi.fn(),
@@ -134,7 +136,7 @@ vi.mock('../src/database/prisma.js', () => ({
 import { env } from '../src/config/env.js';
 import { AppError } from '../src/errors/AppError.js';
 import type { RunOutcome } from '../src/features/activity/activity.service.js';
-import { AutomationService } from '../src/features/automation/automation.service.js';
+import { AutomationService, nextFullRun } from '../src/features/automation/automation.service.js';
 
 const gmailStub = () => ({
   ensureLabel: vi.fn().mockResolvedValue({ id: 'Label_1', created: false }),
@@ -153,12 +155,22 @@ describe('automation scheduler tick', () => {
     vi.clearAllMocks();
     process.env['AUTOMATION_ENABLED'] = 'true';
     process.env['GEMINI_API_KEY'] = 'test-gemini-key';
+    // Blank rather than deleted: a local .env would put a deleted one straight back.
+    process.env['AUTOMATION_SCHEDULE_HOUR_UTC'] = '';
     mocks.eligibleScheduledAccounts.mockResolvedValue([]);
     mocks.runScheduledAccount.mockResolvedValue({ success: true });
+    mocks.watchEligibleAccounts.mockResolvedValue([]);
+    mocks.watchCheck.mockResolvedValue({ outcome: 'UNCHANGED' });
     vi.doMock('../src/features/automation/automation.service.js', () => ({
       automationService: {
         eligibleScheduledAccounts: mocks.eligibleScheduledAccounts,
         runScheduledAccount: mocks.runScheduledAccount,
+      },
+    }));
+    vi.doMock('../src/features/automation/mail-watch.service.js', () => ({
+      mailWatchService: {
+        eligibleAccounts: mocks.watchEligibleAccounts,
+        check: mocks.watchCheck,
       },
     }));
   });
@@ -168,6 +180,7 @@ describe('automation scheduler tick', () => {
     scheduler.stopAutomationScheduler();
     vi.useRealTimers();
     vi.doUnmock('../src/features/automation/automation.service.js');
+    vi.doUnmock('../src/features/automation/mail-watch.service.js');
     process.env = { ...originalProcessEnv };
   });
 
@@ -175,8 +188,74 @@ describe('automation scheduler tick', () => {
   async function loadScheduler() {
     const scheduler = await import('../src/features/automation/automation.scheduler.js');
     const { env: loaded } = await import('../src/config/env.js');
-    return { ...scheduler, pollIntervalMs: loaded.AUTOMATION_POLL_INTERVAL_MINUTES * 60_000 };
+    return {
+      ...scheduler,
+      pollIntervalMs: loaded.AUTOMATION_POLL_INTERVAL_MINUTES * 60_000,
+      checkIntervalMs: loaded.AUTOMATION_CHECK_INTERVAL_SECONDS * 1000,
+    };
   }
+
+  /*
+   * The second clock. New mail used to wait for the one daily run; now the watcher asks Gmail
+   * every minute and sorts what arrived. These pin down that it really ticks on its own interval,
+   * keeps going past one broken mailbox, and goes quiet when automation is off.
+   */
+  it('asks every watched mailbox for new mail on the check interval', async () => {
+    mocks.watchEligibleAccounts.mockResolvedValue([
+      { id: 'account-1', user_id: 'user-1' },
+      { id: 'account-2', user_id: 'user-2' },
+    ]);
+    vi.useFakeTimers();
+    const { startAutomationScheduler, checkIntervalMs } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(checkIntervalMs);
+    expect(mocks.watchCheck).toHaveBeenCalledTimes(2);
+    expect(mocks.watchCheck).toHaveBeenCalledWith('account-1', 'user-1');
+
+    await vi.advanceTimersByTimeAsync(checkIntervalMs);
+    expect(mocks.watchCheck).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps watching the other mailboxes when one check fails', async () => {
+    mocks.watchEligibleAccounts.mockResolvedValue([
+      { id: 'account-1', user_id: 'user-1' },
+      { id: 'account-2', user_id: 'user-2' },
+    ]);
+    mocks.watchCheck.mockRejectedValueOnce(new Error('token revoked'));
+    vi.useFakeTimers();
+    const { startAutomationScheduler, checkIntervalMs } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(checkIntervalMs);
+
+    expect(mocks.watchCheck).toHaveBeenCalledWith('account-2', 'user-2');
+    expect(mocks.captureApiException).toHaveBeenCalledWith(expect.any(Error), {
+      operation: 'mail_watch_account',
+    });
+  });
+
+  it('does not watch when the check interval is turned off', async () => {
+    process.env['AUTOMATION_CHECK_INTERVAL_SECONDS'] = '0';
+    vi.useFakeTimers();
+    const { startAutomationScheduler } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(mocks.watchEligibleAccounts).not.toHaveBeenCalled();
+  });
+
+  it('does not watch while automation is disabled', async () => {
+    process.env['AUTOMATION_ENABLED'] = 'false';
+    vi.useFakeTimers();
+    const { startAutomationScheduler } = await loadScheduler();
+
+    startAutomationScheduler();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(mocks.watchEligibleAccounts).not.toHaveBeenCalled();
+  });
 
   // The mitigation the board relies on while the two filing engines are not yet unified. If the
   // flag did not actually stop the timer there would be nothing standing between a deployed API
@@ -215,6 +294,19 @@ describe('automation scheduler tick', () => {
 
     expect(mocks.loggerWarn).toHaveBeenCalledTimes(1);
     expect(mocks.loggerWarn.mock.calls[0]?.[0]).toContain('GEMINI_API_KEY');
+  });
+
+  it('says at boot that the retired single-hour setting is ignored', async () => {
+    process.env['AUTOMATION_SCHEDULE_HOUR_UTC'] = '2';
+    vi.useFakeTimers();
+    const { startAutomationScheduler } = await loadScheduler();
+
+    startAutomationScheduler();
+
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('AUTOMATION_FULL_RUN_HOURS_UTC'),
+    );
   });
 
   it('does not warn when it has what it needs to run', async () => {
@@ -386,11 +478,12 @@ describe('an unattended run and how it ends', () => {
     ...overrides,
   });
 
-  const service = () =>
+  const service = (leaseWait = { attempts: 0, delayMs: 0 }) =>
     new AutomationService(
       gmailStub() as never,
       { classifyAccount: mocks.classifyAccount } as never,
       { fileAccount: mocks.fileAccount } as never,
+      leaseWait,
     );
 
   /** The `update` branch of the schedule stamp, which is where backoff is recorded. */
@@ -489,6 +582,21 @@ describe('an unattended run and how it ends', () => {
     expect(mocks.fileAccount).not.toHaveBeenCalled();
   });
 
+  // The watcher holds the same lease for the seconds it spends sorting new mail. A full run that
+  // lands in that window waits it out instead of failing and backing off for fifteen minutes.
+  it('waits out a watcher check that holds the lease, then runs', async () => {
+    mocks.classifyAccount
+      .mockRejectedValueOnce(
+        new AppError('AUTOMATION_ALREADY_RUNNING', 'Mail automation is already running.', 409),
+      )
+      .mockResolvedValueOnce(classified());
+
+    await service({ attempts: 2, delayMs: 0 }).runScheduledAccount('account-1', 'user-1');
+
+    expect(mocks.classifyAccount).toHaveBeenCalledTimes(2);
+    expect(outcome?.state).toBe('SUCCEEDED');
+  });
+
   it('schedules the next run at the configured hour and clears the backoff on success', async () => {
     await service().runScheduledAccount('account-1', 'user-1');
 
@@ -496,7 +604,7 @@ describe('an unattended run and how it ends', () => {
     expect(stamped['retry_at']).toBeNull();
     expect(stamped['failure_count']).toBe(0);
     const nextRun = stamped['next_run_at'] as Date;
-    expect(nextRun.getUTCHours()).toBe(env.AUTOMATION_SCHEDULE_HOUR_UTC);
+    expect(env.AUTOMATION_FULL_RUN_HOURS_UTC).toContain(nextRun.getUTCHours());
     expect(nextRun.getUTCMinutes()).toBe(0);
     expect(nextRun.getTime()).toBeGreaterThan(Date.now());
   });
@@ -550,7 +658,9 @@ describe('an unattended run and how it ends', () => {
 
     const stamped = stampedSchedule();
     expect(stamped['retry_at']).toBeNull();
-    expect((stamped['next_run_at'] as Date).getUTCHours()).toBe(env.AUTOMATION_SCHEDULE_HOUR_UTC);
+    expect(env.AUTOMATION_FULL_RUN_HOURS_UTC).toContain(
+      (stamped['next_run_at'] as Date).getUTCHours(),
+    );
     expect(outcome).toMatchObject({
       state: 'STOPPED',
       stopReason: 'DAILY_BUDGET_REACHED',
@@ -687,5 +797,27 @@ describe('an unattended run and how it ends', () => {
 
     expect(mocks.classifyAccount).not.toHaveBeenCalled();
     expect(mocks.fileAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('when the next full run is', () => {
+  const at = (iso: string) => new Date(iso);
+
+  it('is the next configured hour still ahead today', () => {
+    expect(nextFullRun([2, 14], at('2026-10-18T09:30:00.000Z')).toISOString()).toBe(
+      '2026-10-18T14:00:00.000Z',
+    );
+  });
+
+  it('rolls over to the first hour tomorrow once today is spent', () => {
+    expect(nextFullRun([2, 14], at('2026-10-18T15:00:00.000Z')).toISOString()).toBe(
+      '2026-10-19T02:00:00.000Z',
+    );
+  });
+
+  it('never schedules the hour that is happening right now', () => {
+    expect(nextFullRun([14], at('2026-10-18T14:00:00.000Z')).toISOString()).toBe(
+      '2026-10-19T14:00:00.000Z',
+    );
   });
 });

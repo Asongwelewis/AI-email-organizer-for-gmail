@@ -69,6 +69,11 @@ export interface PivotNode {
   subtreeUnreadCount: number;
   isLeaf: boolean;
   latestReceivedAt?: string | null;
+  /** Which facet this level orders by, and this folder's value of it. */
+  facet?: PivotFacet;
+  value?: string;
+  /** A brand folder's logo domain. Only on `entity` folders, and null when none is known. */
+  iconDomain?: string | null;
 }
 
 export interface PivotView {

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '@api/errors/AppError.js';
 import { PIVOT_FACETS, type PivotFacet } from '@api/features/label-discovery/pivot.js';
 import { DEFAULT_EMAIL_TIME_RANGE, EMAIL_TIME_RANGES } from '@mailmind/shared';
+import { brandIconService, isIconDomain } from './brand-icon.service.js';
 import { facetsService } from './facets.service.js';
 import { vocabularyService } from './vocabulary.service.js';
 
@@ -133,6 +134,34 @@ function noStore(response: Response): void {
 }
 
 export class FacetsController {
+  /**
+   * A brand folder's logo. 404 when there is no logo, which the folder answers with its own icon.
+   *
+   * `Cross-Origin-Resource-Policy: same-site` because the page that shows it is on
+   * www.mailmindai.tech and this is api.mailmindai.tech — same site, different origin — and
+   * helmet's default of same-origin would make the browser refuse to draw it.
+   */
+  async icon(request: Request, response: Response): Promise<void> {
+    const domain = String(request.params['domain'] ?? '').toLowerCase();
+    if (!isIconDomain(domain)) {
+      throw new AppError('FACET_VALIDATION_FAILED', 'That is not a domain.', 400);
+    }
+    let icon;
+    try {
+      icon = await brandIconService.icon(domain);
+    } catch {
+      throw new AppError('ICON_UNAVAILABLE', 'The logo could not be fetched right now.', 503);
+    }
+    response.set('Cross-Origin-Resource-Policy', 'same-site');
+    if (!icon) {
+      response.set('Cache-Control', 'private, max-age=86400');
+      response.status(404).end();
+      return;
+    }
+    response.set('Cache-Control', 'private, max-age=604800');
+    response.type(icon.contentType).send(icon.body);
+  }
+
   /** 202: classifying a mailbox is thousands of paced Gemini calls. The client polls the run id. */
   async classify(request: Request, response: Response): Promise<void> {
     response.status(202).json(await facetsService.startClassification(request.auth!.user.id));

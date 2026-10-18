@@ -10,6 +10,7 @@ import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
 import { rememberedQuery } from '@web/lib/sessionSnapshot';
 import { queryKeys } from '@web/queries/queryKeys';
+import { apiBaseUrl } from '@web/config/env';
 import { api } from '@web/services/http';
 import {
   PIVOT_PRESETS,
@@ -37,6 +38,18 @@ import {
  * reclassification, no Gmail call, and nothing to apply. The saved ordering is only which one this
  * screen opens on.
  */
+
+/**
+ * A brand folder's logo, fetched through our own API so the browser never tells a logo service
+ * which companies send this person mail. Only brand folders have one.
+ */
+function folderIconUrl(node: PivotNode): string | null {
+  if (node.facet !== 'entity' || !node.iconDomain) return null;
+  return `${apiBaseUrl}/facets/icons/${encodeURIComponent(node.iconDomain)}`;
+}
+
+/** How often an open screen picks up mail the watcher has sorted since it loaded. */
+const LIVE_REFRESH_MS = 60_000;
 
 /** One level at a time. Folders are nested by their parent's facet key. */
 const TOP_FOLDER_LIMIT = 10;
@@ -127,6 +140,9 @@ export function SortedPage() {
      * once at the server default and again at the account's, and the two can differ.
      */
     enabled: order.length > 0 && !settingsQuery.isPending,
+    // New mail is sorted within a minute or two of arriving, so an open screen follows it. Paused
+    // while the tab is hidden, and a read of stored facets — no Gmail or model call behind it.
+    refetchInterval: LIVE_REFRESH_MS,
   });
   const connectionQuery = useQuery({
     queryKey: queryKeys.gmailConnection,
@@ -347,6 +363,7 @@ export function SortedPage() {
               count={folder.isLeaf ? folder.messageCount : folder.subtreeMessageCount}
               childCount={childrenOf(nodes, folder.facetKey).length}
               unreadCount={folder.subtreeUnreadCount}
+              iconUrl={folderIconUrl(folder)}
               onOpen={() => openFolder(folder.facetKey)}
             />
           ))}
@@ -391,6 +408,7 @@ function FolderMessages({
   const messagesQuery = useQuery({
     queryKey: queryKeys.facetMessages(folder.facetKey, range),
     queryFn: () => api.getFacetMessages(folder.facetKey, { range }),
+    refetchInterval: LIVE_REFRESH_MS,
   });
 
   if (messagesQuery.isPending) return <LoadingState label="Loading mail" />;

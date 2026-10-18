@@ -195,10 +195,22 @@ databaseTests('PostgreSQL authentication repositories', () => {
     });
     const repository = new SessionRepository();
     const results = await Promise.all([
-      repository.rotate(original.id, sha256('replacement-one'), new Date(Date.now() + 60_000)),
-      repository.rotate(original.id, sha256('replacement-two'), new Date(Date.now() + 60_000)),
+      repository.rotate(
+        original.id,
+        sha256('replacement-one'),
+        new Date(Date.now() + 60_000),
+        original.created_at,
+      ),
+      repository.rotate(
+        original.id,
+        sha256('replacement-two'),
+        new Date(Date.now() + 60_000),
+        original.created_at,
+      ),
     ]);
     expect(results.filter(Boolean)).toHaveLength(1);
+    // The replacement keeps the original sign-in time, so rotation cannot reset the ceiling.
+    expect(results.find(Boolean)?.created_at.getTime()).toBe(original.created_at.getTime());
     expect(await prisma.sessions.count({ where: { user_id: user.id, revoked_at: null } })).toBe(1);
   });
 

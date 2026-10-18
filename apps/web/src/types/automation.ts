@@ -42,6 +42,14 @@ export interface AutomationStatus {
     outputTokens: number;
     estimatedCostMicrousd: number;
     messagesLabeled: number;
+    /** Sorted into folders today, by rules and by the model, whether or not Gmail was written. */
+    messagesSorted?: number;
+  };
+  /** The watcher that sorts new mail as it arrives, between the full runs. */
+  watch?: {
+    /** 0 when it is turned off. */
+    intervalSeconds: number;
+    lastCheckedAt: string | null;
   };
   limits?: {
     inputTokens: number;

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   classificationMutationLimiter,
   classificationReadLimiter,
+  iconLimiter,
   labelsMutationLimiter,
 } from '@api/middleware/rateLimiters.js';
 import { requireTrustedOrigin } from '@api/middleware/trustedOrigin.js';
@@ -29,6 +30,12 @@ facetsRouter.put(
   labelsMutationLimiter,
   requireTrustedOrigin,
   asyncHandler((request, response) => facetsController.setSettings(request, response)),
+);
+// One per brand folder on screen, and cached by the browser for a week after the first.
+facetsRouter.get(
+  '/icons/:domain',
+  iconLimiter,
+  asyncHandler((request, response) => facetsController.icon(request, response)),
 );
 facetsRouter.get(
   '/messages',

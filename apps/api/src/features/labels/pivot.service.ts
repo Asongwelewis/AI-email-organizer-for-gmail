@@ -2,6 +2,7 @@ import { auditService } from '@api/audit/audit.service.js';
 import { env } from '@api/config/env.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
+import { entityIconDomains } from '@api/features/label-discovery/entity.js';
 import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
 import {
   ALTERNATE_PIVOT,
@@ -147,7 +148,7 @@ export class PivotService {
         intent: true,
         // Read straight from the mailbox mirror, so a folder's unread badge tracks Gmail rather
         // than anything MailMind decided. Reading a message in Gmail clears it on the next sync.
-        message: { select: { internal_date: true, is_unread: true } },
+        message: { select: { internal_date: true, is_unread: true, sender_email: true } },
       },
     });
     return rows.map((row) => ({
@@ -157,6 +158,7 @@ export class PivotService {
       intent: row.intent,
       receivedAt: row.message?.internal_date ?? null,
       unread: row.message?.is_unread === true,
+      senderEmail: row.message?.sender_email ?? null,
     }));
   }
 
@@ -255,10 +257,18 @@ export class PivotService {
     range: EmailTimeRange = DEFAULT_EMAIL_TIME_RANGE,
   ): Promise<PivotResult> {
     const settings = await this.settings(accountId);
-    return buildPivot(await this.facetedMessages(accountId), order, {
+    const messages = await this.facetedMessages(accountId);
+    const pivot = buildPivot(messages, order, {
       minMessages: minMessages ?? settings.minMessages,
       since: emailTimeRangeSince(range),
     });
+    // A brand folder shows the brand's logo, so it needs a domain to fetch one for. Computed from
+    // the same rows the tree was built from, so it costs no extra query.
+    const iconDomains = entityIconDomains(messages);
+    for (const node of pivot.nodes) {
+      if (node.facet === 'entity') node.iconDomain = iconDomains.get(node.value) ?? null;
+    }
+    return pivot;
   }
 
   /**

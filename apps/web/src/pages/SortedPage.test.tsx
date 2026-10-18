@@ -77,6 +77,39 @@ describe('SortedPage', () => {
     mocks.getFacetMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
   });
 
+  /*
+   * Logos go through our own API, never straight to a logo service, so the browser does not tell
+   * anyone which companies send this person mail. Only brand folders have one.
+   */
+  it('shows a brand folder with its logo, fetched from our own API', async () => {
+    mocks.getPivotSettings.mockResolvedValue({
+      canonicalPivot: ['entity', 'intent'],
+      minMessages: 5,
+    });
+    mocks.getPivotView.mockResolvedValue({
+      order: ['entity', 'intent'],
+      nodes: [
+        node({
+          facetKey: 'entity=netflix',
+          leafName: 'Netflix',
+          facet: 'entity',
+          value: 'netflix',
+          iconDomain: 'netflix.com',
+          messageCount: 9,
+        }),
+        node({ facetKey: 'entity=quiet', leafName: 'Quiet', facet: 'entity', iconDomain: null }),
+      ],
+      unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
+      collapsed: 0,
+    });
+    const { container } = renderScreen(<SortedPage />, '/sorted');
+
+    await screen.findByText('Netflix');
+    const logos = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
+    expect(logos).toHaveLength(1);
+    expect(logos[0]).toMatch(/\/api\/facets\/icons\/netflix\.com$/);
+  });
+
   it('shows only the top level of the tree as tiles', async () => {
     renderScreen(<SortedPage />, '/sorted');
 

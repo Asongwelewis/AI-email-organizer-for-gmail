@@ -1,25 +1,29 @@
-name: Wake API for the nightly run
+name: Wake API
 
-# The daily automation is a timer inside the API process, and the API runs on Render's free plan,
-# which puts the process to sleep after 15 minutes without an inbound request. Asleep, the timer
-# does not tick, nothing touches the database, and Supabase pauses a free project after about a
-# week of that. On boot the API treats an unreachable database as fatal, so a paused project
-# became a month-long crash loop in September 2026 — see the startup check in apps/api/src/server.ts.
+# The API runs on Render's free plan, which puts the process to sleep after 15 minutes without an
+# inbound request. Asleep, nothing runs: the watcher cannot sort new mail, the full runs do not
+# start, and Supabase pauses a free project after about a week without database activity. On boot
+# the API treats an unreachable database as fatal, so a paused project once became a month-long
+# crash loop (September 2026) — see the startup check in apps/api/src/server.ts.
 #
-# This keeps the process awake through the nightly window instead of all day. The run is due at
-# AUTOMATION_SCHEDULE_HOUR_UTC (02:00 by default); the first request wakes the API, whose boot tick
-# picks the due account up at once, and the pings every ten minutes after it hold the instance up
-# while the run and any short backoff retries finish. Two hours a day is about 60 of the 750 free
-# instance hours a workspace shares, where staying awake all day would spend nearly all of them.
+# The API now keeps itself awake by requesting its own public /health every ten minutes (see
+# apps/api/src/services/keepAwake.ts). That cannot wake a process that is already asleep — after a
+# Render restart, a crash, or any gap — so this runs around the clock as the backstop that does.
+# GitHub can delay scheduled runs by many minutes under load, which is why it is the backstop and
+# not the mechanism, and why it runs off the top of the hour.
 #
-# `/ready` rather than `/health`: it runs `select 1`, so every ping is database activity too, and
-# Supabase stays unpaused even on a night the run itself has nothing to do.
+# Around the clock costs about 744 of the 750 free instance hours a Render workspace shares each
+# month. That is only safe while this API is the workspace's only free web service; with another
+# one, the hours run out near month end and Render suspends them all until the 1st.
 #
-# If AUTOMATION_SCHEDULE_HOUR_UTC changes, move the hours below with it.
+# `/ready` rather than `/health`: it runs `select 1`, so every ping is database activity too.
+#
+# GitHub disables scheduled workflows in a repository with no activity for 60 days. If commits
+# stop for that long, re-enable this in the Actions tab.
 
 on:
   schedule:
-    - cron: '*/10 2-3 * * *'
+    - cron: '7-59/10 * * * *'
   workflow_dispatch:
 
 permissions: {}

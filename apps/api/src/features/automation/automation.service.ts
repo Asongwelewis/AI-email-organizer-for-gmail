@@ -28,6 +28,7 @@ import {
   type FacetFilingService,
   type FilingCounters,
 } from './facet-filing.service.js';
+import { mailWatchService } from './mail-watch.service.js';
 import {
   NO_LABEL,
   type AutomationGapCluster,
@@ -58,11 +59,27 @@ const STOP_REASON_MESSAGES: Record<string, string> = {
     'Gemini returned unusable responses several times in a row, so this run stopped early. Everything filed so far is saved and the rest resumes on the next run.',
 };
 
-function nextDailyRun(hourUtc: number, from = new Date()): Date {
-  const next = new Date(from);
-  next.setUTCHours(hourUtc, 0, 0, 0);
-  if (next <= from) next.setUTCDate(next.getUTCDate() + 1);
-  return next;
+/**
+ * The next full run: the soonest of the configured hours still ahead today, or the first of them
+ * tomorrow. New mail does not wait for this; the watcher sorts it as it arrives.
+ */
+export function nextFullRun(hoursUtc: number[], from = new Date()): Date {
+  const candidates = hoursUtc.map((hour) => {
+    const next = new Date(from);
+    next.setUTCHours(hour, 0, 0, 0);
+    if (next <= from) next.setUTCDate(next.getUTCDate() + 1);
+    return next;
+  });
+  return new Date(Math.min(...candidates.map((candidate) => candidate.getTime())));
+}
+
+/** How long run history is kept. The watcher syncs whenever the mailbox changes. */
+const SYNC_RUN_RETENTION_DAYS = 30;
+
+/** When the watcher holds the account lease, a full run waits for it rather than failing. */
+export interface LeaseWait {
+  attempts: number;
+  delayMs: number;
 }
 
 function errorCode(error: unknown): string {
@@ -126,6 +143,9 @@ export class AutomationService {
     private readonly gmail: AutomationGmailService = automationGmailService,
     private readonly classification: FacetClassificationService = facetClassificationService,
     private readonly filing: FacetFilingService = facetFilingService,
+    // A watcher check holds the lease for seconds, rarely a minute; another full run holds it for
+    // much longer, and that one is still refused once these are spent.
+    private readonly leaseWait: LeaseWait = { attempts: 6, delayMs: 10_000 },
   ) {}
 
   /**
@@ -258,40 +278,55 @@ export class AutomationService {
         approvedLabelCount: 0,
         labelsReady: false,
         backlogRemaining: 0,
+        watch: { intervalSeconds: env.AUTOMATION_CHECK_INTERVAL_SECONDS, lastCheckedAt: null },
       };
     }
-    const [settings, state, lastRun, usage, pendingReviewCount, approvedLabelCount, backlog] =
-      await Promise.all([
-        prisma.automation_settings.findUnique({
-          where: { connected_google_account_id: account.id },
-        }),
-        prisma.automation_states.findUnique({
-          where: { connected_google_account_id: account.id },
-        }),
-        prisma.automation_runs.findFirst({
-          where: { connected_google_account_id: account.id },
-          orderBy: { started_at: 'desc' },
-        }),
-        prisma.automation_runs.aggregate({
-          where: {
-            connected_google_account_id: account.id,
-            started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
-          },
-          _sum: {
-            provider_call_count: true,
-            input_tokens: true,
-            cached_input_tokens: true,
-            output_tokens: true,
-            estimated_cost_microusd: true,
-            messages_labeled_count: true,
-          },
-        }),
-        prisma.automation_message_actions.count({
-          where: { connected_google_account_id: account.id, status: 'REVIEW_REQUIRED' },
-        }),
-        prisma.user_labels.count({ where: { connected_google_account_id: account.id } }),
-        this.backlogCount(account.id),
-      ]);
+    const [
+      settings,
+      state,
+      lastRun,
+      usage,
+      pendingReviewCount,
+      approvedLabelCount,
+      backlog,
+      syncState,
+    ] = await Promise.all([
+      prisma.automation_settings.findUnique({
+        where: { connected_google_account_id: account.id },
+      }),
+      prisma.automation_states.findUnique({
+        where: { connected_google_account_id: account.id },
+      }),
+      prisma.automation_runs.findFirst({
+        where: { connected_google_account_id: account.id },
+        orderBy: { started_at: 'desc' },
+      }),
+      prisma.automation_runs.aggregate({
+        where: {
+          connected_google_account_id: account.id,
+          started_at: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) },
+        },
+        _sum: {
+          provider_call_count: true,
+          input_tokens: true,
+          cached_input_tokens: true,
+          output_tokens: true,
+          estimated_cost_microusd: true,
+          messages_labeled_count: true,
+          ai_classified_count: true,
+          pattern_reused_count: true,
+        },
+      }),
+      prisma.automation_message_actions.count({
+        where: { connected_google_account_id: account.id, status: 'REVIEW_REQUIRED' },
+      }),
+      prisma.user_labels.count({ where: { connected_google_account_id: account.id } }),
+      this.backlogCount(account.id),
+      prisma.gmail_sync_states.findUnique({
+        where: { connected_google_account_id: account.id },
+        select: { last_sync_completed_at: true },
+      }),
+    ]);
     return {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
@@ -320,6 +355,17 @@ export class AutomationService {
         outputTokens: usage._sum.output_tokens ?? 0,
         estimatedCostMicrousd: usage._sum.estimated_cost_microusd ?? 0,
         messagesLabeled: usage._sum.messages_labeled_count ?? 0,
+        // Sorted into folders, whether or not anything was written to Gmail — which, with the
+        // export off by default, is the number that actually says the automation is working.
+        messagesSorted:
+          (usage._sum.ai_classified_count ?? 0) + (usage._sum.pattern_reused_count ?? 0),
+      },
+      watch: {
+        intervalSeconds: env.AUTOMATION_CHECK_INTERVAL_SECONDS,
+        lastCheckedAt:
+          (
+            mailWatchService.lastCheckedAt(account.id) ?? syncState?.last_sync_completed_at
+          )?.toISOString() ?? null,
       },
       limits: {
         inputTokens: env.AUTOMATION_MAX_INPUT_TOKENS,
@@ -585,7 +631,8 @@ export class AutomationService {
 
     try {
       await this.refreshMailbox(userId);
-      const classified = await this.classification.classifyAccount(accountId);
+      await this.pruneSyncHistory(accountId);
+      const classified = await this.classifyWhenFree(accountId);
       await report?.({
         processed: classified.ruleDecided + classified.modelDecided,
         total: classified.messagesSeen,
@@ -677,6 +724,43 @@ export class AutomationService {
   }
 
   /**
+   * Classifies the backlog, waiting out a watcher check that holds the lease.
+   *
+   * The watcher takes the same account lease for the few seconds it spends sorting new mail. A
+   * full run that landed in that window used to fail and back off for fifteen minutes over it.
+   */
+  private async classifyWhenFree(accountId: string): Promise<FacetRunCounters> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.classification.classifyAccount(accountId);
+      } catch (error) {
+        const busy = error instanceof AppError && error.code === 'AUTOMATION_ALREADY_RUNNING';
+        if (!busy || attempt >= this.leaseWait.attempts) throw error;
+        await new Promise((resolve) => setTimeout(resolve, this.leaseWait.delayMs));
+      }
+    }
+  }
+
+  /**
+   * Drops sync-run history older than SYNC_RUN_RETENTION_DAYS.
+   *
+   * The watcher syncs whenever the mailbox changes, which in a busy mailbox is most minutes of
+   * the day, and every sync writes a row. Housekeeping, so it never fails the run it rides on.
+   */
+  private async pruneSyncHistory(accountId: string): Promise<void> {
+    try {
+      await prisma.gmail_sync_runs.deleteMany({
+        where: {
+          connected_google_account_id: accountId,
+          started_at: { lt: new Date(Date.now() - SYNC_RUN_RETENTION_DAYS * 24 * 60 * 60_000) },
+        },
+      });
+    } catch (error) {
+      logger.warn({ ...safeErrorDetails(error), accountId }, 'sync history prune failed');
+    }
+  }
+
+  /**
    * Opens the run row a classification-only run reports into.
    *
    * Filing used to open it for both halves. With Gmail out of the write path there is no filing
@@ -745,7 +829,7 @@ export class AutomationService {
       where: { connected_google_account_id: accountId },
       create: {
         connected_google_account_id: accountId,
-        next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
+        next_run_at: nextFullRun(env.AUTOMATION_FULL_RUN_HOURS_UTC),
       },
       update: {
         last_run_completed_at: new Date(),
@@ -760,7 +844,7 @@ export class AutomationService {
                   (lastErrorCode === 'PROVIDER_RATE_LIMITED' ? 60 * 60_000 : 15 * 60_000),
               )
             : null,
-        next_run_at: nextDailyRun(env.AUTOMATION_SCHEDULE_HOUR_UTC),
+        next_run_at: nextFullRun(env.AUTOMATION_FULL_RUN_HOURS_UTC),
       },
     });
   }
@@ -952,6 +1036,7 @@ export class AutomationService {
       outputTokens: 0,
       estimatedCostMicrousd: 0,
       messagesLabeled: 0,
+      messagesSorted: 0,
     };
   }
 }

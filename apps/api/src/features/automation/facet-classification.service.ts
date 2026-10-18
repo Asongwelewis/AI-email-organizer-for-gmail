@@ -50,6 +50,8 @@ export interface FacetRunCounters {
   /** Rule hits where the rule was learned on a different sender than the one it fired for. */
   crossEntityRuleHits: number;
   rulesLearned: number;
+  /** Left for a later pass because the model gate said the queue was not worth a call yet. */
+  deferred: number;
   failed: number;
   providerCalls: number;
   usage: AutomationUsage;
@@ -67,6 +69,7 @@ const emptyCounters = (): FacetRunCounters => ({
   entityAssigned: 0,
   crossEntityRuleHits: 0,
   rulesLearned: 0,
+  deferred: 0,
   failed: 0,
   providerCalls: 0,
   usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
@@ -76,6 +79,30 @@ const emptyCounters = (): FacetRunCounters => ({
 });
 
 const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
+
+/**
+ * How far back "new mail" reaches for the watcher. Anything older that was never classified is
+ * backlog, and backlog belongs to the full runs: a freshly connected mailbox holds thousands of
+ * unclassified messages, and draining them ten at a time every few minutes would spend the free
+ * tier's daily requests before any new mail arrived.
+ */
+export const NEW_MAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+export interface ClassifyOptions {
+  limit?: number;
+  /**
+   * `backlog`, the default: everything unclassified or stale, newest first — what a full run does.
+   * `new`: only mail never classified that arrived inside NEW_MAIL_WINDOW_MS — what the watcher
+   * sorts as it lands.
+   */
+  scope?: 'backlog' | 'new';
+  /**
+   * Asked once the rules have run: should what they could not settle go to the model now? Absent
+   * means yes. The watcher answers no until enough is queued to be worth a call, and the messages
+   * stay unclassified — a `message_facets` row is the checkpoint, so nothing is lost by waiting.
+   */
+  modelGate?: (undecided: gmail_message_metadata[]) => boolean;
+}
 
 /**
  * Output tokens a facet result needs. A facet decision is two short strings and two numbers, where
@@ -168,7 +195,7 @@ export class FacetClassificationService {
    */
   async classifyAccount(
     accountId: string,
-    options: { limit?: number } = {},
+    options: ClassifyOptions = {},
   ): Promise<FacetRunCounters> {
     if (!env.GEMINI_API_KEY) {
       throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
@@ -227,7 +254,10 @@ export class FacetClassificationService {
       const outputTokensBefore = spentToday._sum.output_tokens ?? 0;
       const costBefore = spentToday._sum.estimated_cost_microusd ?? 0;
 
-      const messages = await this.unclassifiedMessages(accountId, promptVersion, options.limit);
+      const messages =
+        options.scope === 'new'
+          ? await this.newMessages(accountId, options.limit)
+          : await this.unclassifiedMessages(accountId, promptVersion, options.limit);
       counters.messagesSeen = messages.length;
       const rules = await this.facetRules(accountId);
 
@@ -290,6 +320,15 @@ export class FacetClassificationService {
           where: { id: { in: rules.map((rule) => rule.id) } },
           data: { last_used_at: new Date() },
         });
+      }
+
+      if (
+        undecided.length > 0 &&
+        options.modelGate &&
+        !options.modelGate(undecided.map((entry) => entry.message))
+      ) {
+        counters.deferred = undecided.length;
+        return counters;
       }
 
       let consecutiveBatchFailures = 0;
@@ -638,6 +677,19 @@ export class FacetClassificationService {
       is_trashed: false,
       NOT: { label_ids: { hasSome: ['SPAM', 'TRASH', 'DRAFT'] } },
     };
+  }
+
+  /** Mail that has never been classified and arrived recently, newest first. */
+  private newMessages(accountId: string, limit?: number) {
+    return prisma.gmail_message_metadata.findMany({
+      where: {
+        ...this.classifiableWhere(accountId),
+        facets: null,
+        internal_date: { gte: new Date(Date.now() - NEW_MAIL_WINDOW_MS) },
+      },
+      orderBy: { internal_date: 'desc' },
+      take: limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN,
+    });
   }
 
   private async unclassifiedMessages(accountId: string, promptVersion: string, limit?: number) {
