@@ -16,7 +16,30 @@ const SENSITIVE_PATH_PREFIX =
   /^(.*?\/(?:api\/)?(?:auth|gmail|classification|label-discovery|automation|integrations\/google))(?=\/|$)/i;
 const SENSITIVE_PATH_IN_TEXT =
   /\/(?:api\/)?(?:auth|gmail|classification|label-discovery|automation|integrations\/google)(?:\/[^\s"'<>?]*)?/gi;
-const SAFE_TAGS = new Set(['service', 'operation', 'phase', 'audit_action']);
+const SAFE_TAGS = new Set(['service', 'operation', 'phase', 'audit_action', 'db.code']);
+
+/**
+ * A Prisma error code — `P1017`, `P2021`. It names what kind of failure happened and nothing about
+ * the data, so it survives scrubbing. Without it every database error read the same in Sentry:
+ * on 18 Oct 2026 two failures on the new notifications and favourites tables could not be told
+ * apart from a missing migration, because the message was redacted and the code went with it.
+ */
+const DB_ERROR_CODE = /^P\d{4}$/;
+
+export function databaseErrorCode(error: unknown): string | null {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && DB_ERROR_CODE.test(code) ? code : null;
+}
+
+/** `beforeSend`: tags the event with the database error code, then scrubs it as usual. */
+export function scrubSentryErrorEvent<T extends Event>(
+  event: T,
+  hint?: { originalException?: unknown },
+): T {
+  const code = databaseErrorCode(hint?.originalException);
+  if (code) event.tags = { ...event.tags, 'db.code': code };
+  return scrubSentryEvent(event);
+}
 const SAFE_SPAN_DATA = new Set([
   'http.method',
   'http.status_code',

@@ -1,8 +1,10 @@
+import type { ErrorEvent } from '@sentry/node';
 import { describe, expect, it } from 'vitest';
 
 import {
   redactSentryText,
   sanitizeSentryUrl,
+  scrubSentryErrorEvent,
   scrubSentryEvent,
   scrubSentrySpan,
 } from '../src/observability/sentryPrivacy.js';
@@ -120,6 +122,37 @@ describe('API Sentry privacy', () => {
     });
 
     expect(event.exception?.values?.[0]?.value).toBe('Sensitive MailMind operation failed');
+  });
+
+  /*
+   * The message goes, the code stays. On 18 Oct 2026 two database failures reached Sentry as
+   * "Sensitive MailMind operation failed" and nothing else, so a dropped connection could not be
+   * told apart from a missing table. A Prisma code names the kind of failure and none of the data.
+   */
+  it('keeps the database error code while redacting the message', () => {
+    const error = Object.assign(new Error('Failing row contains private Gmail metadata'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P1017',
+    });
+    const input: ErrorEvent = {
+      type: undefined,
+      exception: { values: [{ type: 'PrismaClientKnownRequestError', value: error.message }] },
+    };
+    const event = scrubSentryErrorEvent(input, { originalException: error });
+
+    expect(event.tags?.['db.code']).toBe('P1017');
+    expect(event.exception?.values?.[0]?.value).toBe('Sensitive MailMind operation failed');
+  });
+
+  it('tags nothing that is not a Prisma code', () => {
+    const input: ErrorEvent = {
+      type: undefined,
+      exception: { values: [{ type: 'Error', value: 'boom' }] },
+    };
+    const event = scrubSentryErrorEvent(input, {
+      originalException: Object.assign(new Error('boom'), { code: 'user@example.com' }),
+    });
+    expect(event.tags?.['db.code']).toBeUndefined();
   });
 });
 

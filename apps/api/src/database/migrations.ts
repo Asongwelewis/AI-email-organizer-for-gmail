@@ -79,6 +79,21 @@ function runMigrateDeploy(): void {
   }
 }
 
+export type SchemaStatus = 'current' | 'behind' | 'unknown';
+
+/**
+ * Whether every migration this build ships has been applied. `unknown` when the build carries no
+ * migrations to compare against — the container image — which is not a reason to call it behind.
+ *
+ * This is what `/ready` reports, so a migration that did not reach the database shows up from
+ * outside within minutes instead of as 500s from the first screen that touches its tables.
+ */
+export async function schemaStatus(): Promise<SchemaStatus> {
+  if (!existsSync(migrationsDirectory)) return 'unknown';
+  const pending = pendingMigrations(shippedMigrations(), await appliedMigrations());
+  return pending.length === 0 ? 'current' : 'behind';
+}
+
 export async function migrateIfPending(): Promise<void> {
   if (!existsSync(migrationsDirectory)) {
     // The container image ships `dist` alone and migrates as a separate step; Render ships the

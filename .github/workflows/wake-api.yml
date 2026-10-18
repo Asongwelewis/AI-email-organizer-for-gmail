@@ -16,7 +16,9 @@ name: Wake API
 # month. That is only safe while this API is the workspace's only free web service; with another
 # one, the hours run out near month end and Render suspends them all until the 1st.
 #
-# `/ready` rather than `/health`: it runs `select 1`, so every ping is database activity too.
+# `/ready` rather than `/health`: it reads the database, so every ping is database activity too, and
+# it answers 503 when a migration this build ships has not reached the database — so a missing
+# migration turns this workflow red within ten minutes instead of surfacing as 500s in the app.
 #
 # GitHub disables scheduled workflows in a repository with no activity for 60 days. If commits
 # stop for that long, re-enable this in the Actions tab.
