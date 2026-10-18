@@ -94,6 +94,15 @@ export const classificationMutationLimiter = limiter(
   'classificationMutationLimiter',
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
 );
+/**
+ * Folder logos: one request per brand folder on screen, then the browser's cache for a week. The
+ * read budget of thirty would run out on a first visit to a mailbox with forty brands.
+ */
+export const iconLimiter = limiter(
+  'iconLimiter',
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 600),
+  'per-instance',
+);
 export const labelsReadLimiter = limiter(
   'labelsReadLimiter',
   Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30),

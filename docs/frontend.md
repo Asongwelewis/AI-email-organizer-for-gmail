@@ -61,6 +61,18 @@ would have failed on. Sessions stay alive by being used: the API slides the expi
 authenticated requests and re-issues the cookie itself. `skipAuthFailure` marks the two requests
 whose 401 says nothing about the session (logout and the public feedback form).
 
+### Live mail
+
+There is no "Run now" or "Check for new mail" button. The API checks Gmail every minute and sorts new
+mail as it lands, and the full job runs twice a day, so the automation panel on Activity says what
+is happening instead: "Watching for new mail · checks every minute · last checked 2 min ago", the
+next full run, and what was sorted today. It refreshes itself every 30 seconds while on screen.
+Sorted's folder tree and the open folder's mail refetch every minute while the tab is visible.
+
+Brand folders show the brand's logo on a small white plate (logos are drawn for white). The image
+comes from `GET /api/facets/icons/:domain`, never from a logo service directly, which is why the CSP
+allows `img-src https://api.mailmindai.tech`. A logo that fails to load gives way to the folder icon.
+
 ### Opening fast on a sleeping server
 
 The API runs on a free plan that sleeps when idle and takes up to a minute to wake. So the app

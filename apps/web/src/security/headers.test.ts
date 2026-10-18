@@ -94,6 +94,17 @@ describe('the document security policy', () => {
     expect(csp).not.toMatch(/(script|connect|default)-src[^;]*\*(?![.\w])/);
   });
 
+  /*
+   * Brand logos come through our own API so the browser never asks a logo service directly —
+   * which only works if the policy lets images load from the API, and from nowhere else remote.
+   */
+  it('lets folder logos load from our API and from no other remote host', () => {
+    const imgSrc = csp.split(';').find((directive) => directive.trim().startsWith('img-src')) ?? '';
+    expect(imgSrc).toContain('https://api.mailmindai.tech');
+    const remote = imgSrc.split(/\s+/).filter((source) => source.startsWith('http'));
+    expect(remote).toEqual(['https://api.mailmindai.tech']);
+  });
+
   // Clickjacking is the one attack a SPA's own code cannot defend against.
   it('refuses to be framed', () => {
     expect(csp).toContain("frame-ancestors 'none'");

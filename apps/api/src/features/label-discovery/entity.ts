@@ -185,6 +185,36 @@ const ENTITY_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** How an entity is spelled in a folder name, or null to fall back to the generic rule. */
+/**
+ * The domain to show each brand's logo for: the registrable domain its mail most often comes from.
+ *
+ * An entity is a slug — "netflix" — and a logo service wants a domain. Most brands send from one,
+ * but a brand mailing from `netflix.com` and `mailer.netflix.net` should show the logo of the one
+ * it mostly uses, and a publication on a platform keeps the platform's domain, whose logo is the
+ * honest one to show.
+ */
+export function entityIconDomains(
+  messages: Array<{ entity: string | null; senderEmail?: string | null }>,
+): Map<string, string> {
+  const tallies = new Map<string, Map<string, number>>();
+  for (const message of messages) {
+    if (!message.entity || !message.senderEmail) continue;
+    const domain = emailIdentity(message.senderEmail).registrableDomain;
+    if (!domain) continue;
+    const tally = tallies.get(message.entity) ?? new Map<string, number>();
+    tally.set(domain, (tally.get(domain) ?? 0) + 1);
+    tallies.set(message.entity, tally);
+  }
+  const chosen = new Map<string, string>();
+  for (const [entity, tally] of tallies) {
+    const [best] = [...tally.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    );
+    if (best) chosen.set(entity, best[0]);
+  }
+  return chosen;
+}
+
 export function entityDisplayName(entity: string): string | null {
   return ENTITY_DISPLAY_NAMES[entity] ?? null;
 }

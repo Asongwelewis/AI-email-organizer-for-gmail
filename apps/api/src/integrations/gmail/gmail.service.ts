@@ -162,6 +162,31 @@ export class GmailSyncService {
     }
   }
 
+  /**
+   * Whether the mailbox has changed since the last sync, for the price of one `getProfile` call.
+   *
+   * The watcher asks this every minute. A full incremental sync takes a lease and writes a run
+   * row whether or not anything happened, which once a minute is 1,440 rows a day describing
+   * nothing; Gmail's profile carries the mailbox's current history id, and a mailbox whose id has
+   * not moved has nothing to sync. False until the initial sync has finished: an incremental sync
+   * needs a checkpoint to read history from.
+   */
+  async hasNewHistory(userId: string): Promise<boolean> {
+    const account = await gmailRepository.activeAccountForUser(userId);
+    const state = await gmailRepository.state(account.id);
+    if (!state?.initial_sync_completed_at || !state.last_history_id) return false;
+    const gmail = await createGmailClient(account.id);
+    const response = await withGmailRetry(() => gmail.users.getProfile({ userId: 'me' }));
+    const current = response.data.historyId;
+    // No id to compare is not a reason to fall behind; let the sync find out.
+    if (!current) return true;
+    try {
+      return BigInt(current) > BigInt(state.last_history_id);
+    } catch {
+      return current !== state.last_history_id;
+    }
+  }
+
   async incrementalSync(userId: string) {
     const account = await gmailRepository.activeAccountForUser(userId);
     const state = await gmailRepository.state(account.id);

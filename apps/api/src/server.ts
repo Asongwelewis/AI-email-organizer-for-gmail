@@ -4,6 +4,7 @@ import { logger } from './config/logger.js';
 import { migrateIfPending } from './database/migrations.js';
 import { prisma, startDatabaseHeartbeat, stopDatabaseHeartbeat } from './database/prisma.js';
 import { captureApiException, closeSentry } from './observability/sentry.js';
+import { startKeepAwake, stopKeepAwake } from './services/keepAwake.js';
 import {
   startAutomationScheduler,
   stopAutomationScheduler,
@@ -42,6 +43,7 @@ const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, 'MailMind AI API is ready');
   startAutomationScheduler();
   startDatabaseHeartbeat();
+  startKeepAwake();
 });
 
 let shuttingDown = false;
@@ -51,6 +53,7 @@ function shutdown(signal: string): void {
   shuttingDown = true;
   stopAutomationScheduler();
   stopDatabaseHeartbeat();
+  stopKeepAwake();
   logger.info({ signal }, 'Shutting down API server');
   const forcedExit = setTimeout(() => {
     logger.error('Graceful shutdown timed out');

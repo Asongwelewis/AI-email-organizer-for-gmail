@@ -434,6 +434,29 @@
   height: 1.4rem;
 }
 
+/*
+ * Logos are drawn for white backgrounds, so each sits on its own small white plate. On a tinted
+ * tile, and on graphite in the dark theme, a bare logo with a dark mark would all but disappear.
+ */
+.folder-tile__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.2rem;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.folder-tile__logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .folder-tile__children {
   font-size: 0.6875rem;
   opacity: 0.75;
@@ -1297,7 +1320,8 @@
   font-weight: 600;
 }
 
-.automation-panel__retry {
+.automation-panel__retry,
+.automation-panel__detail {
   margin: 0.25rem 0 0;
   font-size: 0.875rem;
   color: var(--app-ink-soft);
@@ -1321,12 +1345,6 @@
   margin: 0.125rem 0 0;
   font-size: 1.125rem;
   font-variant-numeric: tabular-nums;
-}
-
-.automation-panel__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
 }
 
 /* --------------------------------------------------------- folder actions */

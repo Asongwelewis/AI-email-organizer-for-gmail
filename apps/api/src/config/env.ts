@@ -117,16 +117,74 @@ const environmentSchema = z
     FACET_SAMPLE_UNFILED_SHARE: z.coerce.number().min(0).max(1).default(0.8),
     FACET_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1000).max(64000).default(16000),
     AUTOMATION_ENABLED: booleanValue.default(true),
-    AUTOMATION_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(2),
+    /**
+     * The hours, in UTC, a FULL run starts: the backlog, re-classification, and filing when the
+     * Gmail export is on. Comma-separated, e.g. "2,14". New mail does not wait for these — the
+     * watcher below picks it up within a minute.
+     */
+    AUTOMATION_FULL_RUN_HOURS_UTC: z
+      .string()
+      .optional()
+      .transform((value, context) => {
+        if (value === undefined || value.trim() === '') return undefined;
+        const hours = value.split(',').map((part) => Number(part.trim()));
+        if (hours.some((hour) => !Number.isInteger(hour) || hour < 0 || hour > 23)) {
+          context.addIssue({ code: 'custom', message: 'must be hours 0-23, comma-separated' });
+          return z.NEVER;
+        }
+        return [...new Set(hours)].sort((left, right) => left - right);
+      }),
+    /**
+     * The single daily hour this used to be. Read only so the scheduler can say at boot that it
+     * is ignored: the old .env.example set it to 2, and honouring a copied default would quietly
+     * keep a deployment at one full run a day after the move to two.
+     */
+    AUTOMATION_SCHEDULE_HOUR_UTC: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z.coerce.number().int().min(0).max(23).optional(),
+    ),
     AUTOMATION_POLL_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
+    /**
+     * How often the watcher asks Gmail whether anything changed, in seconds; 0 turns it off. The
+     * question is one `users.getProfile` call and nothing else happens when the answer is no, so
+     * once a minute is cheap — Gmail allows 250 quota units per user per second.
+     */
+    AUTOMATION_CHECK_INTERVAL_SECONDS: z.coerce
+      .number()
+      .int()
+      .refine((value) => value === 0 || (value >= 30 && value <= 3600), {
+        message: 'must be 0 or between 30 and 3600',
+      })
+      .default(60),
+    /**
+     * New mail the rules could not settle waits for Gemini until this many are queued or the
+     * oldest has waited AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES, so one call sorts several messages
+     * instead of one each — the free tier caps requests per day, not messages.
+     */
+    AUTOMATION_CLASSIFY_BATCH_THRESHOLD: z.coerce.number().int().min(1).max(25).default(10),
+    AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES: z.coerce.number().int().min(0).max(120).default(5),
+    /**
+     * How often the API requests its own public /health, in minutes; 0 turns it off. The free
+     * plan sleeps after 15 minutes without INBOUND traffic, and a timer inside the process is not
+     * inbound — a request to API_BASE_URL goes out through Render's edge and comes back in, which
+     * is. Production only.
+     */
+    KEEP_AWAKE_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(14).default(10),
     AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
     AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
     // Caps approved LEAF folders: the vocabulary automation classifies into. The default
     // matches the planner's 40-leaf ceiling so an approved tree always fits.
     AUTOMATION_MAX_LABELS: z.coerce.number().int().min(1).max(200).default(40),
-    AUTOMATION_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).max(10_000_000).default(100000),
-    AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(1_000_000).default(10000),
+    // Daily, across every run. Sized for mail that arrives all day and is sorted as it lands:
+    // roughly 1,500 messages a day at ~600 input tokens per message including the instructions.
+    AUTOMATION_MAX_INPUT_TOKENS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(10_000_000)
+      .default(1_000_000),
+    AUTOMATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(1_000_000).default(100_000),
     AUTOMATION_MAX_COST_MICRO_USD: z.coerce
       .number()
       .int()
@@ -207,6 +265,7 @@ const environmentSchema = z
     }
     return {
       ...value,
+      AUTOMATION_FULL_RUN_HOURS_UTC: value.AUTOMATION_FULL_RUN_HOURS_UTC ?? [2, 14],
       MIGRATE_ON_START: value.MIGRATE_ON_START ?? value.NODE_ENV === 'production',
       TOKEN_ENCRYPTION_KEY_BYTES: tokenEncryptionKey,
     };

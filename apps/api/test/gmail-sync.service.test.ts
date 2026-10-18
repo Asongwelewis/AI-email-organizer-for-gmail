@@ -372,4 +372,52 @@ describe('GmailSyncService', () => {
       code: 'GMAIL_ACCOUNT_MISMATCH',
     });
   });
+
+  /*
+   * The watcher asks this every minute. A real incremental sync takes a lease and writes a run
+   * row, so the cheap question has to answer "no" without either when nothing has moved.
+   */
+  describe('the once-a-minute "anything new?" question', () => {
+    const profileClient = (historyId: string | null | undefined) => ({
+      users: { getProfile: vi.fn().mockResolvedValue({ data: { historyId } }) },
+    });
+
+    it('says no when the mailbox history has not moved, without taking a lease', async () => {
+      mocks.state.mockResolvedValue({
+        initial_sync_completed_at: new Date(),
+        last_history_id: '1000',
+      });
+      mocks.createGmailClient.mockResolvedValue(profileClient('1000'));
+
+      await expect(new GmailSyncService().hasNewHistory('user-id')).resolves.toBe(false);
+      expect(mocks.acquireLease).not.toHaveBeenCalled();
+    });
+
+    it('says yes once the history id has moved past the checkpoint', async () => {
+      mocks.state.mockResolvedValue({
+        initial_sync_completed_at: new Date(),
+        last_history_id: '999',
+      });
+      mocks.createGmailClient.mockResolvedValue(profileClient('1000'));
+
+      await expect(new GmailSyncService().hasNewHistory('user-id')).resolves.toBe(true);
+    });
+
+    it('compares history ids as numbers, not as text', async () => {
+      // As strings, "999" sorts after "1000", which would hide every message from here on.
+      mocks.state.mockResolvedValue({
+        initial_sync_completed_at: new Date(),
+        last_history_id: '999',
+      });
+      mocks.createGmailClient.mockResolvedValue(profileClient('1000'));
+      await expect(new GmailSyncService().hasNewHistory('user-id')).resolves.toBe(true);
+    });
+
+    it('says no before the first sync has finished, and never asks Gmail', async () => {
+      mocks.state.mockResolvedValue({ initial_sync_completed_at: null, last_history_id: null });
+
+      await expect(new GmailSyncService().hasNewHistory('user-id')).resolves.toBe(false);
+      expect(mocks.createGmailClient).not.toHaveBeenCalled();
+    });
+  });
 });

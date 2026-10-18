@@ -79,6 +79,41 @@ describe('environment validation', () => {
     expect(optedOut.env.MIGRATE_ON_START).toBe(false);
   });
 
+  it('runs the full job twice a day by default, at 02:00 and 14:00 UTC', async () => {
+    const { env } = await loadWith({
+      AUTOMATION_FULL_RUN_HOURS_UTC: undefined,
+      AUTOMATION_SCHEDULE_HOUR_UTC: undefined,
+    });
+    expect(env.AUTOMATION_FULL_RUN_HOURS_UTC).toEqual([2, 14]);
+  });
+
+  it('reads a list of full-run hours, sorted and without repeats', async () => {
+    const { env } = await loadWith({ AUTOMATION_FULL_RUN_HOURS_UTC: '18, 6,6' });
+    expect(env.AUTOMATION_FULL_RUN_HOURS_UTC).toEqual([6, 18]);
+  });
+
+  // The old example file set this to 2; honouring a copied default would keep one run a day.
+  it('ignores the retired single-hour setting rather than shrinking back to one run', async () => {
+    const { env } = await loadWith({
+      AUTOMATION_FULL_RUN_HOURS_UTC: undefined,
+      AUTOMATION_SCHEDULE_HOUR_UTC: '2',
+    });
+    expect(env.AUTOMATION_FULL_RUN_HOURS_UTC).toEqual([2, 14]);
+  });
+
+  it('refuses an hour that is not on the clock', async () => {
+    await expect(loadWith({ AUTOMATION_FULL_RUN_HOURS_UTC: '2,25' })).rejects.toThrow();
+  });
+
+  it('checks for new mail every minute by default, and refuses a hammering interval', async () => {
+    expect((await loadWith({})).env.AUTOMATION_CHECK_INTERVAL_SECONDS).toBe(60);
+    await expect(loadWith({ AUTOMATION_CHECK_INTERVAL_SECONDS: '5' })).rejects.toThrow();
+    expect(
+      (await loadWith({ AUTOMATION_CHECK_INTERVAL_SECONDS: '0' })).env
+        .AUTOMATION_CHECK_INTERVAL_SECONDS,
+    ).toBe(0);
+  });
+
   it('accepts the cross-site cookie production deployments require', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'production',
