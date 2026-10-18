@@ -383,6 +383,17 @@ New mail is sorted as it arrives by the watcher, between the twice-daily full ru
   often (default 10, max 14, 0 disables) so Render's free plan, which counts only inbound traffic,
   never puts it to sleep.
 
+New-mail notifications are recorded by the watcher after every check and pushed to the person's
+subscribed browsers with Web Push:
+
+- `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_PRIVATE_KEY` — generate once with
+  `npx web-push generate-vapid-keys`; both or neither. Without them the feed works in the app and
+  nothing reaches the operating system.
+- `WEB_PUSH_SUBJECT` — a `mailto:` or `https:` URL a push service can contact; defaults to
+  `WEB_APP_URL` when that is https. Without a valid subject push counts as unconfigured.
+
+A push to a subscription that answers 404 or 410 deletes it; ten failures in a row drop it too.
+
 Brand folders show a logo. `GET /api/facets/icons/:domain` fetches it from Google's favicon service
 — a fixed host, never the sender's own site, which would let any email aim the server at an address
 of its choosing — caches it in memory for a week (misses for a day), refuses SVG, and answers 404

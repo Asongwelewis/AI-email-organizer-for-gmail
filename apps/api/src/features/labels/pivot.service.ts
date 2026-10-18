@@ -88,7 +88,7 @@ export interface FolderMessage {
  * than quietly widening to the whole mailbox — a malformed key must never return someone's entire
  * inbox under a folder heading.
  */
-function facetFilterFromKey(facetKey: string): Record<string, string> {
+export function facetFilterFromKey(facetKey: string): Record<string, string> {
   const filter: Record<string, string> = {};
   for (const part of facetKey.split('|')) {
     const separator = part.indexOf('=');

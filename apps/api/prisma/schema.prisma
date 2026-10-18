@@ -70,6 +70,8 @@ model connected_google_accounts {
   facet_pivot_settings            facet_pivot_settings?
   facet_vocabularies              facet_vocabularies[]
   learned_classification_patterns learned_classification_patterns[]
+  favorite_folders                favorite_folders[]
+  notifications                   notifications[]
   message_facets                  message_facets[]
   user_labels                     user_labels[]
 
@@ -132,6 +134,7 @@ model gmail_message_metadata {
   connected_google_accounts   connected_google_accounts   @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
   automationAction            automation_message_actions?
   facets                      message_facets?
+  notification                notifications?
 
   @@unique([connected_google_account_id, gmail_message_id], map: "gmail_messages_account_message_unique_idx")
   @@index([connected_google_account_id])
@@ -354,6 +357,7 @@ model users {
   connected_google_accounts  connected_google_accounts[]
   oauth_states               oauth_states[]
   sessions                   sessions[]
+  push_subscriptions         push_subscriptions[]
   automation_message_actions automation_message_actions[]
   feedback                   feedback[]
 
@@ -772,4 +776,55 @@ enum feedback_kind {
   IDEA
   PRAISE
   OTHER
+}
+
+/// A folder someone starred. `facet_key` is the folder's identity and names the same mail in any
+/// arrangement that has it; `pivot_order` is the arrangement it was starred in, so opening it lands
+/// in the view it came from.
+model favorite_folders {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  facet_key                   String
+  pivot_order                 String[]
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, facet_key], map: "favorite_folders_account_key_unique")
+  @@index([connected_google_account_id, created_at(sort: Desc)], map: "favorite_folders_account_created_idx")
+}
+
+/// One new message worth announcing. Points at the stored message rather than copying its sender
+/// and subject, so deleting the message or the account takes the notification with it.
+model notifications {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  kind                        notification_kind         @default(NEW_MAIL)
+  gmail_message_id            String                    @unique @db.Uuid
+  read_at                     DateTime?                 @db.Timestamptz(6)
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+  message                     gmail_message_metadata    @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
+
+  @@index([connected_google_account_id, created_at(sort: Desc)], map: "notifications_account_created_idx")
+}
+
+enum notification_kind {
+  NEW_MAIL
+}
+
+/// A browser's Web Push subscription. The payload is encrypted to `p256dh`/`auth` (RFC 8291), so the
+/// push service that carries it cannot read it.
+model push_subscriptions {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String    @db.Uuid
+  endpoint        String    @unique
+  p256dh          String
+  auth            String
+  user_agent      String?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  last_success_at DateTime? @db.Timestamptz(6)
+  failure_count   Int       @default(0)
+  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "push_subscriptions_user_idx")
 }

@@ -81,3 +81,11 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Web Push for new-mail notifications. Generate once with `npx web-push generate-vapid-keys`.
+      # Without them, notifications stay inside the app and never reach the operating system.
+      - key: WEB_PUSH_VAPID_PUBLIC_KEY
+        sync: false
+      - key: WEB_PUSH_VAPID_PRIVATE_KEY
+        sync: false
+      - key: WEB_PUSH_SUBJECT
+        sync: false

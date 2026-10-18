@@ -536,6 +536,34 @@ parameters are optional and fall back to the account's settings.
 Each node carries `facet` and `value`. Brand folders (`facet: "entity"`) also carry `iconDomain`:
 the registrable domain the brand's mail most often comes from, or `null`.
 
+### Favourites
+
+All require a session; changes require a trusted Origin.
+
+- `GET /api/favorites` → `{ items: FavoriteFolder[] }`, newest first. Each carries `facetKey`,
+  `order` (the arrangement it was starred in), `name`, `path`, `messageCount` and `unreadCount`
+  over all mail, `latestReceivedAt`, and `iconDomain` for a brand folder. A stored key that is no
+  longer a folder is left out.
+- `GET /api/favorites/keys` → `{ keys: string[] }`: what the Inbox needs to fill in its stars.
+- `POST /api/favorites` `{ facetKey, order }` → `201` with the favourite. Idempotent. `400
+FAVORITE_VALIDATION_FAILED` when the key's facets are not the start of `order`; `409
+FAVORITES_LIMIT_REACHED` past 100.
+- `DELETE /api/favorites/:facetKey` → `204`.
+
+### Notifications
+
+All require a session; changes require a trusted Origin.
+
+- `GET /api/notifications?cursor=` → `{ items, unreadCount, nextCursor }`. Each item names the
+  message (`gmailMessageId`, `subject`, `senderName`, `senderEmail`, `receivedAt`) and, once it
+  has been sorted, the `folder` it went to in the saved arrangement.
+- `POST /api/notifications/read` `{ ids? }` → `{ marked }`. Without ids, everything.
+- `GET /api/notifications/push` → `{ configured, publicKey, subscriptions }`. `configured` is false
+  without VAPID keys and a subject a push service will accept.
+- `POST /api/notifications/push/subscribe` — the browser's `PushSubscription.toJSON()`. `503
+PUSH_NOT_CONFIGURED` when the server cannot push.
+- `POST /api/notifications/push/unsubscribe` `{ endpoint }` — only ever the caller's own.
+
 ### `GET /api/facets/icons/:domain`
 
 A brand folder's logo, `image/png` or another raster type, cached privately for a week. `404` when

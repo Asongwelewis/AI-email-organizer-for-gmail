@@ -170,6 +170,16 @@ const environmentSchema = z
      * is. Production only.
      */
     KEEP_AWAKE_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(14).default(10),
+    /**
+     * Web Push (VAPID) keys, generated once with `npx web-push generate-vapid-keys`. Without both,
+     * new-mail notifications still appear inside the app and simply never reach the operating
+     * system. The private key signs every push and is a secret; the public one is handed to
+     * browsers when they subscribe.
+     */
+    WEB_PUSH_VAPID_PUBLIC_KEY: optionalSecret,
+    WEB_PUSH_VAPID_PRIVATE_KEY: optionalSecret,
+    /** Who a push service can contact about our pushes: a mailto: or https: URL. */
+    WEB_PUSH_SUBJECT: optionalUrl,
     AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
     AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
@@ -252,6 +262,14 @@ const environmentSchema = z
         code: 'custom',
         path: ['COOKIE_SAME_SITE'],
         message: "must be 'none' in production unless COOKIE_DOMAIN is set",
+      });
+      return z.NEVER;
+    }
+    if (Boolean(value.WEB_PUSH_VAPID_PUBLIC_KEY) !== Boolean(value.WEB_PUSH_VAPID_PRIVATE_KEY)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['WEB_PUSH_VAPID_PRIVATE_KEY'],
+        message: 'set both VAPID keys or neither',
       });
       return z.NEVER;
     }
