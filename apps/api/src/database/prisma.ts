@@ -26,11 +26,60 @@ if (!databaseUrl.searchParams.has('connect_timeout')) {
   databaseUrl.searchParams.set('connect_timeout', '30');
 }
 
-const globalForPrisma = globalThis as unknown as { mailmindPrisma?: PrismaClient };
+/**
+ * Prisma codes that mean the connection failed, not the query: the server could not be reached or
+ * timed out, TLS failed, or the server closed a connection the pool still thought was open. They
+ * say nothing about the data, so the same read a moment later on a fresh connection succeeds.
+ */
+const TRANSIENT_CONNECTION_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1011', 'P1017']);
 
-export const prisma =
-  globalForPrisma.mailmindPrisma ??
-  new PrismaClient({
+/** Operations that change nothing, and so can always be asked twice. */
+const READ_OPERATIONS = new Set([
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'count',
+  'aggregate',
+  'groupBy',
+]);
+
+const RETRY_DELAY_MS = 250;
+
+export function isTransientConnectionError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && TRANSIENT_CONNECTION_CODES.has(code);
+}
+
+/**
+ * Retries a read once when its connection dropped underneath it.
+ *
+ * The pool keeps up to five connections, and the pooler can close one that sat idle while the pool
+ * still holds it. The next query to draw it fails — on 18 Oct 2026 that was the first `GET` of the
+ * notifications feed and the favourite keys, a few minutes after a deploy, both answered 500. Writes
+ * are never retried: a write that may already have landed is not safe to repeat blind.
+ */
+export async function retryTransientRead<T>(
+  operation: string,
+  run: () => Promise<T>,
+  delayMs = RETRY_DELAY_MS,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!READ_OPERATIONS.has(operation) || !isTransientConnectionError(error)) throw error;
+    logger.warn(
+      { operation, code: (error as { code: string }).code },
+      'retrying a read after a dropped database connection',
+    );
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return run();
+  }
+}
+
+function createClient() {
+  return new PrismaClient({
     datasources: {
       db: {
         url: databaseUrl.toString(),
@@ -40,7 +89,23 @@ export const prisma =
       maxWait: 30_000,
       timeout: 60_000,
     },
+  }).$extends({
+    name: 'retry-transient-reads',
+    query: {
+      $allModels: {
+        $allOperations({ operation, args, query }) {
+          return retryTransientRead(operation, () => query(args));
+        },
+      },
+    },
   });
+}
+
+type Client = ReturnType<typeof createClient>;
+
+const globalForPrisma = globalThis as unknown as { mailmindPrisma?: Client };
+
+export const prisma = globalForPrisma.mailmindPrisma ?? createClient();
 
 if (env.NODE_ENV !== 'production') globalForPrisma.mailmindPrisma = prisma;
 

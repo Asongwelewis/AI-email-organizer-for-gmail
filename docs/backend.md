@@ -516,6 +516,13 @@ plan meant every wake-up, and it holds whatever start command the live service i
 
 ## Health and operations
 
+`/ready` reads `_prisma_migrations` rather than running `select 1`, and reports
+`dependencies.schema`: `current` when every migration this build ships is applied, `behind` (and
+`503`) when one is missing, `unknown` when the build carries none to compare against. Reads that
+fail on a dropped connection (`P1001`, `P1002`, `P1008`, `P1011`, `P1017`) are retried once by a
+Prisma client extension; writes never are. Sentry events keep the Prisma error code as the
+`db.code` tag even though the message is scrubbed.
+
 | Probe                   | Behavior                                                                                  |
 | ----------------------- | ----------------------------------------------------------------------------------------- |
 | `GET /health`           | Process liveness; returns 200 without querying PostgreSQL.                                |
