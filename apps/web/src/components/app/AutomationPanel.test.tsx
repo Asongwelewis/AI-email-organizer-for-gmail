@@ -65,7 +65,6 @@ describe('AutomationPanel', () => {
     expect(await screen.findByText('Sorted today')).toBeInTheDocument();
     expect(screen.getByText('118')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument();
   });
 
   /*

@@ -62,24 +62,3 @@ export interface AutomationStatus {
   labelsReady: boolean;
   backlogRemaining: number;
 }
-
-export interface AutomationReviewItem {
-  id: string;
-  labelName: string;
-  labelPath: string;
-  confidence: number;
-  explanation: string;
-  reasonCodes: string[];
-  createdAt: string;
-  message: {
-    subject: string;
-    senderName: string | null;
-    senderEmail: string | null;
-    snippet: string | null;
-    receivedAt: string | null;
-  };
-}
-
-export interface AutomationReviewQueue {
-  items: AutomationReviewItem[];
-}

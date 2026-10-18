@@ -10,11 +10,18 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (isLoading) return <RouteLoader />;
   if (!isAuthenticated) {
-    const safeReturnPath = ['/sorted', '/approve', '/activity', '/account'].includes(
-      location.pathname,
-    )
+    const safeReturnPath = [
+      '/inbox',
+      '/favorites',
+      '/find',
+      '/folders',
+      '/activity',
+      '/menu',
+      '/notifications',
+      '/account',
+    ].includes(location.pathname)
       ? location.pathname
-      : '/sorted';
+      : '/inbox';
     return <Navigate to="/login" replace state={{ returnTo: safeReturnPath }} />;
   }
   return children;

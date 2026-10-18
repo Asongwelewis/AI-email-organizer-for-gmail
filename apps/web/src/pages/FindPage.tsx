@@ -223,7 +223,7 @@ export function FindPage() {
           title="Search your whole mailbox"
           description="Type part of a subject or a sender, pick a filter, or press Only new mail to see everything unread, newest first, with the folder it landed in."
           action={
-            <Link className="button button--quiet" to="/sorted">
+            <Link className="button button--quiet" to="/inbox">
               Browse folders instead
             </Link>
           }

@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => {
           short_name: 'MailMind',
           description:
             'Approve a folder tree for your Gmail, then find filed mail by folder instead of by search.',
-          start_url: '/sorted',
+          start_url: '/inbox',
           scope: '/',
           display: 'standalone',
           /*
@@ -97,6 +97,9 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // New-mail pushes become system notifications here. A plain script in public/, imported
+          // into the generated worker, so the precache setup stays generated rather than handwritten.
+          importScripts: ['push-handler.js'],
           // The shell only. The editorial artwork is large and non-essential, so it stays on the
           // network rather than in every installed copy.
           globPatterns: ['**/*.{js,css,html}', 'icons/*.png'],

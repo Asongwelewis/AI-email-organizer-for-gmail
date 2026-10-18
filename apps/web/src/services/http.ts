@@ -15,15 +15,10 @@ import type {
   SearchResults,
 } from '@web/types/facets';
 import type { EmailTimeRange } from '@web/types/facets';
-import type { AutomationReviewQueue, AutomationStatus } from '@web/types/automation';
+import type { AutomationStatus } from '@web/types/automation';
+import type { FavoriteFolder } from '@web/types/favorites';
 import type { FeedbackInput } from '@web/types/feedback';
-import type {
-  ApprovePlanInput,
-  ConfirmLabelInput,
-  FolderMessagesResponse,
-  LabelsOverview,
-  UserLabel,
-} from '@web/types/labels';
+import type { NotificationFeed, PushConfig } from '@web/types/notifications';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -127,63 +122,14 @@ export const api = {
     return response.data;
   },
 
-  async getLabels(): Promise<LabelsOverview> {
-    const response = await http.get<LabelsOverview>('/labels');
-    return response.data;
-  },
-
-  async proposeLabels(): Promise<LabelsOverview> {
-    const response = await http.post<LabelsOverview>('/labels/propose', {});
-    return response.data;
-  },
-
-  async confirmLabels(labels: ConfirmLabelInput[]): Promise<LabelsOverview> {
-    const response = await http.post<LabelsOverview>('/labels/confirm', { labels });
-    return response.data;
-  },
-
-  /** Approves a proposed tree. Omitting nodeIds approves all of it. */
-  async approvePlan(input: ApprovePlanInput): Promise<LabelsOverview> {
-    const response = await http.post<LabelsOverview>('/labels/confirm', input);
-    return response.data;
-  },
-
-  /** The mail filed into one folder, for the drill-in list on Sorted. */
-  async getFolderMessages(labelId: string): Promise<FolderMessagesResponse> {
-    const response = await http.get<FolderMessagesResponse>(`/labels/${labelId}/messages`);
-    return response.data;
-  },
-
   async getActivityRuns(limit = 20): Promise<ActivityRunsResponse> {
     const response = await http.get<ActivityRunsResponse>('/activity/runs', { params: { limit } });
     return response.data;
   },
 
-  async renameLabel(id: string, leafName: string): Promise<UserLabel> {
-    const response = await http.patch<UserLabel>(`/labels/${id}`, { leafName });
-    return response.data;
-  },
-
-  async deleteLabel(id: string): Promise<void> {
-    await http.delete(`/labels/${id}`);
-  },
-
   async getAutomationStatus(): Promise<AutomationStatus> {
     const response = await http.get<AutomationStatus>('/automation/status');
     return response.data;
-  },
-
-  async getAutomationReview(): Promise<AutomationReviewQueue> {
-    const response = await http.get<AutomationReviewQueue>('/automation/review');
-    return response.data;
-  },
-
-  async approveAutomationReview(id: string, labelName: string): Promise<void> {
-    await http.post(`/automation/review/${id}/approve`, { labelName });
-  },
-
-  async skipAutomationReview(id: string): Promise<void> {
-    await http.post(`/automation/review/${id}/skip`, {});
   },
 
   async getPivotSettings(): Promise<PivotSettings> {
@@ -289,6 +235,56 @@ export const api = {
   async fileFacets(): Promise<StartedRun> {
     const response = await http.post<StartedRun>('/facets/file', {});
     return response.data;
+  },
+
+  /** Starred folders with their counts over all mail. */
+  async getFavorites(): Promise<FavoriteFolder[]> {
+    const response = await http.get<{ items: FavoriteFolder[] }>('/favorites');
+    return response.data.items;
+  },
+
+  /** Just the starred keys, for filling in the stars on folder tiles. */
+  async getFavoriteKeys(): Promise<string[]> {
+    const response = await http.get<{ keys: string[] }>('/favorites/keys');
+    return response.data.keys;
+  },
+
+  async addFavorite(facetKey: string, order: PivotFacet[]): Promise<FavoriteFolder> {
+    const response = await http.post<FavoriteFolder>('/favorites', { facetKey, order });
+    return response.data;
+  },
+
+  async removeFavorite(facetKey: string): Promise<void> {
+    await http.delete(`/favorites/${encodeURIComponent(facetKey)}`);
+  },
+
+  async getNotifications(cursor?: string): Promise<NotificationFeed> {
+    const response = await http.get<NotificationFeed>('/notifications', {
+      params: cursor ? { cursor } : {},
+    });
+    return response.data;
+  },
+
+  /** Marks the given notifications read, or all of them when none are given. */
+  async markNotificationsRead(ids?: string[]): Promise<void> {
+    await http.post('/notifications/read', ids ? { ids } : {});
+  },
+
+  async getPushConfig(): Promise<PushConfig> {
+    const response = await http.get<PushConfig>('/notifications/push');
+    return response.data;
+  },
+
+  async subscribePush(subscription: PushSubscriptionJSON): Promise<void> {
+    await http.post('/notifications/push/subscribe', subscription);
+  },
+
+  /**
+   * `skipAuthFailure`, because this runs on the way out of a session — at logout — and a 401 there
+   * is the session already being gone, not news.
+   */
+  async unsubscribePush(endpoint: string): Promise<void> {
+    await http.post('/notifications/push/unsubscribe', { endpoint }, { skipAuthFailure: true });
   },
 
   async getActivityRun(runId: string): Promise<ActivityRun> {

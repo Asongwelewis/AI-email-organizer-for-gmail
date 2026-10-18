@@ -163,21 +163,27 @@ Unknown routes redirect to `/`.
 Everything you _watch_ happen was removed; what remains are the screens where a decision gets made
 or a message gets found. All of them render inside `ProtectedRoute` and `AppShell`:
 
-| Route       | Purpose                                                                    |
-| ----------- | -------------------------------------------------------------------------- |
-| `/sorted`   | The folders, in any arrangement of the facets; drill in and open in Gmail  |
-| `/find`     | Search subject and sender across the mailbox, filtered by facet            |
-| `/folders`  | Shape an arrangement, preview its tree, keep it as the default             |
-| `/review`   | Decide the filings held back for a person                                  |
-| `/approve`  | Review a proposed folder tree and approve what you keep                    |
-| `/activity` | Run records, newest first, with state, progress, stop reasons, error codes |
-| `/account`  | Signed-in connection, session, logout, and deletion controls               |
+| Route            | Purpose                                                                      |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `/inbox`         | The folders, in any arrangement of the facets; star, drill in, open in Gmail |
+| `/find`          | Search subject and sender across the mailbox, filtered by facet              |
+| `/favorites`     | The starred folders, with live counts over all mail                          |
+| `/folders`       | Shape an arrangement, preview its tree, keep it as the default               |
+| `/activity`      | Run records, newest first, with state, progress, stop reasons, error codes   |
+| `/menu`          | Behind the menu icon on the left of every screen: notifications and the rest |
+| `/notifications` | New-mail feed, and turning device notifications on or off                    |
+| `/account`       | Signed-in connection, session, logout, and deletion controls                 |
+
+The tab bar holds the five everyday screens: Inbox, Find, Favourites, Folders, Activity. The menu
+icon, top left at every width, carries the unread notification count.
 
 `/setup` is reachable but deliberately absent from the navigation: it is a path you walk once,
 linked to from wherever an account turns out not to be ready.
 
-`/dashboard/*` and `/settings/*` redirect to `/sorted`, `/labels` to `/approve`, and `/automation`
-to `/activity`. Unknown routes redirect to `/`.
+`/sorted` redirects to `/inbox` keeping its query string, so an old link still opens the same
+folder. `/review`, `/approve`, `/labels`, `/dashboard/*` and `/settings/*` redirect to `/inbox` —
+Review and Approve are gone for now and will be redesigned — and `/automation` to `/activity`.
+Unknown routes redirect to `/`.
 
 ## Theme
 
@@ -243,7 +249,23 @@ connection queries.
 
 ## The screens
 
-### Sorted
+### Favourites and notifications
+
+Every folder tile carries a star in its bottom-left corner — a second button beside the tile's own,
+since buttons cannot nest. `useFavorites` fills it the moment it is tapped and reverts only if the
+server refuses. A favourite opens in the arrangement it was starred from and over all mail, so it
+always lands on the folder it names.
+
+New-mail notifications come from one shared query, polled every minute: the menu badge, the
+Notifications screen and `NotificationCenter` all read it. `NotificationCenter` toasts with Sonner
+for anything that arrived while the app is open — never for what was already there at launch — and
+keeps the installed app's taskbar badge in step. Device notifications are Web Push: `lib/push.ts`
+asks the browser for permission and subscribes it with the server's VAPID public key, and
+`public/push-handler.js` (imported into the generated service worker) shows each push in the OS
+notification centre unless a MailMind window is focused, in which case it tells that window to
+refresh instead. Logging out unsubscribes the device first.
+
+### Inbox
 
 `GET /api/facets/pivot/view` returns the tree flat, with `parentFacetKey` and `depth`; the grid
 renders one level at a time and the breadcrumb walks back up. The open folder is held in the
@@ -297,20 +319,6 @@ Mirroring into Gmail is a collapsed, optional section, because it is opt-in on t
 by default. Only the saved arrangement can be mirrored: a message wears one Gmail label and no
 more, which is the constraint that used to make "canonical" a real word here. A refusal comes back
 as `GMAIL_WRITE_DISABLED` and is rendered as a setting rather than a failure.
-
-### Approve
-
-The pending plan arrives on `GET /api/labels` as `plan`. The tree is shown with each folder's
-rolled-up count, its rationale, and the routing rules that will file mail into it, plus a
-collapsed list of what the validator rejected. Unchecking a folder drops everything beneath it: a
-child cannot be created without its parent.
-
-Approval posts `{ planId }`, or `{ planId, nodeIds }` when part of the tree was dropped.
-
-Every failure is rendered inline, next to what failed, carrying the server's own error code and
-message. Nothing here uses a toast, and an empty proposal is an explicit empty state. Reporting a
-proposal that produced nothing as a success is the exact defect that let a broken planner go
-unnoticed for weeks.
 
 ### Activity
 

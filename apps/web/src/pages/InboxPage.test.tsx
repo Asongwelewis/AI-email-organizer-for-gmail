@@ -8,12 +8,15 @@ const mocks = vi.hoisted(() => ({
   getPivotView: vi.fn(),
   getGmailStatus: vi.fn(),
   getFacetMessages: vi.fn(),
+  getFavoriteKeys: vi.fn(),
+  addFavorite: vi.fn(),
+  removeFavorite: vi.fn(),
 }));
 
 vi.mock('@web/services/http', () => ({ api: mocks }));
 
 import { apiError, renderScreen } from '@web/test/renderScreen';
-import { SortedPage } from './SortedPage';
+import { InboxPage } from './InboxPage';
 import type { PivotNode } from '@web/types/facets';
 
 function node(overrides: Partial<PivotNode> & { facetKey: string; leafName: string }): PivotNode {
@@ -55,7 +58,7 @@ const TREE: PivotNode[] = [
  * It used to ask for a folder's mail by row id through an endpoint that was never built, so
  * opening a folder 404'd and Gmail's own labels were doing all the organising.
  */
-describe('SortedPage', () => {
+describe('InboxPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     window.localStorage.clear();
@@ -75,6 +78,7 @@ describe('SortedPage', () => {
     });
     mocks.getGmailStatus.mockResolvedValue({ connected: true, email: 'ada@gmail.com' });
     mocks.getFacetMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
+    mocks.getFavoriteKeys.mockResolvedValue([]);
   });
 
   /*
@@ -102,7 +106,7 @@ describe('SortedPage', () => {
       unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
       collapsed: 0,
     });
-    const { container } = renderScreen(<SortedPage />, '/sorted');
+    const { container } = renderScreen(<InboxPage />, '/inbox');
 
     await screen.findByText('Netflix');
     const logos = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
@@ -111,7 +115,7 @@ describe('SortedPage', () => {
   });
 
   it('shows only the top level of the tree as tiles', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     expect(await screen.findByText('Career')).toBeInTheDocument();
     expect(screen.getByText('Finance')).toBeInTheDocument();
@@ -138,7 +142,7 @@ describe('SortedPage', () => {
       unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
       collapsed: 0,
     });
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     await screen.findByText('Folder 0');
     expect(document.querySelectorAll('.folder-tile')).toHaveLength(24);
@@ -151,8 +155,41 @@ describe('SortedPage', () => {
     expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
   });
 
+  /*
+   * Every folder, current and future, can be starred from its tile. The star fills the moment it
+   * is tapped, and the starring is stored against the folder's identity and its arrangement.
+   */
+  it('stars a folder from its tile, against the folder and the arrangement it is in', async () => {
+    mocks.getFavoriteKeys.mockResolvedValue([]);
+    // Like the server: once added, the key is among the starred ones.
+    mocks.addFavorite.mockImplementation(async () => {
+      mocks.getFavoriteKeys.mockResolvedValue(['domain=finance']);
+      return {};
+    });
+    renderScreen(<InboxPage />, '/inbox');
+
+    const star = await screen.findByRole('button', { name: 'Add Finance to favourites' });
+    expect(star).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(star);
+
+    expect(mocks.addFavorite).toHaveBeenCalledWith('domain=finance', ['domain', 'intent']);
+    expect(
+      await screen.findByRole('button', { name: 'Remove Finance from favourites' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows the stars already filled for folders that are favourites', async () => {
+    mocks.getFavoriteKeys.mockResolvedValue(['domain=career']);
+    renderScreen(<InboxPage />, '/inbox');
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove Career from favourites' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Finance to favourites' })).toBeInTheDocument();
+  });
+
   it('offers no "show all" when every folder already fits', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     await screen.findByText('Career');
     expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
@@ -183,9 +220,10 @@ describe('SortedPage', () => {
         },
       ],
     });
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
-    await userEvent.click(await screen.findByRole('button', { name: /Career/ }));
+    // The folder itself, not its star, whose label names the folder too.
+    await userEvent.click(await screen.findByRole('button', { name: /^(?!.*favourites).*Career/ }));
 
     await waitFor(() =>
       expect(mocks.getFacetMessages).toHaveBeenCalledWith('domain=career', { range: '24h' }),
@@ -197,14 +235,14 @@ describe('SortedPage', () => {
 
   // Opening a parent asks "everything under here", so the count is the whole subtree.
   it('counts a parent folder by its subtree', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     expect(await screen.findByText('Career')).toBeInTheDocument();
     expect(screen.getByText('40')).toBeInTheDocument();
   });
 
   it('searches the whole tree, not just the level in view', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
     await userEvent.type(screen.getByLabelText('Search folders'), 'job');
@@ -214,7 +252,7 @@ describe('SortedPage', () => {
   });
 
   it('says so when nothing matches instead of showing an empty grid', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
     await userEvent.type(screen.getByLabelText('Search folders'), 'zzz');
@@ -231,7 +269,7 @@ describe('SortedPage', () => {
       collapsed: 0,
     });
     mocks.getGmailStatus.mockResolvedValue({ connected: false, email: null });
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     expect(await screen.findByRole('link', { name: /set up mailmind/i })).toHaveAttribute(
       'href',
@@ -246,7 +284,7 @@ describe('SortedPage', () => {
       unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
       collapsed: 0,
     });
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     expect(await screen.findByRole('link', { name: /shape my folders/i })).toHaveAttribute(
       'href',
@@ -260,7 +298,7 @@ describe('SortedPage', () => {
    * is available at once, and switching costs no reclassification and no remote call.
    */
   it('offers the orderings side by side and switches between them on read', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
     await userEvent.click(screen.getByRole('button', { name: /Brand › What it wants/ }));
@@ -274,7 +312,7 @@ describe('SortedPage', () => {
 
   // An ordering in the URL is what makes a view a link.
   it('opens on the ordering the link names rather than the saved one', async () => {
-    renderScreen(<SortedPage />, '/sorted?order=intent,entity');
+    renderScreen(<InboxPage />, '/inbox?order=intent,entity');
 
     await waitFor(() =>
       expect(mocks.getPivotView).toHaveBeenCalledWith(['intent', 'entity'], 5, '24h'),
@@ -283,7 +321,7 @@ describe('SortedPage', () => {
   });
 
   it('changes the default recent-mail window and refetches folders', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
     await userEvent.selectOptions(screen.getByLabelText('Show mail from'), '7d');
@@ -296,7 +334,7 @@ describe('SortedPage', () => {
 
   // `facet_pivot_settings` stays the remembered default — which arrangement this screen opens on.
   it('remembers an arrangement as the default when asked', async () => {
-    renderScreen(<SortedPage />, '/sorted?order=entity,intent');
+    renderScreen(<InboxPage />, '/inbox?order=entity,intent');
     await screen.findByText('Career');
 
     await userEvent.click(await screen.findByRole('button', { name: /make this my default/i }));
@@ -310,7 +348,7 @@ describe('SortedPage', () => {
   });
 
   it('offers no default button on the arrangement that already is one', async () => {
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
     expect(screen.queryByRole('button', { name: /make this my default/i })).not.toBeInTheDocument();
@@ -320,7 +358,7 @@ describe('SortedPage', () => {
     mocks.getPivotView.mockRejectedValue(
       apiError('GMAIL_ACCOUNT_NOT_CONNECTED', 'Connect Gmail first.', 409),
     );
-    renderScreen(<SortedPage />, '/sorted');
+    renderScreen(<InboxPage />, '/inbox');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('GMAIL_ACCOUNT_NOT_CONNECTED');
   });

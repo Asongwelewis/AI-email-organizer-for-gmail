@@ -43,4 +43,47 @@ describe('a folder tile', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('svg.folder-tile__icon')).not.toBeNull();
   });
+
+  it('has no star where starring is not offered', () => {
+    renderTile(null);
+    expect(screen.queryByRole('button', { name: /favourites/ })).not.toBeInTheDocument();
+  });
+
+  it('puts a star on the tile that says whether the folder is a favourite', () => {
+    const onToggleFavorite = vi.fn();
+    render(
+      <FolderTile
+        name="Netflix"
+        path="MailMind/Netflix"
+        count={12}
+        childCount={0}
+        favorite={false}
+        onToggleFavorite={onToggleFavorite}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    const star = screen.getByRole('button', { name: 'Add Netflix to favourites' });
+    expect(star).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(star);
+    expect(onToggleFavorite).toHaveBeenCalledOnce();
+  });
+
+  it('keeps tapping the star from opening the folder', () => {
+    const onOpen = vi.fn();
+    render(
+      <FolderTile
+        name="Netflix"
+        path="MailMind/Netflix"
+        count={12}
+        childCount={0}
+        favorite
+        onToggleFavorite={vi.fn()}
+        onOpen={onOpen}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Netflix from favourites' }));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });

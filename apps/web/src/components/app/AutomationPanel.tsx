@@ -96,10 +96,6 @@ export function AutomationPanel() {
           <dd>{formatCount(status.usageToday.providerCalls)}</dd>
         </div>
         <div>
-          <dt>Waiting for review</dt>
-          <dd>{formatCount(status.pendingReviewCount)}</dd>
-        </div>
-        <div>
           <dt>Not yet sorted</dt>
           <dd>{formatCount(status.backlogRemaining)}</dd>
         </div>
