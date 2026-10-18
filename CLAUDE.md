@@ -150,6 +150,22 @@ Deleting a label never unlabels mail, so a pivot never deletes folders — it re
 longer match and leaves them alone. `npm run sweep:labels` is the deliberate exception, and it
 strips a label from its mail before deleting it. Nothing else may mutate Gmail.
 
+**Mail is sorted as it arrives; the full job runs twice a day.** Two clocks share the scheduler.
+The **watcher** (`mail-watch.service`, every `AUTOMATION_CHECK_INTERVAL_SECONDS`, default 60) asks
+Gmail one question — has the profile's history id moved? — and does nothing else when it has not.
+When it has, it syncs, lets the rules sort what they recognise at once, and holds the rest for
+Gemini until `AUTOMATION_CLASSIFY_BATCH_THRESHOLD` are queued or the oldest has waited
+`AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES`, because the free tier caps requests per day, not messages.
+It only touches mail from the last 48 hours that was never classified; the backlog belongs to the
+**full runs** at `AUTOMATION_FULL_RUN_HOURS_UTC` (default `2,14`). A watcher check writes no row
+unless it sorted something, and then adds to one `automation_runs` row per account per day, so the
+daily caps still see its usage. It stands aside while a full run is in flight, and a full run waits
+out a check that holds the lease. None of this runs while the free Render instance sleeps, and work
+inside the process does not count as traffic, so `services/keepAwake.ts` requests the API's own
+public `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` in production, with
+`.github/workflows/wake-api.yml` pinging every ten minutes as the backstop that can wake a sleeping
+instance. Around the clock that is ~744 of the 750 free hours a Render workspace shares a month.
+
 **One filing engine.** `automation.service` orchestrates and owns no classification of its own: a
 run refreshes the mailbox and calls `facetClassificationService.classifyAccount`, then
 `facetFilingService.fileAccount` only when the Gmail export is enabled. `POST /api/automation/run`

@@ -40,6 +40,8 @@ export interface FacetedMessage {
   /** Unread in Gmail. Absent is treated as read, so a caller that does not ask still works. */
   unread?: boolean;
   receivedAt?: Date | null;
+  /** Only read to pick a brand folder's logo; never part of a folder's identity. */
+  senderEmail?: string | null;
 }
 
 export interface PivotNode {
@@ -68,6 +70,11 @@ export interface PivotNode {
   subtreeUnreadCount: number;
   isLeaf: boolean;
   latestReceivedAt: string | null;
+  /**
+   * The domain a brand folder's logo is fetched for — the one its mail most often comes from.
+   * Only on `entity` folders, and only when the view was asked to attach it.
+   */
+  iconDomain?: string | null;
 }
 
 export interface PivotResult {

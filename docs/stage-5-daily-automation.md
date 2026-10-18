@@ -1,5 +1,24 @@
 # Stage 5 daily automation
 
+> **October 2026: there are now two clocks.** New mail no longer waits for the daily run. The
+> watcher (`mail-watch.service.ts`) asks Gmail every `AUTOMATION_CHECK_INTERVAL_SECONDS` (60) whether
+> the mailbox's history id has moved; when it has, it syncs, sorts what the rules recognise
+> immediately, and sends the rest to Gemini once `AUTOMATION_CLASSIFY_BATCH_THRESHOLD` (10) are
+> queued or the oldest has waited `AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES` (5). It only handles mail
+> from the last 48 hours that was never classified. Full runs — backlog, re-classification, filing
+> when the export is on, and pruning sync history older than 30 days — start at
+> `AUTOMATION_FULL_RUN_HOURS_UTC` (`2,14`). `AUTOMATION_SCHEDULE_HOUR_UTC` is retired and ignored
+> with a boot warning. The daily token caps were raised to 1,000,000 input and 100,000 output to fit
+> mail sorted all day. The "Run now" and "Check for new mail" buttons are gone: both only asked a
+> person to do by hand what was about to happen. The rest of this document describes the full run.
+>
+> On Render's free plan none of this runs while the instance sleeps, and the process's own timers do
+> not count as traffic. `services/keepAwake.ts` requests the API's public `/health` every
+> `KEEP_AWAKE_INTERVAL_MINUTES` (10) in production, and `.github/workflows/wake-api.yml` pings every
+> ten minutes around the clock as the backstop that can wake a sleeping instance. That spends about
+> 744 of the 750 free instance hours a workspace shares each month, so it is only safe while this is
+> the workspace's only free web service.
+
 MailMind runs account-scoped Gmail organization once per UTC day and on demand from
 `/dashboard/automation`. It refreshes synchronized metadata, files new or unprocessed messages into
 the account's **approved label set**, and applies the matching `MailMind/<leaf>` Gmail label to
@@ -93,8 +112,8 @@ runs share one allowance. Extrapolating to 9,436 unfiled messages — 944 batche
 | Budget                            | Default   | Schema max    | Needed for 9,436 | Binds?         |
 | --------------------------------- | --------- | ------------- | ---------------- | -------------- |
 | `AUTOMATION_MAX_MESSAGES_PER_RUN` | `250`     | `1000`        | 9,436            | **yes, first** |
-| `AUTOMATION_MAX_OUTPUT_TOKENS`    | `10000`   | `1000000`     | ~613,000         | **yes**        |
-| `AUTOMATION_MAX_INPUT_TOKENS`     | `100000`  | `10000000`    | ~1,208,000       | **yes**        |
+| `AUTOMATION_MAX_OUTPUT_TOKENS`    | `100000`  | `1000000`     | ~613,000         | **yes**        |
+| `AUTOMATION_MAX_INPUT_TOKENS`     | `1000000` | `10000000`    | ~1,208,000       | **yes**        |
 | `AUTOMATION_MAX_COST_MICRO_USD`   | `5000000` | `20000000000` | ~1,900,000       | no             |
 
 So a default run files **250 messages**, not the whole mailbox, and stops `PARTIAL` with
@@ -137,25 +156,25 @@ line per call would bury the one line that matters.
 `test/automation-scheduler.test.ts` covers the parts of a nightly run that nobody is awake to
 watch:
 
-| Guarantee                                                                  | Why it matters overnight                                                      |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `AUTOMATION_ENABLED=false` starts no timer at all                          | The kill switch for unattended filing                                         |
-| Boot ticks immediately, then on `AUTOMATION_POLL_INTERVAL_MINUTES`         | A deploy must not cost a whole interval of catch-up                           |
-| A tick that overlaps a run in flight is skipped                            | Ticks are 15 minutes apart; a backfill is longer                              |
-| One account's failure does not stop the others, and reaches Sentry         | No response is open, so the log and the run row are the only trace            |
-| A failed tick releases its guard and ticks again                           | Otherwise one bad tick ends the day silently                                  |
-| A held lease refuses the run, and an expired one is taken over             | Two API instances share one database; a killed process must not wedge it      |
-| A long run keeps renewing its lease, scoped to one still live              | A backfill outlives a single lease term                                       |
-| The mailbox is refreshed before it is read, and a stale history id resyncs | Otherwise a nightly run files yesterday's mail and looks healthy doing it     |
-| A scheduled slot already used reports that run instead of filing twice     | The idempotency key is account/date/attempt                                   |
-| Success clears the backoff and schedules `AUTOMATION_SCHEDULE_HOUR_UTC`    | The daily promise                                                             |
-| `PROVIDER_RATE_LIMITED` backs off an hour; other faults, fifteen minutes   | A spent daily quota would otherwise re-fail every tick until midnight Pacific |
-| `DAILY_BUDGET_REACHED` waits for the next scheduled hour, not the tick     | The token budgets are daily and cumulative; a retry would reach the same wall |
-| The `retry_at` a stopped run writes is one a later tick selects on         | Each half can pass on its own while the join between them is broken           |
-| A hard failure closes the run `FAILED` and releases the lease              | A stuck lease locks out every later tick                                      |
-| Classification spends against what today already cost                      | Several runs a day would otherwise each take a fresh full allowance           |
-| What classification spent is written onto the run row filing opened        | Nothing else records it, and both the usage panel and the daily cap read it   |
-| Only mail with no action row is read, newest first                         | A run interrupted mid-flight resumes instead of re-classifying and re-billing |
+| Guarantee                                                                              | Why it matters overnight                                                      |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `AUTOMATION_ENABLED=false` starts no timer at all                                      | The kill switch for unattended filing                                         |
+| Boot ticks immediately, then on `AUTOMATION_POLL_INTERVAL_MINUTES`                     | A deploy must not cost a whole interval of catch-up                           |
+| A tick that overlaps a run in flight is skipped                                        | Ticks are 15 minutes apart; a backfill is longer                              |
+| One account's failure does not stop the others, and reaches Sentry                     | No response is open, so the log and the run row are the only trace            |
+| A failed tick releases its guard and ticks again                                       | Otherwise one bad tick ends the day silently                                  |
+| A held lease refuses the run, and an expired one is taken over                         | Two API instances share one database; a killed process must not wedge it      |
+| A long run keeps renewing its lease, scoped to one still live                          | A backfill outlives a single lease term                                       |
+| The mailbox is refreshed before it is read, and a stale history id resyncs             | Otherwise a nightly run files yesterday's mail and looks healthy doing it     |
+| A scheduled slot already used reports that run instead of filing twice                 | The idempotency key is account/date/attempt                                   |
+| Success clears the backoff and schedules the next `AUTOMATION_FULL_RUN_HOURS_UTC` hour | The daily promise                                                             |
+| `PROVIDER_RATE_LIMITED` backs off an hour; other faults, fifteen minutes               | A spent daily quota would otherwise re-fail every tick until midnight Pacific |
+| `DAILY_BUDGET_REACHED` waits for the next scheduled hour, not the tick                 | The token budgets are daily and cumulative; a retry would reach the same wall |
+| The `retry_at` a stopped run writes is one a later tick selects on                     | Each half can pass on its own while the join between them is broken           |
+| A hard failure closes the run `FAILED` and releases the lease                          | A stuck lease locks out every later tick                                      |
+| Classification spends against what today already cost                                  | Several runs a day would otherwise each take a fresh full allowance           |
+| What classification spent is written onto the run row filing opened                    | Nothing else records it, and both the usage panel and the daily cap read it   |
+| Only mail with no action row is read, newest first                                     | A run interrupted mid-flight resumes instead of re-classifying and re-billing |
 
 What these cannot establish is that three consecutive nights actually ran: that needs elapsed time
 on a real mailbox. One filing engine now remains, so that wait is over — see card 05.

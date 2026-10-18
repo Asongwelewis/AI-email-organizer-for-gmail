@@ -533,6 +533,17 @@ Any ordering at all, materialised or not — the same facet rows arranged differ
 `Finance > Payment failed > Netflix` are the same mail, reordered, with nothing reclassified. Both
 parameters are optional and fall back to the account's settings.
 
+Each node carries `facet` and `value`. Brand folders (`facet: "entity"`) also carry `iconDomain`:
+the registrable domain the brand's mail most often comes from, or `null`.
+
+### `GET /api/facets/icons/:domain`
+
+A brand folder's logo, `image/png` or another raster type, cached privately for a week. `404` when
+there is no logo (the PWA keeps the folder icon), `400` for anything that is not a plain domain,
+`503 ICON_UNAVAILABLE` when the logo service cannot be reached. Fetched server-side from Google's
+favicon service, so the browser never tells a third party which companies send this person mail.
+Sends `Cross-Origin-Resource-Policy: same-site`.
+
 ### `GET /api/facets/messages?facetKey=entity%3Dnetflix%7Cintent%3Dpayment-failed`
 
 The mail inside one folder, newest first. A folder **is** a facet combination, so this is keyed by
@@ -704,6 +715,9 @@ send `Cache-Control: no-store`.
 - `GET /api/automation/status` returns Gmail connection/reauthorization state, scheduler state,
   last-run counters/errors, today’s token and cost usage, configured limits, pending review count,
   `approvedLabelCount`/`labelsReady`, and `backlogRemaining` for an in-progress backfill.
+  `usageToday.messagesSorted` counts mail sorted today by rules and the model together, and
+  `watch` is `{ intervalSeconds, lastCheckedAt }` for the watcher that sorts new mail as it lands.
+  `nextRunAt` is the next full run.
 - `POST /api/automation/run` **accepts** a manual resumable run and returns `202` with
   `{ runId, state: "RUNNING", kind, startedAt, alreadyRunning }`. The run syncs the mailbox and
   then classifies in paced Gemini batches, so the client polls `GET /api/activity/runs/:id` rather

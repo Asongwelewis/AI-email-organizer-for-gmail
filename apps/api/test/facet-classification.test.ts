@@ -302,6 +302,75 @@ describe('the facet classification pass', () => {
     });
   });
 
+  /*
+   * The watcher's pass. It reads only mail that was never classified and arrived recently — the
+   * backlog belongs to the full runs — and it asks before spending a model call on what the rules
+   * left over.
+   */
+  it('reads only recent, never-classified mail when scoped to new mail', async () => {
+    await service([]).classifyAccount(ACCOUNT, { scope: 'new', limit: 50 });
+
+    const query = mocks.messageFindMany.mock.calls[0]![0] as {
+      where: { facets: unknown; internal_date: { gte: Date } };
+      take: number;
+    };
+    expect(query.where.facets).toBeNull();
+    expect(Date.now() - query.where.internal_date.gte.getTime()).toBeLessThanOrEqual(
+      48 * 60 * 60 * 1000 + 1000,
+    );
+    expect(query.take).toBe(50);
+    // The stale-input sweep is a backlog job, and a new-mail pass never starts it.
+    expect(mocks.facetFindMany).not.toHaveBeenCalled();
+  });
+
+  it('settles what the rules can and leaves the rest when the gate says wait', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'a', subject: 'Payment with insufficient funds', sender: 'alerts@exness.com' }),
+      message({ id: 'b', subject: 'Something new entirely', sender: 'hello@newsender.io' }),
+    ]);
+    mocks.patternFindMany.mockResolvedValue([
+      facetRule({ id: 'r1', kind: 'SENDER_DOMAIN', value: 'exness.com', domain: 'finance' }),
+      facetRule({
+        id: 'r2',
+        kind: 'SUBJECT_CONTAINS',
+        value: 'insufficient funds',
+        intent: 'payment-failed',
+      }),
+    ]);
+    const gate = vi.fn().mockReturnValue(false);
+
+    const counters = await service([]).classifyAccount(ACCOUNT, { scope: 'new', modelGate: gate });
+
+    expect(counters.ruleDecided).toBe(1);
+    expect(counters.deferred).toBe(1);
+    expect(mocks.classify).not.toHaveBeenCalled();
+    expect(mocks.facetUpsert).toHaveBeenCalledTimes(1);
+    // The gate is shown exactly what is waiting, so it can judge the batch and the oldest wait.
+    expect((gate.mock.calls[0]![0] as Array<{ id: string }>).map((entry) => entry.id)).toEqual([
+      'b',
+    ]);
+  });
+
+  it('sends the remainder to the model when the gate says the batch is worth it', async () => {
+    mocks.messageFindMany.mockResolvedValue([
+      message({ id: 'b', subject: 'Something new entirely', sender: 'hello@newsender.io' }),
+    ]);
+
+    const counters = await service([
+      {
+        key: 'm1',
+        domain: 'shopping',
+        domainConfidence: 0.9,
+        intent: 'promotional',
+        intentConfidence: 0.9,
+      },
+    ]).classifyAccount(ACCOUNT, { scope: 'new', modelGate: () => true });
+
+    expect(mocks.classify).toHaveBeenCalledTimes(1);
+    expect(counters.modelDecided).toBe(1);
+    expect(counters.deferred).toBe(0);
+  });
+
   it('does not let a retired rule value bypass the approved vocabulary', async () => {
     mocks.messageFindMany.mockResolvedValue([
       message({ id: 'a', subject: 'A weekly update', sender: 'news@example.com' }),

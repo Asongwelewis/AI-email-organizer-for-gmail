@@ -369,6 +369,26 @@ because a client polls them every two seconds for as long as a run lasts.
 ### Daily automation
 
 Stage 5 configuration is documented in [Stage 5 daily automation](stage-5-daily-automation.md).
+
+New mail is sorted as it arrives by the watcher, between the twice-daily full runs:
+
+- `AUTOMATION_CHECK_INTERVAL_SECONDS` — how often Gmail is asked whether anything changed (default
+  60; 0 disables, otherwise 30–3600). One `users.getProfile` call; nothing else when the history id
+  has not moved, so no lease is taken and no `gmail_sync_runs` row is written.
+- `AUTOMATION_CLASSIFY_BATCH_THRESHOLD` / `AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES` — what the rules
+  leave waits for Gemini until this many queue (10) or the oldest has waited this long (5).
+- `AUTOMATION_FULL_RUN_HOURS_UTC` — comma-separated UTC hours for the full run (default `2,14`).
+  `AUTOMATION_SCHEDULE_HOUR_UTC` is retired and ignored with a boot warning.
+- `KEEP_AWAKE_INTERVAL_MINUTES` — production only; the API requests its own public `/health` this
+  often (default 10, max 14, 0 disables) so Render's free plan, which counts only inbound traffic,
+  never puts it to sleep.
+
+Brand folders show a logo. `GET /api/facets/icons/:domain` fetches it from Google's favicon service
+— a fixed host, never the sender's own site, which would let any email aim the server at an address
+of its choosing — caches it in memory for a week (misses for a day), refuses SVG, and answers 404
+when there is none. `Cross-Origin-Resource-Policy: same-site` lets www.mailmindai.tech draw what
+api.mailmindai.tech serves; the browser never asks a logo service directly, so no third party learns
+which companies send a person mail.
 Without `GEMINI_API_KEY`, automation remains unavailable without preventing the existing API from
 starting. The scheduler starts only after Prisma connects and stops during graceful shutdown.
 Provider and Gmail errors are logged
