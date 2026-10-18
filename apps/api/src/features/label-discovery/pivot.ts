@@ -112,6 +112,34 @@ function facetValue(message: FacetedMessage, facet: PivotFacet): string | null {
 }
 
 /** "entity=netflix|intent=payment-failed" for a prefix of the ordered facet values. */
+/**
+ * A folder key read back into its parts, or null when it is not one this module could have built:
+ * one to three `facet=value` pairs, known facets, no facet twice, and a value that names a folder.
+ * Anything stored or sent by a client is checked with this before it is trusted as a folder.
+ */
+export function parseFacetKey(
+  key: string,
+): Array<{ facet: PivotFacet; value: string; name: string }> | null {
+  const parts = key.split('|');
+  if (parts.length === 0 || parts.length > MAX_PIVOT_DEPTH) return null;
+  const seen = new Set<string>();
+  const parsed: Array<{ facet: PivotFacet; value: string; name: string }> = [];
+  for (const part of parts) {
+    const separator = part.indexOf('=');
+    if (separator <= 0) return null;
+    const facet = part.slice(0, separator);
+    const value = part.slice(separator + 1);
+    if (!(PIVOT_FACETS as readonly string[]).includes(facet) || seen.has(facet) || !value) {
+      return null;
+    }
+    const name = pivotLeafName(value, facet as PivotFacet);
+    if (!name) return null;
+    seen.add(facet);
+    parsed.push({ facet: facet as PivotFacet, value, name });
+  }
+  return parsed;
+}
+
 function keyOf(order: PivotFacet[], values: string[]): string {
   return values.map((value, index) => `${order[index]}=${value}`).join('|');
 }

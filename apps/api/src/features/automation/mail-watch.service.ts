@@ -1,9 +1,14 @@
 import type { gmail_message_metadata } from '@prisma/client';
 
 import { env } from '@api/config/env.js';
+import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { gmailSyncService } from '@api/integrations/gmail/gmail.service.js';
+import {
+  notificationsService,
+  type NotificationsService,
+} from '@api/features/notifications/notifications.service.js';
 import {
   NEW_MAIL_WINDOW_MS,
   facetClassificationService,
@@ -46,6 +51,8 @@ export interface WatchOutcome {
   synced?: number;
   sorted?: number;
   deferred?: number;
+  /** New messages announced in the app and, where subscribed, on the person's devices. */
+  announced?: number;
 }
 
 export class MailWatchService {
@@ -70,6 +77,7 @@ export class MailWatchService {
       FacetClassificationService,
       'classifyAccount'
     > = facetClassificationService,
+    private readonly notifier: Pick<NotificationsService, 'recordNewMail'> = notificationsService,
   ) {}
 
   /** Mailboxes worth watching: connected, not paused, and past their first sync. */
@@ -92,7 +100,8 @@ export class MailWatchService {
     try {
       const outcome = await this.checkOnce(accountId, userId, now);
       this.backoff.delete(accountId);
-      return outcome;
+      const announced = await this.announce(accountId, now);
+      return announced > 0 ? { ...outcome, announced } : outcome;
     } catch (error) {
       if (error instanceof AppError && SKIPPABLE.has(error.code)) {
         return { outcome: 'SKIPPED', reason: error.code };
@@ -145,6 +154,20 @@ export class MailWatchService {
       sorted: counters.ruleDecided + counters.modelDecided,
       deferred: counters.deferred,
     };
+  }
+
+  /**
+   * Announces whatever new mail has been stored since the last check — by this check, by a full
+   * run, by anything. Asked every tick, after sorting, so a notification can name the folder. It
+   * never fails the check: mail sorted and not announced is better than mail not sorted.
+   */
+  private async announce(accountId: string, now: number): Promise<number> {
+    try {
+      return await this.notifier.recordNewMail(accountId, now);
+    } catch (error) {
+      logger.warn({ ...safeErrorDetails(error), accountId }, 'new-mail notification failed');
+      return 0;
+    }
   }
 
   /** Enough queued for one call to sort a batch, or someone has waited long enough. */

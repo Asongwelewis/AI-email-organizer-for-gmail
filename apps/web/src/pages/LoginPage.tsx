@@ -26,7 +26,7 @@ export function LoginPage() {
   }, []);
 
   if (isLoading) return <RouteLoader />;
-  if (isAuthenticated) return <Navigate to="/sorted" replace />;
+  if (isAuthenticated) return <Navigate to="/inbox" replace />;
 
   return (
     <main className="login-page">

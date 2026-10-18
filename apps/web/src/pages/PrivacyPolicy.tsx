@@ -93,6 +93,14 @@ export function PrivacyPolicy() {
         are unsure which tier it uses, ask before connecting a mailbox.
       </p>
       <p>
+        <strong>Your browser&rsquo;s push service.</strong> If you turn on notifications for a
+        device, each new-mail alert &mdash; the sender and the subject &mdash; is delivered through
+        that browser&rsquo;s push service (Google&rsquo;s for Chrome, Microsoft&rsquo;s for Edge,
+        Mozilla&rsquo;s for Firefox). It is encrypted so that only your browser can read it, and
+        nothing is sent to a device you have not turned notifications on for. Turn them off at any
+        time under Menu &rarr; Notifications; logging out turns them off for that device.
+      </p>
+      <p>
         <strong>Infrastructure.</strong> The application runs on Vercel (the web app) and Render
         (the API), with the database hosted on Supabase. Errors are reported to Sentry with message
         content, tokens and cookies redacted before they leave the server.

@@ -13,7 +13,7 @@ const statuses = {
     kind: 'success',
     title: 'Welcome to MailMind.',
     copy: 'Your secure session is ready.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
   login_failed: {
     kind: 'error',
@@ -25,31 +25,31 @@ const statuses = {
     kind: 'success',
     title: 'Gmail is connected.',
     copy: 'The connection is ready for future MailMind organization tools.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
   gmail_denied: {
     kind: 'error',
     title: 'Gmail stayed private.',
     copy: 'Access was not approved. Your MailMind login is still active.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
   gmail_permission_incomplete: {
     kind: 'error',
     title: 'One permission is missing.',
     copy: 'Reconnect and approve the requested Gmail access to complete setup.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
   gmail_reauth_required: {
     kind: 'error',
     title: 'A fresh connection is needed.',
     copy: 'Reconnect Gmail to renew MailMind’s access.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
   gmail_connection_failed: {
     kind: 'error',
     title: 'Connection interrupted.',
     copy: 'Gmail could not be connected. Your MailMind account is unchanged.',
-    destination: '/sorted',
+    destination: '/inbox',
   },
 } as const;
 

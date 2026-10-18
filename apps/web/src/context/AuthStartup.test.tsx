@@ -28,10 +28,10 @@ function renderApp() {
   return render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={['/sorted']}>
+        <MemoryRouter initialEntries={['/inbox']}>
           <Routes>
             <Route
-              path="/sorted"
+              path="/inbox"
               element={
                 <ProtectedRoute>
                   <div>Folders</div>

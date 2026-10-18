@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import { ProtectedRoute } from '@web/components/ProtectedRoute';
 import { VisualRoot } from '@web/components/MailAtmosphere';
 import { RouteErrorBoundary } from '@web/components/RouteErrorBoundary';
+import { ToInbox } from '@web/components/ToInbox';
 import { AppShell } from '@web/layouts/AppShell';
 import { PublicLayout } from '@web/layouts/PublicLayout';
 import { AuthCallbackPage } from '@web/pages/AuthCallbackPage';
@@ -15,11 +16,12 @@ import { PrivacyPolicy } from '@web/pages/PrivacyPolicy';
 import { SupportPage } from '@web/pages/SupportPage';
 import { TermsOfService } from '@web/pages/TermsOfService';
 import { ActivityPage } from '@web/pages/ActivityPage';
-import { ApprovePage } from '@web/pages/ApprovePage';
+import { FavoritesPage } from '@web/pages/FavoritesPage';
 import { FindPage } from '@web/pages/FindPage';
-import { SortedPage } from '@web/pages/SortedPage';
+import { InboxPage } from '@web/pages/InboxPage';
+import { MenuPage } from '@web/pages/MenuPage';
+import { NotificationsPage } from '@web/pages/NotificationsPage';
 import { SetupPage } from '@web/pages/SetupPage';
-import { ReviewPage } from '@web/pages/ReviewPage';
 import { PivotPage } from '@web/pages/PivotPage';
 import { AboutPage } from '@web/pages/AboutPage';
 import { AccountPage } from '@web/pages/AccountPage';
@@ -68,12 +70,13 @@ const publicRoutes: RouteObject[] = [
 
 const appRoutes: RouteObject[] = [
   { path: '/setup', element: <SetupPage /> },
-  { path: '/sorted', element: <SortedPage /> },
+  { path: '/inbox', element: <InboxPage /> },
   { path: '/find', element: <FindPage /> },
+  { path: '/favorites', element: <FavoritesPage /> },
   { path: '/folders', element: <PivotPage /> },
-  { path: '/review', element: <ReviewPage /> },
-  { path: '/approve', element: <ApprovePage /> },
   { path: '/activity', element: <ActivityPage /> },
+  { path: '/menu', element: <MenuPage /> },
+  { path: '/notifications', element: <NotificationsPage /> },
   { path: '/account', element: <AccountPage /> },
 ];
 
@@ -97,9 +100,13 @@ export const router = sentryCreateBrowserRouter([
     children: appRoutes,
   },
   // Retired surfaces; keep old links working rather than bouncing them to the landing page.
-  { path: '/dashboard/*', element: <Navigate to="/sorted" replace /> },
-  { path: '/labels', element: <Navigate to="/approve" replace /> },
+  // Review and Approve are gone for now and will come back redesigned; until then they lead home.
+  { path: '/sorted', element: <ToInbox /> },
+  { path: '/review', element: <Navigate to="/inbox" replace /> },
+  { path: '/approve', element: <Navigate to="/inbox" replace /> },
+  { path: '/dashboard/*', element: <Navigate to="/inbox" replace /> },
+  { path: '/labels', element: <Navigate to="/inbox" replace /> },
   { path: '/automation', element: <Navigate to="/activity" replace /> },
-  { path: '/settings/*', element: <Navigate to="/sorted" replace /> },
+  { path: '/settings/*', element: <Navigate to="/inbox" replace /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ]);

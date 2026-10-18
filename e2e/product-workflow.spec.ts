@@ -46,6 +46,10 @@ async function apiMock(route: Route) {
       plan: null,
     },
     '/api/activity/runs': { runs: [] },
+    '/api/favorites': { items: [] },
+    '/api/favorites/keys': { keys: [] },
+    '/api/notifications': { items: [], unreadCount: 0, nextCursor: null },
+    '/api/notifications/push': { configured: false, publicKey: null, subscriptions: 0 },
     '/api/automation/status': {
       gmailConnected: true,
       requiresReauthentication: false,
@@ -163,39 +167,44 @@ test('a signed-out visitor is sent to login and returned to the authenticated ar
     await route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } });
   });
 
-  await page.goto('/sorted');
+  await page.goto('/inbox');
   await expect(page).toHaveURL(/\/login$/);
 });
 
 test('a signed-in visitor lands in the authenticated shell', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
-  await page.goto('/sorted');
+  await page.goto('/inbox');
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Sorted' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Job hunt/ })).toBeVisible();
+  // The folder itself, not its star, whose label names the folder too.
+  await expect(page.getByRole('button', { name: /^(?!.*favourites).*Job hunt/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add Job hunt to favourites' })).toBeVisible();
+  // The menu sits on the left of every screen.
+  await expect(page.getByRole('link', { name: 'Menu' })).toBeVisible();
 });
 
 test('every screen is reachable from the navigation', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/sorted');
+  await page.goto('/inbox');
 
-  // Folders and Review are the screens restored in card 14. Without them the pipeline exists in
-  // the API and cannot be operated at all.
   // Exact names: a screen may also link to another by a longer phrase — Find offers "Browse
   // folders instead" — and a substring match would resolve to two elements.
-  await page.getByRole('link', { name: 'Find', exact: true }).click();
+  await page.getByRole('link', { name: 'Find', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Find' })).toBeVisible();
-  await page.getByRole('link', { name: 'Folders', exact: true }).click();
+  await page.getByRole('link', { name: 'Favourites', exact: true }).first().click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Favourites' })).toBeVisible();
+  await page.getByRole('link', { name: 'Folders', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Folders' })).toBeVisible();
-  await page.getByRole('link', { name: 'Review', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible();
-  await page.getByRole('link', { name: 'Approve', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Approve' })).toBeVisible();
-  await page.getByRole('link', { name: 'Activity', exact: true }).click();
+  await page.getByRole('link', { name: 'Activity', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
   await expect(page.getByText('Nothing has run yet')).toBeVisible();
+  // Notifications live behind the menu on the left.
+  await page.getByRole('link', { name: 'Menu' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible();
+  await page.getByRole('link', { name: /Notifications/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible();
 });
 
 /**
@@ -220,15 +229,20 @@ test('the setup path exists and gates its steps in order', async ({ page }) => {
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
 
-  // Each retired screen lands on whichever of the three replaced it.
+  // Each retired screen lands on whichever replaced it. Sorted is called Inbox now, and keeps its
+  // query string so an old bookmark still opens the same folder.
   for (const [retired, destination] of [
-    ['/dashboard', /\/sorted$/],
-    ['/dashboard/automation', /\/sorted$/],
-    ['/dashboard/classification', /\/sorted$/],
-    ['/dashboard/labels/discover', /\/sorted$/],
-    ['/labels', /\/approve$/],
+    ['/sorted', /\/inbox$/],
+    ['/sorted?range=all', /\/inbox\?range=all$/],
+    ['/review', /\/inbox$/],
+    ['/approve', /\/inbox$/],
+    ['/dashboard', /\/inbox$/],
+    ['/dashboard/automation', /\/inbox$/],
+    ['/dashboard/classification', /\/inbox$/],
+    ['/dashboard/labels/discover', /\/inbox$/],
+    ['/labels', /\/inbox$/],
     ['/automation', /\/activity$/],
-    ['/settings/connections', /\/sorted$/],
+    ['/settings/connections', /\/inbox$/],
   ] as const) {
     await page.goto(retired);
     await expect(page).toHaveURL(destination);
@@ -249,12 +263,13 @@ test('every surviving page renders without console or page errors', async ({ pag
     '/',
     '/login',
     '/setup',
-    '/sorted',
+    '/inbox',
     '/find',
+    '/favorites',
     '/folders',
-    '/review',
-    '/approve',
     '/activity',
+    '/menu',
+    '/notifications',
     '/privacy',
     '/terms',
     '/support',
