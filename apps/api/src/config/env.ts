@@ -25,6 +25,21 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
+/**
+ * Whether this process is a deployment rather than someone's machine or a test run.
+ *
+ * `NODE_ENV=production` says so, but it is not the only thing that can: the live Render service was
+ * created by hand, not from render.yaml, and never received NODE_ENV — so everything gated on it
+ * silently stayed off in production. Migrations did not apply at boot (the favourites and
+ * notifications tables did not exist for a day; 28 Aug 2026 was the same failure), and the
+ * keep-awake ping never started. Render sets RENDER=true on every service it runs, whatever else is
+ * configured, which makes it the one signal that cannot be forgotten.
+ */
+function deployed(nodeEnv: string): boolean {
+  if (nodeEnv === 'test') return false;
+  return nodeEnv === 'production' || process.env['RENDER'] === 'true';
+}
+
 const environmentSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -284,7 +299,8 @@ const environmentSchema = z
     return {
       ...value,
       AUTOMATION_FULL_RUN_HOURS_UTC: value.AUTOMATION_FULL_RUN_HOURS_UTC ?? [2, 14],
-      MIGRATE_ON_START: value.MIGRATE_ON_START ?? value.NODE_ENV === 'production',
+      IS_DEPLOYED: deployed(value.NODE_ENV),
+      MIGRATE_ON_START: value.MIGRATE_ON_START ?? deployed(value.NODE_ENV),
       TOKEN_ENCRYPTION_KEY_BYTES: tokenEncryptionKey,
     };
   });

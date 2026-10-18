@@ -169,7 +169,7 @@ unless it sorted something, and then adds to one `automation_runs` row per accou
 daily caps still see its usage. It stands aside while a full run is in flight, and a full run waits
 out a check that holds the lease. None of this runs while the free Render instance sleeps, and work
 inside the process does not count as traffic, so `services/keepAwake.ts` requests the API's own
-public `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` in production, with
+public `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` on a deployment, with
 `.github/workflows/wake-api.yml` pinging every ten minutes as the backstop that can wake a sleeping
 instance. Around the clock that is ~744 of the 750 free hours a Render workspace shares a month.
 
@@ -246,6 +246,12 @@ Never run `prisma migrate reset` or `supabase db reset` against a shared or remo
 are only for the disposable local `supabase start` stack.
 
 ## Configuration
+
+**A deployment is `NODE_ENV=production` _or_ `RENDER=true`** (`env.IS_DEPLOYED`). The live Render
+service was created by hand and never received `NODE_ENV`, so anything gated on `NODE_ENV` alone —
+boot-time migrations, the keep-awake ping — silently stayed off in production. Gate deployment-only
+behaviour on `IS_DEPLOYED`, and after any migration check `GET /ready`: `dependencies.schema` must
+be `current`.
 
 `.env.example` at the root plus `apps/api/.env.example` and `apps/web/.env.example`. API config is
 parsed by Zod at startup — invalid config aborts the process and reports field names without

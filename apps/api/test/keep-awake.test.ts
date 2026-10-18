@@ -19,11 +19,11 @@ import {
  * fire from a developer's machine, where API_BASE_URL may well be production.
  */
 describe('keeping the free instance awake', () => {
-  const originalNodeEnv = env.NODE_ENV;
+  const originalDeployed = env.IS_DEPLOYED;
 
   afterEach(() => {
     stopKeepAwake();
-    env.NODE_ENV = originalNodeEnv;
+    env.IS_DEPLOYED = originalDeployed;
     vi.useRealTimers();
     vi.clearAllMocks();
   });
@@ -32,8 +32,8 @@ describe('keeping the free instance awake', () => {
     expect(keepAwakeUrl()).toBe(new URL('/health', env.API_BASE_URL).toString());
   });
 
-  it('pings on its interval in production', async () => {
-    env.NODE_ENV = 'production';
+  it('pings on its interval in a deployment', async () => {
+    env.IS_DEPLOYED = true;
     vi.useFakeTimers();
     const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200 });
 
@@ -47,8 +47,8 @@ describe('keeping the free instance awake', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it('never pings outside production', async () => {
-    env.NODE_ENV = 'development';
+  it('never pings outside a deployment', async () => {
+    env.IS_DEPLOYED = false;
     vi.useFakeTimers();
     const fetcher = vi.fn();
 
