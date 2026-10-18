@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Folder, FolderOpen } from 'lucide-react';
 
 import { formatCount } from '@web/lib/format';
@@ -17,6 +18,11 @@ export interface FolderTileProps {
    * you have not seen, and a folder that stayed silent about it would send you hunting.
    */
   unreadCount?: number;
+  /**
+   * A brand folder's logo, served by our own API. When it is missing or fails to load the tile
+   * keeps its folder icon — a broken image is worse than no image.
+   */
+  iconUrl?: string | null;
   onOpen: () => void;
 }
 
@@ -26,10 +32,14 @@ export function FolderTile({
   count,
   childCount,
   unreadCount = 0,
+  iconUrl = null,
   onOpen,
 }: FolderTileProps) {
   const color = folderColor(path);
   const Icon = childCount > 0 ? FolderOpen : Folder;
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => setLogoFailed(false), [iconUrl]);
+  const showLogo = Boolean(iconUrl) && !logoFailed;
 
   return (
     <button
@@ -44,7 +54,22 @@ export function FolderTile({
       }}
     >
       <span className="folder-tile__top">
-        <Icon className="folder-tile__icon" aria-hidden="true" strokeWidth={1.5} />
+        {showLogo ? (
+          // Decorative: the folder's name, right below, already says whose mail this is.
+          <span className="folder-tile__logo" aria-hidden="true">
+            <img
+              src={iconUrl!}
+              alt=""
+              width={32}
+              height={32}
+              loading="lazy"
+              decoding="async"
+              onError={() => setLogoFailed(true)}
+            />
+          </span>
+        ) : (
+          <Icon className="folder-tile__icon" aria-hidden="true" strokeWidth={1.5} />
+        )}
         {unreadCount > 0 ? (
           <span className="folder-tile__unread">{formatCount(unreadCount)} new</span>
         ) : childCount > 0 ? (

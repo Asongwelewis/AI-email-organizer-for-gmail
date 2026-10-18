@@ -1,17 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
-import { ErrorNotice } from '@web/components/app/ErrorNotice';
-import { formatCount, formatTimestamp, humanizeCode } from '@web/lib/format';
+import {
+  formatCount,
+  formatInterval,
+  formatRelative,
+  formatTimestamp,
+  humanizeCode,
+} from '@web/lib/format';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
 
 /**
- * Whether automation is on, when it comes back, and what today has already cost.
+ * Whether automation is on, how fresh it is, and what today has already cost.
  *
- * `getAutomationStatus` has existed since stage 2 and nothing rendered it, so the one question the
- * product's whole promise rests on — *is it still running on its own?* — had no answer anywhere in
- * the interface. The daily budgets are cumulative since 00:00 UTC, which is exactly why today's
- * usage belongs next to the next run time rather than buried in a run record.
+ * There are no buttons here any more, on purpose. New mail is checked for every minute and sorted
+ * as it lands, and the full job runs twice a day on its own, so "Run now" and "Check for new mail"
+ * only ever asked a person to do by hand what was about to happen anyway. What this answers
+ * instead is the question the whole product rests on: *is it still running on its own?*
  */
 /**
  * Why automation is off, said precisely.
@@ -29,33 +34,19 @@ const DISABLED_REASONS: Record<string, string> = {
 };
 
 export function AutomationPanel() {
-  const queryClient = useQueryClient();
-
   const statusQuery = useQuery({
     queryKey: queryKeys.automationStatus,
     queryFn: () => api.getAutomationStatus(),
-    // While a run is in flight this is the only place its existence is visible.
-    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
-  });
-
-  const refreshed = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.automationStatus });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.activityRuns });
-  };
-
-  const runMutation = useMutation({ mutationFn: () => api.runAutomation(), onSuccess: refreshed });
-  const syncMutation = useMutation({
-    mutationFn: () => api.incrementalGmailSync(),
-    onSuccess: () => {
-      refreshed();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.gmailSyncStatus });
-    },
+    // "Last checked" moves every minute, and a full run's progress is only visible here, so the
+    // panel keeps itself current while it is on screen: every 2s during a run, every 30s otherwise.
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : 30_000),
   });
 
   const status = statusQuery.data;
   if (!status) return null;
 
-  const busy = status.running || runMutation.isPending || syncMutation.isPending;
+  const watch = status.watch;
+  const watching = status.enabled && Boolean(watch && watch.intervalSeconds > 0);
 
   return (
     <section className="automation-panel" aria-label="Automation">
@@ -64,11 +55,22 @@ export function AutomationPanel() {
           {!status.enabled
             ? 'Automation is off'
             : status.running
-              ? 'Running now'
-              : status.nextRunAt
-                ? `Next run ${formatTimestamp(status.nextRunAt)}`
+              ? 'Full run in progress'
+              : watching
+                ? 'Watching for new mail'
                 : 'Scheduled'}
         </p>
+        {watching && watch ? (
+          <p className="automation-panel__detail">
+            Checks {formatInterval(watch.intervalSeconds)}
+            {watch.lastCheckedAt ? ` · last checked ${formatRelative(watch.lastCheckedAt)}` : ''}
+          </p>
+        ) : null}
+        {status.enabled && status.nextRunAt ? (
+          <p className="automation-panel__detail">
+            Next full run {formatTimestamp(status.nextRunAt)}
+          </p>
+        ) : null}
         {/* A backoff is not the schedule, and reading one as the other is how a stalled account
             looks healthy. It gets its own line. */}
         {status.retryAt ? (
@@ -86,8 +88,8 @@ export function AutomationPanel() {
 
       <dl className="automation-panel__stats">
         <div>
-          <dt>Filed today</dt>
-          <dd>{formatCount(status.usageToday.messagesLabeled)}</dd>
+          <dt>Sorted today</dt>
+          <dd>{formatCount(status.usageToday.messagesSorted ?? 0)}</dd>
         </div>
         <div>
           <dt>Model calls today</dt>
@@ -102,34 +104,6 @@ export function AutomationPanel() {
           <dd>{formatCount(status.backlogRemaining)}</dd>
         </div>
       </dl>
-
-      <div className="automation-panel__actions">
-        <button
-          className="button button--primary"
-          type="button"
-          disabled={busy || !status.labelsReady}
-          onClick={() => runMutation.mutate()}
-        >
-          {status.running ? 'Running…' : 'Run now'}
-        </button>
-        <button
-          className="button"
-          type="button"
-          disabled={busy}
-          onClick={() => syncMutation.mutate()}
-        >
-          {syncMutation.isPending ? 'Checking…' : 'Check for new mail'}
-        </button>
-      </div>
-
-      {!status.labelsReady ? (
-        <p className="screen__hint">
-          There is nowhere to file yet. Shape your folders and apply them first.
-        </p>
-      ) : null}
-
-      {runMutation.isError ? <ErrorNotice error={runMutation.error} /> : null}
-      {syncMutation.isError ? <ErrorNotice error={syncMutation.error} /> : null}
     </section>
   );
 }

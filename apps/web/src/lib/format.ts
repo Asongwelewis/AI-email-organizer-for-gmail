@@ -17,6 +17,26 @@ export function formatTimestamp(iso: string): string {
   }).format(date);
 }
 
+/** "just now", "4 min ago", "3 h ago": for things that happen every minute, a clock time is noise. */
+export function formatRelative(iso: string, now = Date.now()): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const seconds = Math.max(0, Math.round((now - then) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return formatTimestamp(iso);
+}
+
+/** "every minute", "every 5 minutes", "every 90 seconds". */
+export function formatInterval(seconds: number): string {
+  if (seconds % 60 !== 0) return `every ${seconds} seconds`;
+  const minutes = seconds / 60;
+  return minutes === 1 ? 'every minute' : `every ${minutes} minutes`;
+}
+
 export function formatDuration(milliseconds: number): string {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return '—';
   const seconds = Math.round(milliseconds / 1000);

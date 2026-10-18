@@ -1,12 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 import { apiBaseUrl } from '@web/config/env';
-import type {
-  AuthMeResponse,
-  GmailConnectionStatus,
-  GmailSyncResult,
-  GmailSyncStatus,
-} from '@web/types/auth';
+import type { AuthMeResponse, GmailConnectionStatus, GmailSyncStatus } from '@web/types/auth';
 import type { ActivityRun, ActivityRunsResponse, StartedRun } from '@web/types/activity';
 import type {
   FacetVocabulary,
@@ -132,11 +127,6 @@ export const api = {
     return response.data;
   },
 
-  async incrementalGmailSync(): Promise<GmailSyncResult> {
-    const response = await http.post<GmailSyncResult>('/gmail/sync/incremental');
-    return response.data;
-  },
-
   async getLabels(): Promise<LabelsOverview> {
     const response = await http.get<LabelsOverview>('/labels');
     return response.data;
@@ -185,12 +175,6 @@ export const api = {
 
   async getAutomationReview(): Promise<AutomationReviewQueue> {
     const response = await http.get<AutomationReviewQueue>('/automation/review');
-    return response.data;
-  },
-
-  /** 202: filing outlives the request, so this returns a run id to poll. */
-  async runAutomation(): Promise<StartedRun> {
-    const response = await http.post<StartedRun>('/automation/run', {});
     return response.data;
   },
 
