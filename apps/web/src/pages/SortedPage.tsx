@@ -51,8 +51,14 @@ function folderIconUrl(node: PivotNode): string | null {
 /** How often an open screen picks up mail the watcher has sorted since it loaded. */
 const LIVE_REFRESH_MS = 60_000;
 
+/**
+ * How many folders a level shows before "Show all". Most recent first, so the folders with new mail
+ * are always in view — but every folder is one tap away. This used to be a hard cap of ten with no
+ * way past it, which is why "All mail" looked like it held the same ten folders as last week.
+ */
+const INITIAL_FOLDER_COUNT = 24;
+
 /** One level at a time. Folders are nested by their parent's facet key. */
-const TOP_FOLDER_LIMIT = 10;
 
 function childrenOf(nodes: PivotNode[], parentFacetKey: string | null): PivotNode[] {
   return nodes
@@ -163,15 +169,21 @@ export function SortedPage() {
   const current = trail.at(-1) ?? null;
   const term = search.trim().toLowerCase();
 
+  const level = useMemo(() => childrenOf(nodes, current?.facetKey ?? null), [nodes, current]);
+  // Expanded per view: a different level, ordering or window starts collapsed again.
+  const viewKey = `${pivotOrderKey(order)}|${timeRange}|${current?.facetKey ?? ''}`;
+  const [expandedView, setExpandedView] = useState<string | null>(null);
+  const showAll = expandedView === viewKey;
+
   // Searching looks through the whole tree, not just the level in view: a folder you remember by
   // name should not require retracing the path you filed it under.
   const visible = useMemo(() => {
-    const level = childrenOf(nodes, current?.facetKey ?? null);
-    if (!term) return level.slice(0, TOP_FOLDER_LIMIT);
+    if (!term) return showAll ? level : level.slice(0, INITIAL_FOLDER_COUNT);
     return nodes
       .filter((node) => node.leafName.toLowerCase().includes(term))
       .sort((left, right) => left.fullPath.localeCompare(right.fullPath));
-  }, [nodes, current, term]);
+  }, [nodes, level, term, showAll]);
+  const hiddenCount = term ? 0 : level.length - visible.length;
 
   const openFolder = (key: string | null) => {
     setSearch('');
@@ -249,7 +261,9 @@ export function SortedPage() {
           </select>
         </label>
         <span className="sorted__scope">
-          Showing the {timeRange === 'all' ? 'full' : 'most recent'} matching mailbox
+          {timeRange === 'all'
+            ? 'Every folder in your mailbox'
+            : 'Folders with mail in this window, newest first'}
         </span>
       </div>
 
@@ -368,6 +382,16 @@ export function SortedPage() {
             />
           ))}
         </div>
+      ) : null}
+
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className="button sorted__show-all"
+          onClick={() => setExpandedView(viewKey)}
+        >
+          Show all {formatCount(level.length)} folders
+        </button>
       ) : null}
 
       {term && visible.length === 0 && nodes.length > 0 ? (

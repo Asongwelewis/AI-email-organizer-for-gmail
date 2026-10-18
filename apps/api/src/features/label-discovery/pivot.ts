@@ -127,6 +127,13 @@ function keyOf(order: PivotFacet[], values: string[]): string {
  * A folder that has children AND mail of its own is the awkward case, because only leaves exist in
  * Gmail — a folder cannot both contain folders and hold mail. That mail stays in the inbox and is
  * counted, rather than being pushed into an invented "Other" folder that nobody asked for.
+ *
+ * A time window (`since`) narrows what the folders SHOW, never which folders EXIST. The tree is
+ * shaped by the whole mailbox and the window then picks the mail inside it. It used to be the other
+ * way round: the tree was rebuilt from the window alone, so in "Last 24 hours" a brand with one new
+ * message fell below `minMessages`, collapsed, and its new mail vanished from the screen instead of
+ * appearing in the folder it lives in every other day. A folder with nothing in the window is left
+ * out of that view, and nothing the window holds can create a folder the full mailbox would not.
  */
 export function buildPivot(
   messages: FacetedMessage[],
@@ -135,21 +142,25 @@ export function buildPivot(
 ): PivotResult {
   const trimmed = order.slice(0, MAX_PIVOT_DEPTH);
   const minMessages = Math.max(1, options.minMessages);
-  const filteredMessages = options.since
-    ? messages.filter(
-        (message) =>
-          message.receivedAt !== null &&
-          message.receivedAt !== undefined &&
-          message.receivedAt >= options.since!,
-      )
-    : messages;
+  const since = options.since ?? null;
+  const inWindow = (message: FacetedMessage) =>
+    !since ||
+    (message.receivedAt !== null &&
+      message.receivedAt !== undefined &&
+      message.receivedAt >= since);
 
   // The deepest prefix of the ordering each message has values for. A message with no intent still
   // has an entity, so it belongs one level up rather than nowhere.
-  const tuples: Array<{ values: string[]; unread: boolean }> = [];
-  const latestTupleDates = new Map<string, Date>();
+  interface Tuple {
+    values: string[];
+    unread: boolean;
+    receivedAt: Date | null;
+    shown: boolean;
+  }
+  const tuples: Tuple[] = [];
   let noFacetValue = 0;
-  for (const message of filteredMessages) {
+  for (const message of messages) {
+    const shown = inWindow(message);
     const values: string[] = [];
     for (const facet of trimmed) {
       const value = facetValue(message, facet);
@@ -159,120 +170,117 @@ export function buildPivot(
       values.push(value);
     }
     if (values.length === 0) {
-      noFacetValue += 1;
+      if (shown) noFacetValue += 1;
       continue;
     }
-    tuples.push({ values, unread: message.unread === true });
-    if (message.receivedAt) {
-      const tupleKey = values.join('\u0000');
-      const previous = latestTupleDates.get(tupleKey);
-      if (!previous || message.receivedAt > previous)
-        latestTupleDates.set(tupleKey, message.receivedAt);
-    }
+    tuples.push({
+      values,
+      unread: message.unread === true,
+      receivedAt: message.receivedAt ?? null,
+      shown,
+    });
   }
 
-  // Cumulative count for every prefix: a folder's size is its whole subtree, not just its own mail.
+  // Which folders exist: the whole mailbox decides, whatever window is on screen.
+  const structureCounts = new Map<string, number>();
+  for (const { values } of tuples) {
+    for (let depth = 1; depth <= values.length; depth += 1) {
+      const key = keyOf(trimmed, values.slice(0, depth));
+      structureCounts.set(key, (structureCounts.get(key) ?? 0) + 1);
+    }
+  }
+  const survives = (key: string) => (structureCounts.get(key) ?? 0) >= minMessages;
+  const parentOf = (key: string) => {
+    const cut = key.lastIndexOf('|');
+    return cut === -1 ? null : key.slice(0, cut);
+  };
+  // A folder with a surviving child is a branch, and a branch cannot hold mail of its own.
+  const branches = new Set<string>();
+  for (const key of structureCounts.keys()) {
+    const parent = parentOf(key);
+    if (parent && survives(key)) branches.add(parent);
+  }
+
+  // What the folders show: only the mail inside the window, counted the two usual ways.
   const subtreeCounts = new Map<string, number>();
   const subtreeUnread = new Map<string, number>();
-  for (const { values, unread } of tuples) {
+  const ownCounts = new Map<string, number>();
+  const ownUnread = new Map<string, number>();
+  const latestDates = new Map<string, Date>();
+  // Folders with mail of the window filed somewhere at or beneath them. Only these are shown.
+  const visible = new Set<string>();
+  let belowThreshold = 0;
+  let strandedOnBranches = 0;
+  for (const { values, unread, receivedAt, shown } of tuples) {
+    if (!shown) continue;
+    let placed: string | null = null;
+    let walking = true;
     for (let depth = 1; depth <= values.length; depth += 1) {
       const key = keyOf(trimmed, values.slice(0, depth));
       subtreeCounts.set(key, (subtreeCounts.get(key) ?? 0) + 1);
       if (unread) subtreeUnread.set(key, (subtreeUnread.get(key) ?? 0) + 1);
-    }
-  }
-  const survives = (key: string) => (subtreeCounts.get(key) ?? 0) >= minMessages;
-
-  // Place each message at the deepest surviving prefix of its own tuple. A prefix that does not
-  // survive collapses into its parent, and the placement walk is what performs that collapse.
-  const ownCounts = new Map<string, number>();
-  const ownUnread = new Map<string, number>();
-  const latestDates = new Map<string, Date>();
-  let belowThreshold = 0;
-  for (const { values, unread } of tuples) {
-    let placed: string | null = null;
-    for (let depth = 1; depth <= values.length; depth += 1) {
-      const key = keyOf(trimmed, values.slice(0, depth));
-      if (!survives(key)) break;
-      placed = key;
+      if (receivedAt) {
+        const previous = latestDates.get(key);
+        if (!previous || receivedAt > previous) latestDates.set(key, receivedAt);
+      }
+      // Placement walks down while the folders exist; a prefix that does not collapses into its
+      // parent, and stopping the walk there is what performs that collapse.
+      if (walking && survives(key)) placed = key;
+      else walking = false;
     }
     if (!placed) {
       belowThreshold += 1;
       continue;
     }
+    if (branches.has(placed)) {
+      // A folder with children cannot hold mail of its own, so this stays in the inbox.
+      strandedOnBranches += 1;
+      continue;
+    }
     ownCounts.set(placed, (ownCounts.get(placed) ?? 0) + 1);
     if (unread) ownUnread.set(placed, (ownUnread.get(placed) ?? 0) + 1);
-    const receivedAt = latestTupleDates.get(values.join('\u0000'));
-    if (receivedAt) {
-      for (let depth = 1; depth <= values.length; depth += 1) {
-        const key = keyOf(trimmed, values.slice(0, depth));
-        const previous = latestDates.get(key);
-        if (!previous || receivedAt > previous) latestDates.set(key, receivedAt);
-      }
-    }
+    for (let key: string | null = placed; key; key = parentOf(key)) visible.add(key);
   }
 
-  const nodes = new Map<string, PivotNode>();
-  for (const key of subtreeCounts.keys()) {
-    if (!survives(key)) continue;
+  const nodes: PivotNode[] = [];
+  for (const key of visible) {
     const parts = key.split('|');
     const values = parts.map((part) => part.slice(part.indexOf('=') + 1));
     const depth = values.length;
     const facet = trimmed[depth - 1]!;
     const leafName = pivotLeafName(values[depth - 1]!, facet);
     if (!leafName) continue;
-    const parentFacetKey = depth > 1 ? parts.slice(0, depth - 1).join('|') : null;
-    const parentPath =
-      depth > 1
-        ? values.slice(0, depth - 1).map((value, index) => pivotLeafName(value, trimmed[index]!)!)
-        : [];
-    const path = [...parentPath, leafName].join('/');
-    nodes.set(key, {
+    const path = values.map((value, index) => pivotLeafName(value, trimmed[index]!)!).join('/');
+    nodes.push({
       facetKey: key,
-      parentFacetKey,
+      parentFacetKey: parentOf(key),
       depth,
       facet,
       value: values[depth - 1]!,
       leafName,
       path,
       fullPath: `${LABEL_ROOT}/${path}`,
+      // A branch's own mail stayed in the inbox above, so its own counts are zero by construction.
       messageCount: ownCounts.get(key) ?? 0,
       subtreeMessageCount: subtreeCounts.get(key) ?? 0,
       unreadCount: ownUnread.get(key) ?? 0,
+      // The subtree number is untouched by stranding: unread mail under a branch is still under it.
       subtreeUnreadCount: subtreeUnread.get(key) ?? 0,
-      isLeaf: true,
+      isLeaf: !branches.has(key),
       latestReceivedAt: latestDates.get(key)?.toISOString() ?? null,
     });
   }
-  for (const node of nodes.values()) {
-    if (node.parentFacetKey && nodes.has(node.parentFacetKey)) {
-      nodes.get(node.parentFacetKey)!.isLeaf = false;
-    }
-  }
 
-  // A folder with children cannot hold mail of its own, so that mail stays in the inbox.
-  let strandedOnBranches = 0;
-  for (const node of nodes.values()) {
-    if (node.isLeaf) continue;
-    strandedOnBranches += node.messageCount;
-    node.messageCount = 0;
-    // Its own mail moved to the inbox, so its own unread count goes with it. The subtree number
-    // is untouched: the unread mail under this branch is still under it.
-    node.unreadCount = 0;
-  }
-
-  const ordered = [...nodes.values()].sort(
-    (left, right) => left.depth - right.depth || left.path.localeCompare(right.path),
-  );
+  nodes.sort((left, right) => left.depth - right.depth || left.path.localeCompare(right.path));
   return {
     order: trimmed,
-    nodes: ordered,
+    nodes,
     unfiled: {
       total: noFacetValue + belowThreshold + strandedOnBranches,
       noFacetValue,
       belowThreshold: belowThreshold + strandedOnBranches,
     },
-    collapsed: [...subtreeCounts.keys()].filter((key) => !survives(key)).length,
+    collapsed: [...structureCounts.keys()].filter((key) => !survives(key)).length,
   };
 }
 

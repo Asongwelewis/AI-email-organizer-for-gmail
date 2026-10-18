@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { emailTimeRangeSince } from '@mailmind/shared';
+
 import {
   ALTERNATE_PIVOT,
   DEFAULT_PIVOT,
@@ -188,6 +190,94 @@ describe('recent-mail filtering', () => {
     expect(result.nodes.find((node) => node.path === 'Netflix')?.latestReceivedAt).toBe(
       '2026-08-25T11:00:00.000Z',
     );
+  });
+});
+
+/*
+ * A window narrows what folders SHOW, never which folders EXIST. The tree used to be rebuilt from
+ * the window alone, so in "Last 24 hours" a brand with one new message fell below the floor,
+ * collapsed, and its new mail disappeared instead of appearing in its usual folder.
+ */
+describe('a time window over the same folders', () => {
+  const now = new Date('2026-10-18T12:00:00.000Z');
+  const old = new Date('2026-09-01T09:00:00.000Z');
+  const recent = new Date('2026-10-18T08:00:00.000Z');
+  const at = (messages: FacetedMessage[], receivedAt: Date) =>
+    messages.map((message) => ({ ...message, receivedAt }));
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const history = [
+    ...at(facets('netflix', 'entertainment', 'payment-failed', 8), old),
+    ...at(facets('netflix', 'entertainment', 'promotional', 12), old),
+    ...at(facets('github', 'development', 'security-alert', 7), old),
+  ];
+
+  it('files one new message into the folder the whole mailbox already has', () => {
+    const result = buildPivot(
+      [...history, ...at(facets('netflix', 'entertainment', 'payment-failed', 1), recent)],
+      DEFAULT_PIVOT,
+      { minMessages: 5, since },
+    );
+
+    const leaf = result.nodes.find((node) => node.path === 'Netflix/Payment failed');
+    expect(leaf?.messageCount).toBe(1);
+    expect(leaf?.isLeaf).toBe(true);
+    expect(result.nodes.find((node) => node.path === 'Netflix')?.subtreeMessageCount).toBe(1);
+    expect(result.unfiled.total).toBe(0);
+  });
+
+  it('leaves out folders with nothing in the window', () => {
+    const result = buildPivot(
+      [...history, ...at(facets('netflix', 'entertainment', 'payment-failed', 1), recent)],
+      DEFAULT_PIVOT,
+      { minMessages: 5, since },
+    );
+
+    const paths = result.nodes.map((node) => node.path);
+    expect(paths).toEqual(['Netflix', 'Netflix/Payment failed']);
+  });
+
+  it('never invents a folder the whole mailbox would not have', () => {
+    // Two new messages from a brand that has never sent five: no folder in All mail, none here.
+    const result = buildPivot(
+      [...history, ...at(facets('newbrand', 'shopping', 'promotional', 2), recent)],
+      DEFAULT_PIVOT,
+      { minMessages: 5, since },
+    );
+
+    expect(result.nodes).toHaveLength(0);
+    expect(result.unfiled.belowThreshold).toBe(2);
+  });
+
+  it('shows every folder with mail in it once the window is all mail', () => {
+    const result = buildPivot(history, DEFAULT_PIVOT, { minMessages: 5, since: null });
+    expect(result.nodes.map((node) => node.path)).toEqual([
+      'GitHub',
+      'Netflix',
+      'GitHub/Security alert',
+      'Netflix/Payment failed',
+      'Netflix/Promotional',
+    ]);
+  });
+});
+
+describe('how far back each time window reaches', () => {
+  const now = new Date('2026-10-18T12:00:00.000Z');
+  const hoursBack = (range: '24h' | '7d' | '30d') =>
+    (now.getTime() - emailTimeRangeSince(range, now)!.getTime()) / (60 * 60 * 1000);
+
+  // It used to be one hour: 1/24 of a day, multiplied by a day's milliseconds.
+  it('reaches back a full day for the last 24 hours', () => {
+    expect(hoursBack('24h')).toBe(24);
+  });
+
+  it('reaches back seven and thirty days for the longer windows', () => {
+    expect(hoursBack('7d')).toBe(7 * 24);
+    expect(hoursBack('30d')).toBe(30 * 24);
+  });
+
+  it('has no lower bound for all mail', () => {
+    expect(emailTimeRangeSince('all', now)).toBeNull();
   });
 });
 

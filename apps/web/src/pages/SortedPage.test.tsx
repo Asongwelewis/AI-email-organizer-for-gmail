@@ -119,14 +119,20 @@ describe('SortedPage', () => {
     expect(screen.queryByText('Job match')).not.toBeInTheDocument();
   });
 
-  it('caps the top-level folder grid at the ten most active folders', async () => {
+  /*
+   * The grid used to stop at ten folders with no way past it, so "All mail" looked like it held the
+   * same ten folders as last week. The newest stay first; every other one is a tap away.
+   */
+  it('shows the newest folders first and every folder on request', async () => {
     mocks.getPivotView.mockResolvedValue({
       order: ['domain', 'intent'],
-      nodes: Array.from({ length: 12 }, (_, index) =>
+      nodes: Array.from({ length: 30 }, (_, index) =>
         node({
           facetKey: `domain=folder-${index}`,
           leafName: `Folder ${index}`,
-          subtreeMessageCount: 12 - index,
+          subtreeMessageCount: 3,
+          // Folder 0 is the newest.
+          latestReceivedAt: new Date(Date.UTC(2026, 9, 18, 12) - index * 60_000).toISOString(),
         }),
       ),
       unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
@@ -135,8 +141,21 @@ describe('SortedPage', () => {
     renderScreen(<SortedPage />, '/sorted');
 
     await screen.findByText('Folder 0');
-    expect(document.querySelectorAll('.folder-tile')).toHaveLength(10);
-    expect(screen.queryByText('Folder 10')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('.folder-tile')).toHaveLength(24);
+    expect(screen.queryByText('Folder 29')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 30 folders' }));
+
+    expect(document.querySelectorAll('.folder-tile')).toHaveLength(30);
+    expect(screen.getByText('Folder 29')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
+  });
+
+  it('offers no "show all" when every folder already fits', async () => {
+    renderScreen(<SortedPage />, '/sorted');
+
+    await screen.findByText('Career');
+    expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument();
   });
 
   /**
