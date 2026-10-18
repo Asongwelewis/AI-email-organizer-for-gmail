@@ -130,6 +130,36 @@ describe('environment validation', () => {
     expect(env.WEB_PUSH_SUBJECT).toBe('mailto:push@example.com');
   });
 
+  /*
+   * The live Render service never received NODE_ENV, so everything gated on it stayed off:
+   * migrations did not apply at boot and the favourites and notifications tables did not exist.
+   * Render sets RENDER=true on every service, which is the signal that cannot be forgotten.
+   */
+  it('treats a Render service as a deployment even without NODE_ENV', async () => {
+    const { env } = await loadWith({
+      NODE_ENV: 'development',
+      RENDER: 'true',
+      MIGRATE_ON_START: undefined,
+    });
+    expect(env.IS_DEPLOYED).toBe(true);
+    expect(env.MIGRATE_ON_START).toBe(true);
+  });
+
+  it('never treats a test run as a deployment, even on Render', async () => {
+    const { env } = await loadWith({
+      NODE_ENV: 'test',
+      RENDER: 'true',
+      MIGRATE_ON_START: undefined,
+    });
+    expect(env.IS_DEPLOYED).toBe(false);
+    expect(env.MIGRATE_ON_START).toBe(false);
+  });
+
+  it('is not a deployment on a developer machine', async () => {
+    const { env } = await loadWith({ NODE_ENV: 'development', RENDER: undefined });
+    expect(env.IS_DEPLOYED).toBe(false);
+  });
+
   it('accepts the cross-site cookie production deployments require', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'production',

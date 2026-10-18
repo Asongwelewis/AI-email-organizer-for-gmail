@@ -500,8 +500,8 @@ constraints, indexes, privileges, and forced RLS that Prisma schema syntax canno
 Use `prisma migrate deploy` for non-development migration application. Do not use
 `prisma migrate reset` against a shared or remote Supabase project.
 
-In production the API checks for pending migrations during boot (`MIGRATE_ON_START`, on by default
-when `NODE_ENV=production`): one query against `_prisma_migrations` over the connection it already
+On a deployment the API checks for pending migrations during boot (`MIGRATE_ON_START`, on by
+default when `NODE_ENV=production` or `RENDER=true`): one query against `_prisma_migrations` over the connection it already
 opened, and `prisma migrate deploy` only when a shipped migration is missing or unfinished. A failed
 migration stops the boot. This replaces running the CLI in front of every start, which on the free
 plan meant every wake-up, and it holds whatever start command the live service is configured with.
