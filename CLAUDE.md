@@ -101,6 +101,13 @@ carries one MailMind label and no more, which is a Gmail limit rather than a pro
 `gmail_label_id`. Folder names are unique among **siblings**, not per account: a pivot repeats its
 lower levels by construction.
 
+**A time window narrows what folders show, never which folders exist.** `buildPivot` decides the
+tree — survival against `min_messages`, branches, collapse — from the whole mailbox, and `since`
+then picks which mail is counted and which folders have anything to show. Rebuilding the tree from
+the window alone made one new message from a brand fall below the floor and vanish in "Last 24
+hours" instead of landing in its usual folder. Sorted shows the 24 newest folders of a level and
+every other one behind "Show all".
+
 **A folder says where the new mail is.** `buildPivot` counts unread mail per node twice: its own,
 and its whole subtree. The subtree number is what a folder tile shows, because unread mail three
 levels down is still mail nobody has seen and a parent that stayed quiet about it would send a

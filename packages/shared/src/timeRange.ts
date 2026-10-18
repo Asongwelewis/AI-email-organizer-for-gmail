@@ -16,12 +16,26 @@ export function isEmailTimeRange(value: unknown): value is EmailTimeRange {
   return typeof value === 'string' && (EMAIL_TIME_RANGES as readonly string[]).includes(value);
 }
 
-/** Returns the inclusive lower bound for a window, or null for all mail. */
+const HOUR_MS = 60 * 60 * 1000;
+
+/** How far back each window reaches. Hours, so a window's name and its length cannot disagree. */
+const WINDOW_HOURS: Record<Exclude<EmailTimeRange, 'all'>, number> = {
+  '24h': 24,
+  '7d': 7 * 24,
+  '30d': 30 * 24,
+};
+
+/**
+ * Returns the inclusive lower bound for a window, or null for all mail.
+ *
+ * "Last 24 hours" used to reach back one hour: it was written as 1/24 of a day and then multiplied
+ * by a day's milliseconds, so a day became an hour. Everything that arrived earlier that day was
+ * missing from the default view.
+ */
 export function emailTimeRangeSince(
   range: EmailTimeRange = DEFAULT_EMAIL_TIME_RANGE,
   now = new Date(),
 ): Date | null {
   if (range === 'all') return null;
-  const days = range === '24h' ? 1 / 24 : range === '7d' ? 7 : 30;
-  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  return new Date(now.getTime() - WINDOW_HOURS[range] * HOUR_MS);
 }
