@@ -9,7 +9,8 @@ export type ActivityRunKind =
   | 'GMAIL_LABEL_SYNC'
   | 'LABEL_PROPOSAL'
   | 'AUTOMATION_FILING'
-  | 'FACET_CLASSIFICATION';
+  | 'FACET_CLASSIFICATION'
+  | 'ONBOARDING';
 
 /**
  * `STOPPED` is not a failure: the run did what it could and quit for a reason worth showing —

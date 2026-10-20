@@ -157,4 +157,18 @@ describe('GET /api/facets/icons/:domain', () => {
     expect((await request(app).get('/api/facets/icons/localhost')).status).toBe(400);
     expect(mocks.icon).toHaveBeenCalledTimes(1);
   });
+
+  /*
+   * Google's favicon service being unreachable is not this API failing. It used to answer 503,
+   * which the error handler reports, and a grid of forty folders asks at once — one outage filled
+   * Sentry (JAVASCRIPT-REACT-D). The tile shows its folder icon either way.
+   */
+  it('answers a short-lived 404 when the logo source cannot be reached', async () => {
+    mocks.icon.mockRejectedValue(new Error('ICON_SOURCE_UNAVAILABLE'));
+
+    const response = await request(app).get('/api/facets/icons/netflix.com');
+
+    expect(response.status).toBe(404);
+    expect(response.headers['cache-control']).toBe('private, max-age=300');
+  });
 });

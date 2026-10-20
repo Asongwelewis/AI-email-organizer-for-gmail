@@ -20,6 +20,24 @@ import { emptySyncCounts, type GmailClient, type SyncCounts } from './gmail.type
 const MANAGED_LABELS = [{ name: 'MailMind', purpose: 'ROOT' }] as const;
 const METADATA_HEADERS = ['Subject', 'From', 'To', 'Cc', 'Date'];
 
+/**
+ * What a first sync reads: the last GMAIL_INITIAL_SYNC_LOOKBACK_DAYS, at most
+ * GMAIL_INITIAL_SYNC_MAX_MESSAGES of them, newest first — Gmail lists newest first, so a ceiling
+ * keeps the most recent mail. Zero for both reads the whole mailbox, which is how it used to work.
+ */
+export function initialSyncBounds(startedAt: Date) {
+  const since =
+    env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS > 0
+      ? new Date(startedAt.getTime() - env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS * 86_400_000)
+      : null;
+  return {
+    since,
+    query: since ? `after:${Math.floor(since.getTime() / 1000)}` : null,
+    maxMessages: env.GMAIL_INITIAL_SYNC_MAX_MESSAGES,
+    bounded: Boolean(since) || env.GMAIL_INITIAL_SYNC_MAX_MESSAGES > 0,
+  };
+}
+
 function chunks<T>(values: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) {
@@ -109,17 +127,37 @@ export class GmailSyncService {
       const gmail = await createGmailClient(account.id);
       const profile = await this.loadAndValidateProfile(gmail, account.email);
       counts.labelsUpserted = await this.synchronizeLabels(gmail, account.id);
-      const total = profile.messagesTotal ?? 0;
-      const backfill = await gmailRepository.beginBackfill(lease, total, profile.historyId ?? null);
+      const backfill = await gmailRepository.beginBackfill(
+        lease,
+        profile.messagesTotal ?? 0,
+        profile.historyId ?? null,
+      );
+      if (!backfill.backfill_started_at) {
+        throw new AppError('GMAIL_SYNC_FAILED', 'Backfill checkpoint is invalid.', 500);
+      }
+      // Derived from the backfill's own start, so a resumed backfill asks Gmail the same question
+      // its page token was issued for.
+      const bounds = initialSyncBounds(backfill.backfill_started_at);
+      const total = bounds.maxMessages
+        ? Math.min(bounds.maxMessages, profile.messagesTotal ?? bounds.maxMessages)
+        : (profile.messagesTotal ?? 0);
+      let processed = backfill.backfill_messages_processed ?? 0;
       let pageToken = backfill.backfill_page_token ?? undefined;
       if (!backfill.backfill_listing_completed_at) {
         do {
           await gmailRepository.renewLease(lease);
+          const room = bounds.maxMessages
+            ? Math.min(env.GMAIL_SYNC_PAGE_SIZE, bounds.maxMessages - processed)
+            : env.GMAIL_SYNC_PAGE_SIZE;
+          if (room <= 0) break;
           const response = await withGmailRetry(() =>
             gmail.users.messages.list({
               userId: 'me',
-              maxResults: env.GMAIL_SYNC_PAGE_SIZE,
-              includeSpamTrash: true,
+              maxResults: room,
+              // A bounded sync skips spam and trash: nothing in them is ever sorted, and on a
+              // shared free database every row stored is a row someone else cannot have.
+              includeSpamTrash: !bounds.bounded,
+              ...(bounds.query ? { q: bounds.query } : {}),
               ...(pageToken ? { pageToken } : {}),
             }),
           );
@@ -127,8 +165,10 @@ export class GmailSyncService {
             .map((message) => message.id)
             .filter((id): id is string => Boolean(id));
           counts.messagesExamined += ids.length;
+          processed += ids.length;
           await this.fetchAndPersistMessages(gmail, account.id, ids, counts);
-          pageToken = response.data.nextPageToken ?? undefined;
+          const reachedCeiling = Boolean(bounds.maxMessages) && processed >= bounds.maxMessages;
+          pageToken = reachedCeiling ? undefined : (response.data.nextPageToken ?? undefined);
           await gmailRepository.checkpointBackfillPage(lease, pageToken ?? null, ids.length);
           // Reported per page, which is also the run's heartbeat: a backfill that stops
           // reporting is what lets the next start reclaim an abandoned run.
@@ -144,15 +184,19 @@ export class GmailSyncService {
           });
         } while (pageToken);
       }
-      if (!backfill.backfill_started_at) {
-        throw new AppError('GMAIL_SYNC_FAILED', 'Backfill checkpoint is invalid.', 500);
-      }
       await gmailRepository.renewLease(lease);
-      const missing = await gmailRepository.markMissingFromBackfill(
-        account.id,
-        backfill.backfill_started_at,
-      );
-      counts.messagesDeleted += missing.count;
+      // Only what the listing could have seen can be missing from it. A sync that stopped at its
+      // ceiling saw a prefix of the window, so it marks nothing; one bounded by date marks only
+      // inside the date range, never the older mail an earlier, wider sync stored.
+      const capped = Boolean(bounds.maxMessages) && processed >= bounds.maxMessages;
+      if (!capped) {
+        const missing = await gmailRepository.markMissingFromBackfill(
+          account.id,
+          backfill.backfill_started_at,
+          bounds.since,
+        );
+        counts.messagesDeleted += missing.count;
+      }
       const checkpoint = backfill.backfill_history_id ?? profile.historyId ?? null;
       await gmailRepository.complete(lease, counts, checkpoint, true);
       return this.result(account.id, counts, checkpoint);

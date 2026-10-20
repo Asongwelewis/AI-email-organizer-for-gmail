@@ -24,7 +24,7 @@ const statuses = {
   gmail_connected: {
     kind: 'success',
     title: 'Gmail is connected.',
-    copy: 'The connection is ready for future MailMind organization tools.',
+    copy: 'MailMind is reading your recent mail and sorting it into folders now.',
     destination: '/inbox',
   },
   gmail_denied: {

@@ -3,6 +3,7 @@ export const queryKeys = {
   gmailConnection: ['integrations', 'google', 'status'] as const,
   gmailSyncStatus: ['gmail', 'sync', 'status'] as const,
   automationStatus: ['automation', 'status'] as const,
+  onboarding: ['onboarding'] as const,
   activityRuns: ['activity', 'runs'] as const,
   activityRun: (runId: string) => ['activity', 'runs', runId] as const,
   pivotSettings: ['facets', 'pivot'] as const,

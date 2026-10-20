@@ -21,6 +21,54 @@ const RENEW_INTERVAL_MS = DAY_MS;
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof sessionRepository.findByTokenHash>>>;
 
 /**
+ * How long a session row read from the database answers for itself. Every authenticated request
+ * used to read its session row first: one round trip of 100-150ms from Render to Supabase in front
+ * of every screen, and with several hundred people, most of the database's work was asking the
+ * same question again. The PWA polls every two seconds while something runs, so thirty seconds
+ * removes nearly all of it.
+ *
+ * The cost is bounded and one-sided. Logging out, rotating, or revoking on THIS instance drops the
+ * entry at once; on another instance, a revoked session stays usable for at most this long.
+ * Expiry is checked against the clock on every request, cached or not.
+ */
+const SESSION_CACHE_TTL_MS = 30_000;
+const SESSION_CACHE_MAX_ENTRIES = 10_000;
+
+interface CachedSession {
+  record: SessionRecord;
+  cachedAt: number;
+  /** When this process last recorded use, so a cached session is not touched on every request. */
+  touchedAt: number;
+}
+
+function usable(record: SessionRecord, now = new Date()): boolean {
+  return (
+    !record.revoked_at &&
+    record.expires_at > now &&
+    record.users.status !== 'SUSPENDED' &&
+    record.users.status !== 'DELETED'
+  );
+}
+
+/** Keyed by token hash, never by token: the raw cookie does not live anywhere in memory here. */
+const sessionCache = new Map<string, CachedSession>();
+
+function cacheSession(tokenHash: string, record: SessionRecord, touchedAt = 0): void {
+  if (sessionCache.size >= SESSION_CACHE_MAX_ENTRIES) {
+    // Insertion order is age order in a Map, so the first key is the stalest entry.
+    const oldest = sessionCache.keys().next().value;
+    if (oldest !== undefined) sessionCache.delete(oldest);
+  }
+  sessionCache.delete(tokenHash);
+  sessionCache.set(tokenHash, { record, cachedAt: Date.now(), touchedAt });
+}
+
+/** Test seam, and what logout uses to forget every cached session of one user. */
+export function forgetCachedSessions(predicate: (record: SessionRecord) => boolean = () => true) {
+  for (const [key, entry] of sessionCache) if (predicate(entry.record)) sessionCache.delete(key);
+}
+
+/**
  * Where a session's expiry belongs right now: the idle window from now, but never past the hard
  * ceiling counted from sign-in. Sliding without the ceiling would let a stolen cookie that keeps
  * being used live forever.
@@ -101,7 +149,19 @@ export class SessionService {
   ): Promise<{ rawToken: string; record: SessionRecord }> {
     const rawToken = this.getRawToken(request);
     if (!rawToken) throw authenticationRequired();
-    const session = await sessionRepository.findByTokenHash(sha256(rawToken));
+    const tokenHash = sha256(rawToken);
+    const cached = sessionCache.get(tokenHash);
+    // Only a session that is still good is answered from memory. Anything else is read again:
+    // a copy that looks expired may have been slid forward by another instance since.
+    let session: SessionRecord | null =
+      cached && Date.now() - cached.cachedAt < SESSION_CACHE_TTL_MS && usable(cached.record)
+        ? cached.record
+        : null;
+    if (!session) {
+      session = await sessionRepository.findByTokenHash(tokenHash);
+      if (session && usable(session)) cacheSession(tokenHash, session, cached?.touchedAt ?? 0);
+      else sessionCache.delete(tokenHash);
+    }
     if (!session) throw authenticationRequired();
     if (session.revoked_at) {
       throw new AppError('AUTH_SESSION_REVOKED', 'Your session is no longer active.', 401);
@@ -118,8 +178,19 @@ export class SessionService {
     return { rawToken, record: session };
   }
 
+  /**
+   * Records use at most once per TOUCH_INTERVAL_MS. The write was already conditional, but the
+   * condition was asked of the database, so it still cost a round trip on every request.
+   */
   private touch(record: SessionRecord, now: Date): void {
-    void sessionRepository.touch(record.id, new Date(now.getTime() - TOUCH_INTERVAL_MS), now);
+    const tokenHash = record.session_token_hash;
+    const cached = sessionCache.get(tokenHash);
+    if (cached && now.getTime() - cached.touchedAt < TOUCH_INTERVAL_MS) return;
+    if (cached) cached.touchedAt = now.getTime();
+    // Recording use is never worth failing a request over.
+    void Promise.resolve(
+      sessionRepository.touch(record.id, new Date(now.getTime() - TOUCH_INTERVAL_MS), now),
+    ).catch(() => undefined);
   }
 
   /**
@@ -149,8 +220,13 @@ export class SessionService {
     if (target.getTime() - record.expires_at.getTime() >= RENEW_INTERVAL_MS) {
       const extended = await sessionRepository.extend(record.id, target, now);
       if (extended.count === 1) {
-        return { session: context({ ...record, expires_at: target }), renewedToken: rawToken };
+        const renewed = { ...record, expires_at: target, last_used_at: now };
+        cacheSession(record.session_token_hash, renewed, now.getTime());
+        return { session: context(renewed), renewedToken: rawToken };
       }
+      // Someone else revoked or expired it in between: forget the copy and let the next request
+      // read the truth.
+      sessionCache.delete(record.session_token_hash);
     }
     this.touch(record, now);
     return { session: context(record), renewedToken: null };
@@ -159,18 +235,22 @@ export class SessionService {
   async revokeCurrent(request: Request): Promise<AuthenticatedSession | null> {
     const rawToken = this.getRawToken(request);
     if (!rawToken) return null;
-    const session = await sessionRepository.findByTokenHash(sha256(rawToken));
+    const tokenHash = sha256(rawToken);
+    sessionCache.delete(tokenHash);
+    const session = await sessionRepository.findByTokenHash(tokenHash);
     if (!session) return null;
     await sessionRepository.revoke(session.id, 'USER_LOGOUT');
     return context(session);
   }
 
   revokeAll(userId: string) {
+    forgetCachedSessions((record) => record.user_id === userId);
     return sessionRepository.revokeAllForUser(userId, 'USER_LOGOUT_ALL');
   }
 
   async rotate(request: Request) {
     const { record } = await this.validRecord(request);
+    sessionCache.delete(record.session_token_hash);
     const rawToken = generateSecureToken();
     // The replacement inherits the original sign-in time, so rotating cannot reset the ceiling.
     const replacement = await sessionRepository.rotate(

@@ -15,6 +15,7 @@ const KIND_LABELS: Record<ActivityRun['kind'], string> = {
   LABEL_PROPOSAL: 'Folder planning',
   AUTOMATION_FILING: 'Filing run',
   FACET_CLASSIFICATION: 'Classifying mail',
+  ONBOARDING: 'First setup',
 };
 
 const STATE_LABELS: Record<ActivityRun['state'], string> = {

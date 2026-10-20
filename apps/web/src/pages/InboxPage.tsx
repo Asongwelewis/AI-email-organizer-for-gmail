@@ -6,10 +6,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { FolderTile } from '@web/components/app/FolderTile';
 import { MailList } from '@web/components/app/MailList';
+import { OnboardingProgress } from '@web/components/app/OnboardingProgress';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
 import { rememberedQuery } from '@web/lib/sessionSnapshot';
 import { useFavorites } from '@web/queries/favorites';
+import { useOnboarding } from '@web/queries/onboarding';
 import { queryKeys } from '@web/queries/queryKeys';
 import { brandIconUrl } from '@web/lib/brandIcon';
 import { api } from '@web/services/http';
@@ -155,6 +157,12 @@ export function InboxPage() {
     queryFn: () => api.getGmailStatus(),
   });
 
+  const connected = Boolean(connectionQuery.data?.connected);
+  // A mailbox still being set up gets the progress, not an empty screen telling it to go and
+  // shape folders that are about to appear on their own.
+  const onboarding = useOnboarding(connected);
+  const settingUp = Boolean(onboarding.status && onboarding.status.state !== 'DONE');
+
   const saveDefault = useMutation({
     mutationFn: () =>
       api.setPivotSettings({
@@ -243,6 +251,14 @@ export function InboxPage() {
           />
         </label>
       </header>
+
+      {onboarding.status && settingUp ? (
+        <OnboardingProgress
+          status={onboarding.status}
+          onRetry={onboarding.retry}
+          retrying={onboarding.retrying}
+        />
+      ) : null}
 
       <div className="sorted__filters">
         <label className="time-range">
@@ -340,7 +356,7 @@ export function InboxPage() {
         />
       ) : null}
 
-      {!loading && nodes.length === 0 ? (
+      {!loading && nodes.length === 0 && !settingUp ? (
         /*
          * An empty screen has to name the step that is actually missing. This used to point at
          * Approve, which is where a fresh account got a 409.

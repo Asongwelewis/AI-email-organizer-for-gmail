@@ -13,8 +13,8 @@ import {
   NEW_MAIL_WINDOW_MS,
   facetClassificationService,
   type FacetClassificationService,
-  type FacetRunCounters,
 } from './facet-classification.service.js';
+import { recordDailyUsage } from './usage-ledger.js';
 
 /**
  * Sorts new mail as it arrives, between the full runs.
@@ -32,6 +32,13 @@ import {
 
 /** How many new messages one check will sort. A check is meant to be quick. */
 const CHECK_LIMIT = 50;
+
+/**
+ * A ceiling on one pass, far above the several hundred mailboxes this is sized for. A pass is
+ * parallel (AUTOMATION_WATCH_CONCURRENCY) and almost every check is one Gmail call, so this many
+ * still fits comfortably inside a minute.
+ */
+const MAX_WATCHED_ACCOUNTS = 5000;
 
 /** Errors that mean "not this time", not "something is broken". */
 const SKIPPABLE = new Set([
@@ -80,17 +87,26 @@ export class MailWatchService {
     private readonly notifier: Pick<NotificationsService, 'recordNewMail'> = notificationsService,
   ) {}
 
-  /** Mailboxes worth watching: connected, not paused, and past their first sync. */
+  /**
+   * Mailboxes worth watching: connected, not paused, past their first sync, and onboarded. Until
+   * onboarding has finished it owns the mailbox — two writers on a first sync would only contend
+   * for the same leases, and the person is watching onboarding's progress bar, not this.
+   *
+   * Every one of them, not the first fifty: the cap that used to be here meant the fifty-first
+   * person to sign up was never watched at all. The scheduler checks them in parallel.
+   */
   eligibleAccounts() {
     return prisma.connected_google_accounts.findMany({
       where: {
         gmail_connected: true,
         connection_status: 'CONNECTED',
+        onboarding_completed_at: { not: null },
         gmail_sync_state: { is: { initial_sync_completed_at: { not: null } } },
         OR: [{ automation_settings: null }, { automation_settings: { is: { enabled: true } } }],
       },
       select: { id: true, user_id: true },
-      take: 50,
+      orderBy: { id: 'asc' },
+      take: MAX_WATCHED_ACCOUNTS,
     });
   }
 
@@ -147,7 +163,7 @@ export class MailWatchService {
       limit: CHECK_LIMIT,
       modelGate: (undecided) => this.worthACall(undecided, now),
     });
-    await this.record(accountId, counters);
+    await recordDailyUsage(accountId, 'watch', counters);
     return {
       outcome: 'CHECKED',
       synced,
@@ -202,58 +218,6 @@ export class MailWatchService {
       },
     });
     return running > 0;
-  }
-
-  /**
-   * Adds what a check did to one row per account per day.
-   *
-   * A row per check would be 1,440 a day. One per day is enough, and it has to exist at all: the
-   * daily token and cost caps are a sum over today's `automation_runs`, so usage a check left
-   * unrecorded would hand every later run a fresh allowance.
-   */
-  private async record(accountId: string, counters: FacetRunCounters): Promise<void> {
-    const sorted = counters.ruleDecided + counters.modelDecided;
-    if (sorted === 0 && counters.failed === 0 && counters.providerCalls === 0) return;
-    const now = new Date();
-    const day = now.toISOString().slice(0, 10);
-    const status = counters.failed > 0 || counters.stoppedReason ? 'PARTIAL' : 'COMPLETED';
-    const tally = {
-      messages_seen: sorted + counters.failed,
-      ai_classified_count: counters.modelDecided,
-      pattern_reused_count: counters.ruleDecided,
-      failed_count: counters.failed,
-      provider_call_count: counters.providerCalls,
-      input_tokens: counters.usage.inputTokens,
-      cached_input_tokens: counters.usage.cachedInputTokens,
-      output_tokens: counters.usage.outputTokens,
-      estimated_cost_microusd: counters.costMicrousd,
-    };
-    await prisma.automation_runs.upsert({
-      where: { idempotency_key: `${accountId}:watch:${day}` },
-      create: {
-        connected_google_account_id: accountId,
-        idempotency_key: `${accountId}:watch:${day}`,
-        trigger: 'SCHEDULED',
-        status,
-        // Both from this clock. Left to its default, started_at is the database's now(), which
-        // can land a few milliseconds after this process's — and the table refuses a row that
-        // completed before it started.
-        started_at: now,
-        completed_at: now,
-        stopped_reason: counters.stoppedReason,
-        last_error_code: counters.lastErrorCode,
-        ...tally,
-      },
-      update: {
-        status,
-        completed_at: now,
-        stopped_reason: counters.stoppedReason,
-        last_error_code: counters.lastErrorCode,
-        ...Object.fromEntries(
-          Object.entries(tally).map(([key, value]) => [key, { increment: value }]),
-        ),
-      },
-    });
   }
 }
 

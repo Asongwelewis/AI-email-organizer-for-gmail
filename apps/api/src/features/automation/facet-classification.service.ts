@@ -12,6 +12,7 @@ import {
   type FacetVocabularyRepository,
 } from '@api/features/label-discovery/facet-vocabulary.repository.js';
 import { captureApiException } from '@api/observability/sentry.js';
+import { forEachWithConcurrency } from '@api/utils/concurrency.js';
 import {
   normalizeRuleValue,
   resolveFacetRules,
@@ -23,6 +24,7 @@ import {
   estimatedCostMicroUsd,
 } from '@api/integrations/gemini/gemini.client.js';
 import type { AutomationUsage } from './automation.types.js';
+import { geminiRequestCeiling, geminiRequestsToday, type GeminiPriority } from './usage-ledger.js';
 import {
   facetPromptVersion,
   geminiFacetClassifier,
@@ -80,6 +82,9 @@ const emptyCounters = (): FacetRunCounters => ({
 
 const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
 
+/** Sender groups written at once after a batch. The pool holds five connections. */
+const PERSIST_CONCURRENCY = 3;
+
 /**
  * How far back "new mail" reaches for the watcher. Anything older that was never classified is
  * backlog, and backlog belongs to the full runs: a freshly connected mailbox holds thousands of
@@ -102,6 +107,17 @@ export interface ClassifyOptions {
    * stay unclassified — a `message_facets` row is the checkpoint, so nothing is lost by waiting.
    */
   modelGate?: (undecided: gmail_message_metadata[]) => boolean;
+  /**
+   * Whose share of the shared Gemini key this run spends. Defaults to `new` for the watcher's
+   * scope and `backlog` otherwise; onboarding passes its own.
+   */
+  priority?: GeminiPriority;
+  /** Messages per Gemini call. Defaults to AUTOMATION_BATCH_SIZE. */
+  batchSize?: number;
+  /** Gemini calls in flight at once. Defaults to one. */
+  concurrency?: number;
+  /** Called after the rules pass and after every model batch, with the counters so far. */
+  onProgress?: (counters: FacetRunCounters) => Promise<void>;
 }
 
 /**
@@ -198,7 +214,11 @@ export class FacetClassificationService {
     options: ClassifyOptions = {},
   ): Promise<FacetRunCounters> {
     if (!env.GEMINI_API_KEY) {
-      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
+      throw new AppError(
+        'AUTOMATION_NOT_CONFIGURED',
+        'Sorting is not switched on for this server yet. Your mail is synced and will be sorted as soon as it is.',
+        503,
+      );
     }
     /*
      * The vocabulary this mailbox approved, resolved before the lease and before a single token is
@@ -251,6 +271,10 @@ export class FacetClassificationService {
         _sum: { input_tokens: true, output_tokens: true, estimated_cost_microusd: true },
       });
       const inputTokensBefore = spentToday._sum.input_tokens ?? 0;
+      const priority = options.priority ?? (options.scope === 'new' ? 'new' : 'backlog');
+      const sharedRequestsBefore = await geminiRequestsToday();
+      const sharedCeiling = geminiRequestCeiling(priority);
+      const batchSize = options.batchSize ?? env.AUTOMATION_BATCH_SIZE;
       const outputTokensBefore = spentToday._sum.output_tokens ?? 0;
       const costBefore = spentToday._sum.estimated_cost_microusd ?? 0;
 
@@ -321,6 +345,7 @@ export class FacetClassificationService {
           data: { last_used_at: new Date() },
         });
       }
+      await options.onProgress?.(counters);
 
       if (
         undecided.length > 0 &&
@@ -332,127 +357,178 @@ export class FacetClassificationService {
       }
 
       let consecutiveBatchFailures = 0;
-      for (let index = 0; index < undecided.length; index += env.AUTOMATION_BATCH_SIZE) {
-        const batch = undecided.slice(index, index + env.AUTOMATION_BATCH_SIZE);
-        const roughTokens = Math.ceil(
-          batch.reduce(
-            (total, entry) =>
-              total +
-              (entry.message.subject?.length ?? 0) +
-              (entry.message.sender_email?.length ?? 0),
-            0,
-          ) / 4,
-        );
-        const remainingOutputTokens =
-          env.AUTOMATION_MAX_OUTPUT_TOKENS - outputTokensBefore - counters.usage.outputTokens;
-        const outputTokenReserve = Math.min(2000, remainingOutputTokens);
-        if (
-          inputTokensBefore + counters.usage.inputTokens + roughTokens >
-            env.AUTOMATION_MAX_INPUT_TOKENS ||
-          remainingOutputTokens < batch.length * MIN_OUTPUT_TOKENS_PER_MESSAGE ||
-          costBefore +
-            counters.costMicrousd +
-            estimatedCostMicroUsd({
-              inputTokens: roughTokens,
-              cachedInputTokens: 0,
-              outputTokens: Math.max(0, outputTokenReserve),
-            }) >
-            env.AUTOMATION_MAX_COST_MICRO_USD
-        ) {
-          counters.stoppedReason = 'DAILY_BUDGET_REACHED';
-          break;
-        }
-        try {
-          await this.renewLease(accountId, token);
-          const inputs: FacetClassifierInput[] = batch.map((entry, batchIndex) => ({
-            key: `m${batchIndex + 1}`,
-            subject: (entry.message.subject ?? '').slice(0, 300),
-            sender: (entry.message.sender_email ?? '').slice(0, 320),
-            // The real host, not the brand slug: `entityFor` is the entity facet the code already
-            // derived, so sending it back duplicated a decided answer and discarded the evidence.
-            senderHost: emailIdentity(entry.message.sender_email).senderDomain,
-            // Bounded deliberately. Input is the budget that binds a day's filing — every
-            // message's metadata is sent whether it ends up filed or not — so this buys the
-            // intent signal without doubling what a batch costs to read.
-            snippet: (entry.message.snippet ?? '').slice(0, 200),
-            ...(entry.known.domain ? { knownDomain: entry.known.domain } : {}),
-            ...(entry.known.intent ? { knownIntent: entry.known.intent } : {}),
-          }));
-          counters.providerCalls += 1;
-          const result = await this.classifier.classify(inputs, {
-            vocabulary,
-            maxOutputTokens: outputTokenReserve,
-          });
-          counters.usage.inputTokens += result.usage.inputTokens;
-          counters.usage.cachedInputTokens += result.usage.cachedInputTokens;
-          counters.usage.outputTokens += result.usage.outputTokens;
-          counters.costMicrousd += estimatedCostMicroUsd(result.usage);
-          const byKey = new Map(result.classifications.map((item) => [item.key, item]));
-          for (const [batchIndex, entry] of batch.entries()) {
-            const decision = byKey.get(`m${batchIndex + 1}`)!;
-            // A rule already settled an axis; the model's answer for it is context, not a vote.
-            const domain = entry.known.domain ?? decision.domain;
-            const intent = entry.known.intent ?? decision.intent;
-            const entity = entityFor(entry.message.sender_email);
-            // Each message is written on its own. The model answered for all of them and those
-            // tokens are already spent, so letting one unwritable row discard the twenty-four
-            // beside it throws away work that was paid for and correct.
-            try {
-              await this.persist(
-                accountId,
-                entry.message,
-                entity,
-                'MODEL',
-                {
-                  domain,
-                  domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
-                  intent,
-                  intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
-                },
-                promptVersion,
-              );
-              counters.modelDecided += 1;
-              this.countAssignments(counters, entity, domain, intent);
-              counters.rulesLearned += await this.learn(accountId, entry.message, decision, entity);
-            } catch (error) {
-              // A transient fault is the whole batch's problem, and the outer handler owns it.
-              if (isTransientDatabaseFailure(error)) throw error;
-              counters.failed += 1;
-              captureApiException(error, { operation: 'facet_classification_persist' });
-              logger.warn(
-                { ...safeErrorDetails(error), accountId },
-                'facet classification could not record one message',
-              );
-            }
-          }
-        } catch (error) {
-          counters.failed += batch.length;
-          counters.lastErrorCode = errorCode(error);
-          if (isTransientDatabaseFailure(error)) {
-            // Nothing can be checkpointed while the database is unreachable, so continuing would
-            // spend model quota on work that cannot be recorded. Stop, and say so accurately.
-            counters.stoppedReason = 'DATABASE_UNAVAILABLE';
-          } else if (
-            error instanceof GeminiProviderError &&
-            error.code === 'PROVIDER_RATE_LIMITED'
-          ) {
-            counters.stoppedReason = 'PROVIDER_RATE_LIMITED';
-          }
-          captureApiException(error, { operation: 'facet_classification_batch' });
-          logger.error(
-            { ...safeErrorDetails(error), accountId },
-            'facet classification batch failed',
-          );
-          if (counters.stoppedReason) break;
-          consecutiveBatchFailures += 1;
-          if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
-            counters.stoppedReason = 'PROVIDER_UNUSABLE';
-            break;
-          }
-          continue;
-        }
-        consecutiveBatchFailures = 0;
+      const batches: Array<typeof undecided> = [];
+      for (let index = 0; index < undecided.length; index += batchSize) {
+        batches.push(undecided.slice(index, index + batchSize));
       }
+      let nextBatch = 0;
+      /*
+       * Up to `concurrency` batches in flight. A call spends most of its time waiting on Gemini —
+       * eight seconds for ten messages, against a four-second pacing interval — so one at a time
+       * left the shared quota half used while somebody watched a progress bar. The pacer still
+       * spaces the request starts, so this never asks faster than the free tier allows.
+       */
+      const lane = async (): Promise<void> => {
+        while (!counters.stoppedReason && nextBatch < batches.length) {
+          const batch = batches[nextBatch]!;
+          nextBatch += 1;
+          // The key's day is shared by every mailbox, so this is checked before the account's own.
+          if (sharedRequestsBefore + counters.providerCalls >= sharedCeiling) {
+            counters.stoppedReason = 'SHARED_DAILY_LIMIT_REACHED';
+            return;
+          }
+          const roughTokens = Math.ceil(
+            batch.reduce(
+              (total, entry) =>
+                total +
+                (entry.message.subject?.length ?? 0) +
+                (entry.message.sender_email?.length ?? 0),
+              0,
+            ) / 4,
+          );
+          const remainingOutputTokens =
+            env.AUTOMATION_MAX_OUTPUT_TOKENS - outputTokensBefore - counters.usage.outputTokens;
+          const outputTokenReserve = Math.min(2000, remainingOutputTokens);
+          if (
+            inputTokensBefore + counters.usage.inputTokens + roughTokens >
+              env.AUTOMATION_MAX_INPUT_TOKENS ||
+            remainingOutputTokens < batch.length * MIN_OUTPUT_TOKENS_PER_MESSAGE ||
+            costBefore +
+              counters.costMicrousd +
+              estimatedCostMicroUsd({
+                inputTokens: roughTokens,
+                cachedInputTokens: 0,
+                outputTokens: Math.max(0, outputTokenReserve),
+              }) >
+              env.AUTOMATION_MAX_COST_MICRO_USD
+          ) {
+            counters.stoppedReason = 'DAILY_BUDGET_REACHED';
+            return;
+          }
+          try {
+            await this.renewLease(accountId, token);
+            const inputs: FacetClassifierInput[] = batch.map((entry, batchIndex) => ({
+              key: `m${batchIndex + 1}`,
+              subject: (entry.message.subject ?? '').slice(0, 300),
+              sender: (entry.message.sender_email ?? '').slice(0, 320),
+              // The real host, not the brand slug: `entityFor` is the entity facet the code already
+              // derived, so sending it back duplicated a decided answer and discarded the evidence.
+              senderHost: emailIdentity(entry.message.sender_email).senderDomain,
+              // Bounded deliberately. Input is the budget that binds a day's filing — every
+              // message's metadata is sent whether it ends up filed or not — so this buys the
+              // intent signal without doubling what a batch costs to read.
+              snippet: (entry.message.snippet ?? '').slice(0, 200),
+              ...(entry.known.domain ? { knownDomain: entry.known.domain } : {}),
+              ...(entry.known.intent ? { knownIntent: entry.known.intent } : {}),
+            }));
+            counters.providerCalls += 1;
+            const result = await this.classifier.classify(inputs, {
+              vocabulary,
+              maxOutputTokens: outputTokenReserve,
+            });
+            counters.usage.inputTokens += result.usage.inputTokens;
+            counters.usage.cachedInputTokens += result.usage.cachedInputTokens;
+            counters.usage.outputTokens += result.usage.outputTokens;
+            counters.costMicrousd += estimatedCostMicroUsd(result.usage);
+            const byKey = new Map(result.classifications.map((item) => [item.key, item]));
+            // Grouped by sender, one lane each, so two messages that would teach the same rule
+            // are learned one after the other while unrelated senders are written side by side.
+            const senders = new Map<
+              string,
+              Array<{ entry: (typeof batch)[number]; key: string }>
+            >();
+            for (const [batchIndex, entry] of batch.entries()) {
+              const sender = senderDomainOf(entry.message);
+              senders.set(sender, [
+                ...(senders.get(sender) ?? []),
+                { entry, key: `m${batchIndex + 1}` },
+              ]);
+            }
+            const written = await forEachWithConcurrency(
+              [...senders.values()],
+              PERSIST_CONCURRENCY,
+              async (group) => {
+                for (const { entry, key } of group) {
+                  const decision = byKey.get(key)!;
+                  // A rule already settled an axis; the model's answer for it is context, not a
+                  // vote.
+                  const domain = entry.known.domain ?? decision.domain;
+                  const intent = entry.known.intent ?? decision.intent;
+                  const entity = entityFor(entry.message.sender_email);
+                  // Each message is written on its own. The model answered for all of them and
+                  // those tokens are already spent, so letting one unwritable row discard the
+                  // twenty-four beside it throws away work that was paid for and correct.
+                  try {
+                    await this.persist(
+                      accountId,
+                      entry.message,
+                      entity,
+                      'MODEL',
+                      {
+                        domain,
+                        domainConfidence: entry.known.domain ? 1 : decision.domainConfidence,
+                        intent,
+                        intentConfidence: entry.known.intent ? 1 : decision.intentConfidence,
+                      },
+                      promptVersion,
+                    );
+                    counters.modelDecided += 1;
+                    this.countAssignments(counters, entity, domain, intent);
+                    counters.rulesLearned += await this.learn(
+                      accountId,
+                      entry.message,
+                      decision,
+                      entity,
+                    );
+                  } catch (error) {
+                    // A transient fault is the whole batch's problem, and the outer handler
+                    // owns it.
+                    if (isTransientDatabaseFailure(error)) throw error;
+                    counters.failed += 1;
+                    captureApiException(error, { operation: 'facet_classification_persist' });
+                    logger.warn(
+                      { ...safeErrorDetails(error), accountId },
+                      'facet classification could not record one message',
+                    );
+                  }
+                }
+              },
+            );
+            const unreachable = written.find((outcome) => outcome.status === 'rejected');
+            if (unreachable) throw unreachable.reason;
+          } catch (error) {
+            counters.failed += batch.length;
+            counters.lastErrorCode = errorCode(error);
+            if (isTransientDatabaseFailure(error)) {
+              // Nothing can be checkpointed while the database is unreachable, so continuing would
+              // spend model quota on work that cannot be recorded. Stop, and say so accurately.
+              counters.stoppedReason = 'DATABASE_UNAVAILABLE';
+            } else if (
+              error instanceof GeminiProviderError &&
+              error.code === 'PROVIDER_RATE_LIMITED'
+            ) {
+              counters.stoppedReason = 'PROVIDER_RATE_LIMITED';
+            }
+            captureApiException(error, { operation: 'facet_classification_batch' });
+            logger.error(
+              { ...safeErrorDetails(error), accountId },
+              'facet classification batch failed',
+            );
+            if (counters.stoppedReason) return;
+            consecutiveBatchFailures += 1;
+            if (consecutiveBatchFailures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+              counters.stoppedReason = 'PROVIDER_UNUSABLE';
+              return;
+            }
+            continue;
+          }
+          consecutiveBatchFailures = 0;
+          await options.onProgress?.(counters);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(options.concurrency ?? 1, batches.length) }, lane),
+      );
       return counters;
     } finally {
       // Releasing the lease is a courtesy, not a correctness requirement — it expires on its own,
