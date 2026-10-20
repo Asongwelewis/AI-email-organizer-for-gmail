@@ -25,12 +25,19 @@ import { api } from '@web/services/http';
  * which sends someone to change a setting that was already correct — and leaves the real cause
  * untouched while they wonder why nothing happened.
  */
+/*
+ * Written for whoever is signed in, not for the operator: a friend who signed up was shown
+ * "GEMINI_API_KEY is not set on the server", which told them nothing they could act on and
+ * suggested MailMind needed something from them. The operator reads the cause in the logs,
+ * where the scheduler says it at boot.
+ */
 const DISABLED_REASONS: Record<string, string> = {
-  AUTOMATION_DISABLED: 'AUTOMATION_ENABLED is false on the server, so nothing runs unattended.',
+  AUTOMATION_DISABLED:
+    'Automatic sorting is switched off for MailMind right now. Your mail stays synced and searchable.',
   AUTOMATION_NOT_CONFIGURED:
-    'GEMINI_API_KEY is not set on the server, so there is nothing to classify with. Automation stays off until it is.',
-  ACCOUNT_PAUSED: 'Automation is paused for this account.',
-  UNKNOWN: 'Automation is off on the server.',
+    'Sorting has not been switched on for MailMind yet. Your mail is synced, and it will be sorted on its own as soon as it is — there is nothing you need to do.',
+  ACCOUNT_PAUSED: 'Automatic sorting is paused for your account.',
+  UNKNOWN: 'Automatic sorting is off right now. Your mail stays synced and searchable.',
 };
 
 export function AutomationPanel() {

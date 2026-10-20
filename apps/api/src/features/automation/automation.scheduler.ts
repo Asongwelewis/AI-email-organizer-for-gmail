@@ -4,6 +4,8 @@ import { captureApiException } from '@api/observability/sentry.js';
 // One engine. `runScheduledAccount` refreshes the mailbox, classifies into facets, then files
 // through the canonical pivot — it no longer reaches the retired taxonomy classifier.
 import { automationService } from './automation.service.js';
+import { onboardingService } from '@api/features/onboarding/onboarding.service.js';
+import { forEachWithConcurrency } from '@api/utils/concurrency.js';
 import { mailWatchService } from './mail-watch.service.js';
 
 /*
@@ -29,7 +31,9 @@ async function tick(): Promise<void> {
   ticking = true;
   try {
     const accounts = await automationService.eligibleScheduledAccounts();
-    for (const account of accounts) {
+    // A few at a time: each full run holds the shared Gemini queue for minutes, and one slow
+    // mailbox used to hold up every mailbox behind it in a strictly sequential loop.
+    await forEachWithConcurrency(accounts, env.AUTOMATION_FULL_RUN_CONCURRENCY, async (account) => {
       try {
         await automationService.runScheduledAccount(account.id, account.user_id);
       } catch (error) {
@@ -39,7 +43,7 @@ async function tick(): Promise<void> {
           'scheduled automation account failed',
         );
       }
-    }
+    });
   } catch (error) {
     captureApiException(error, { operation: 'scheduled_automation_tick' });
     logger.error(safeErrorDetails(error), 'scheduled automation tick failed');
@@ -49,15 +53,26 @@ async function tick(): Promise<void> {
 }
 
 /**
- * One pass of the watcher over every watched mailbox. A pass that is still sorting when the next
- * one is due is not overlapped: the next simply waits its turn.
+ * One pass of the watcher over every watched mailbox, AUTOMATION_WATCH_CONCURRENCY at a time. A
+ * check is almost always one Gmail call answering "nothing new", so several hundred mailboxes fit
+ * inside the minute in parallel where one after another they would not. A pass still sorting when
+ * the next is due is not overlapped: the next simply waits its turn.
+ *
+ * The onboarding sweep rides on the same clock: a mailbox whose first setup stopped — a restart,
+ * the shared budget, a key not set yet — is started again here, with nobody pressing anything.
  */
 async function watchTick(): Promise<void> {
   if (watching || !env.AUTOMATION_ENABLED) return;
   watching = true;
   try {
+    try {
+      await onboardingService.sweep();
+    } catch (error) {
+      captureApiException(error, { operation: 'onboarding_sweep' });
+      logger.error(safeErrorDetails(error), 'onboarding sweep failed');
+    }
     const accounts = await mailWatchService.eligibleAccounts();
-    for (const account of accounts) {
+    await forEachWithConcurrency(accounts, env.AUTOMATION_WATCH_CONCURRENCY, async (account) => {
       try {
         const result = await mailWatchService.check(account.id, account.user_id);
         if (result.outcome === 'CHECKED' && (result.sorted ?? 0) > 0) {
@@ -70,7 +85,7 @@ async function watchTick(): Promise<void> {
           'mail watch check failed',
         );
       }
-    }
+    });
   } catch (error) {
     captureApiException(error, { operation: 'mail_watch_tick' });
     logger.error(safeErrorDetails(error), 'mail watch tick failed');

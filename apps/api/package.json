@@ -25,7 +25,8 @@
     "report:facets": "tsx scripts/report-facets.ts",
     "eval:facets": "tsx scripts/eval-facets.ts",
     "feedback": "tsx scripts/read-feedback.ts",
-    "rederive:entities": "tsx scripts/rederive-entities.ts"
+    "rederive:entities": "tsx scripts/rederive-entities.ts",
+    "test:scale": "tsx test/scale.load.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

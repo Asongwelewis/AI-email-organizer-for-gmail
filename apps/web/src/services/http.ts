@@ -19,6 +19,7 @@ import type { AutomationStatus } from '@web/types/automation';
 import type { FavoriteFolder } from '@web/types/favorites';
 import type { FeedbackInput } from '@web/types/feedback';
 import type { NotificationFeed, PushConfig } from '@web/types/notifications';
+import type { OnboardingStatus } from '@web/types/onboarding';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -119,6 +120,18 @@ export const api = {
   /** 202: the backfill outlives the request, so this returns a run id to poll. */
   async initialGmailSync(): Promise<StartedRun> {
     const response = await http.post<StartedRun>('/gmail/sync/initial');
+    return response.data;
+  },
+
+  /** Where this mailbox is in its first setup: reading, learning, sorting, or done. */
+  async getOnboarding(): Promise<OnboardingStatus> {
+    const response = await http.get<OnboardingStatus>('/onboarding');
+    return response.data;
+  },
+
+  /** Starts the first setup, or joins the one already running. Safe to call more than once. */
+  async startOnboarding(): Promise<OnboardingStatus> {
+    const response = await http.post<OnboardingStatus>('/onboarding/start', {});
     return response.data;
   },
 

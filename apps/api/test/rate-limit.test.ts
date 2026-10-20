@@ -67,6 +67,7 @@ vi.mock('../src/config/logger.js', () => ({
 }));
 
 const limiters = await import('../src/middleware/rateLimiters.js');
+const { env } = await import('../src/config/env.js');
 const { oauthStartLimiter } = limiters;
 const { PrismaRateLimitStore } = await import('../src/middleware/rate-limit.store.js');
 
@@ -81,7 +82,7 @@ describe('authentication rate limiting', () => {
     limitedApp.get('/oauth-start', oauthStartLimiter, (_request, response) => {
       response.json({ ok: true });
     });
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < env.AUTH_RATE_LIMIT_MAX_REQUESTS; index += 1) {
       expect((await request(limitedApp).get('/oauth-start')).status).toBe(200);
     }
     const limited = await request(limitedApp).get('/oauth-start');
@@ -207,5 +208,36 @@ describe('which limiters count across instances', () => {
     // The split is declared in one place, so this asserts the intent rather than the plumbing:
     // reads and polling are the only per-instance limiters, and they guard nobody but the caller.
     expect(Object.keys(limiters)).toEqual(expect.arrayContaining(['activityPollLimiter']));
+  });
+});
+
+/*
+ * By address alone, everybody behind one public IP shared one budget — a campus, an office, a
+ * carrier's NAT. A verified person gets their own; anybody not yet verified still counts by address,
+ * so a made-up cookie buys nothing.
+ */
+describe('whose budget a request spends', () => {
+  it('is the signed-in person once the session has been checked', () => {
+    const key = limiters.rateLimitKey({
+      auth: { user: { id: 'user-1' } },
+      ip: '203.0.113.9',
+    } as never);
+    expect(key).toBe('user:user-1');
+  });
+
+  it('is the address before anyone is signed in', () => {
+    expect(limiters.rateLimitKey({ ip: '203.0.113.9' } as never)).toBe('203.0.113.9');
+  });
+
+  it('is the same for two people behind one address only until they sign in', () => {
+    const first = limiters.rateLimitKey({
+      auth: { user: { id: 'a' } },
+      ip: '203.0.113.9',
+    } as never);
+    const second = limiters.rateLimitKey({
+      auth: { user: { id: 'b' } },
+      ip: '203.0.113.9',
+    } as never);
+    expect(first).not.toBe(second);
   });
 });

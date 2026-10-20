@@ -4,6 +4,7 @@ import { logger } from './config/logger.js';
 import { migrateIfPending } from './database/migrations.js';
 import { prisma, startDatabaseHeartbeat, stopDatabaseHeartbeat } from './database/prisma.js';
 import { captureApiException, closeSentry } from './observability/sentry.js';
+import { startHousekeeping, stopHousekeeping } from './services/housekeeping.js';
 import { startKeepAwake, stopKeepAwake } from './services/keepAwake.js';
 import {
   startAutomationScheduler,
@@ -44,6 +45,7 @@ const server = app.listen(env.PORT, () => {
   startAutomationScheduler();
   startDatabaseHeartbeat();
   startKeepAwake();
+  startHousekeeping();
 });
 
 let shuttingDown = false;
@@ -54,6 +56,7 @@ function shutdown(signal: string): void {
   stopAutomationScheduler();
   stopDatabaseHeartbeat();
   stopKeepAwake();
+  stopHousekeeping();
   logger.info({ signal }, 'Shutting down API server');
   const forcedExit = setTimeout(() => {
     logger.error('Graceful shutdown timed out');

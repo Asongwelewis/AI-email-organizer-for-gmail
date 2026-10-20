@@ -56,6 +56,10 @@ model connected_google_accounts {
   updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   connected_at                    DateTime?                         @db.Timestamptz(6)
   disconnected_at                 DateTime?                         @db.Timestamptz(6)
+  /// SYNCING, LEARNING, SORTING or DONE while the first setup runs; null before it starts.
+  onboarding_stage                String?
+  /// The gate the watcher and full runs wait behind: until it is set, onboarding owns the mailbox.
+  onboarding_completed_at         DateTime?                         @db.Timestamptz(6)
   users                           users                             @relation(fields: [user_id], references: [id], onDelete: Cascade)
   gmail_labels                    gmail_labels[]
   gmail_message_metadata          gmail_message_metadata[]
@@ -197,6 +201,7 @@ model gmail_sync_runs {
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "gmail_sync_runs_account_started_idx")
   @@index([status])
+  @@index([started_at], map: "gmail_sync_runs_started_idx")
 }
 
 /// One record per long-running operation, whatever the feature. The HTTP contract for slow work
@@ -223,6 +228,7 @@ model activity_runs {
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "activity_runs_account_started_idx")
   @@index([state, expires_at], map: "activity_runs_state_expiry_idx")
+  @@index([finished_at], map: "activity_runs_finished_idx")
 }
 
 /// One model-designed folder tree awaiting human approval. Nothing here exists in Gmail yet.
@@ -422,6 +428,7 @@ enum activity_run_kind {
   LABEL_PROPOSAL
   AUTOMATION_FILING
   FACET_CLASSIFICATION
+  ONBOARDING
 }
 
 enum activity_run_state {
@@ -586,6 +593,7 @@ model automation_runs {
 
   @@index([connected_google_account_id, started_at(sort: Desc)], map: "automation_runs_account_started_idx")
   @@index([status, started_at], map: "automation_runs_status_started_idx")
+  @@index([started_at], map: "automation_runs_started_idx")
 }
 
 /// Durable message-level idempotency record; Gmail writes may be safely retried.
@@ -806,6 +814,7 @@ model notifications {
   message                     gmail_message_metadata    @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
 
   @@index([connected_google_account_id, created_at(sort: Desc)], map: "notifications_account_created_idx")
+  @@index([created_at], map: "notifications_created_idx")
 }
 
 enum notification_kind {

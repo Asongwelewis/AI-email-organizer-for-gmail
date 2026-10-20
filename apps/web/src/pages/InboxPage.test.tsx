@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getFavoriteKeys: vi.fn(),
   addFavorite: vi.fn(),
   removeFavorite: vi.fn(),
+  getOnboarding: vi.fn(),
+  startOnboarding: vi.fn(),
 }));
 
 vi.mock('@web/services/http', () => ({ api: mocks }));
@@ -18,6 +20,22 @@ vi.mock('@web/services/http', () => ({ api: mocks }));
 import { apiError, renderScreen } from '@web/test/renderScreen';
 import { InboxPage } from './InboxPage';
 import type { PivotNode } from '@web/types/facets';
+
+function onboardingStatus(state: 'RUNNING' | 'DONE') {
+  return {
+    state,
+    stage: state === 'DONE' ? 'DONE' : 'SYNCING',
+    processed: 0,
+    total: null,
+    sorted: 0,
+    message: null,
+    stopReason: null,
+    runId: 'run-1',
+    startedAt: '2026-10-20T09:00:00.000Z',
+    finishedAt: null,
+    completedAt: state === 'DONE' ? '2026-10-20T09:03:00.000Z' : null,
+  };
+}
 
 function node(overrides: Partial<PivotNode> & { facetKey: string; leafName: string }): PivotNode {
   return {
@@ -79,6 +97,39 @@ describe('InboxPage', () => {
     mocks.getGmailStatus.mockResolvedValue({ connected: true, email: 'ada@gmail.com' });
     mocks.getFacetMessages.mockResolvedValue({ messages: [], nextCursor: null, total: 0 });
     mocks.getFavoriteKeys.mockResolvedValue([]);
+    mocks.getOnboarding.mockResolvedValue(onboardingStatus('DONE'));
+  });
+
+  /*
+   * A mailbox being set up sees its setup, not an empty screen sending it off to shape folders
+   * that are about to appear on their own.
+   */
+  it('shows setup progress instead of the empty state while a new mailbox is set up', async () => {
+    mocks.getOnboarding.mockResolvedValue({
+      ...onboardingStatus('RUNNING'),
+      stage: 'SORTING',
+      processed: 40,
+      total: 300,
+    });
+    mocks.getPivotView.mockResolvedValue({
+      order: ['domain', 'intent'],
+      nodes: [],
+      unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
+      collapsed: 0,
+    });
+    renderScreen(<InboxPage />, '/inbox');
+
+    expect(await screen.findByText('Setting up your inbox')).toBeInTheDocument();
+    expect(screen.getByText('40 of 300')).toBeInTheDocument();
+    expect(screen.queryByText('No folders at this arrangement')).not.toBeInTheDocument();
+  });
+
+  it('shows no setup card once setup has finished', async () => {
+    renderScreen(<InboxPage />, '/inbox');
+
+    await screen.findByText('Career');
+    await waitFor(() => expect(mocks.getOnboarding).toHaveBeenCalled());
+    expect(screen.queryByText('Setting up your inbox')).not.toBeInTheDocument();
   });
 
   /*

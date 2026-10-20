@@ -1,4 +1,5 @@
-import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 import { env } from '@api/config/env.js';
 import { PrismaRateLimitStore } from './rate-limit.store.js';
@@ -35,6 +36,22 @@ type LimiterScope = 'shared' | 'per-instance';
  * endpoints: a brief 500 is the safer failure. Narrowing the shared set also narrows what a
  * database outage can take down with it.
  */
+/**
+ * Whose budget a request spends: the signed-in person's when the session was already checked, the
+ * address's otherwise.
+ *
+ * By address alone, everybody behind one public IP shared one budget — a campus, an office, a
+ * phone carrier's NAT — and with several hundred users that stops being hypothetical: the
+ * eleventh person on the same Wi-Fi to tap "Sort" in ten minutes was refused for the other ten.
+ * The person is only used once `requireSession` has verified them, so a made-up cookie cannot buy
+ * a fresh budget; routes in front of the session check (sign-in, the feedback form) still count by
+ * address, which is what a guard against strangers needs.
+ */
+export function rateLimitKey(request: Request): string {
+  const userId = request.auth?.user.id;
+  return userId ? `user:${userId}` : ipKeyGenerator(request.ip ?? '');
+}
+
 function limiter(name: string, limit: number, scope: LimiterScope = 'shared') {
   const shared = scope === 'shared' && env.NODE_ENV !== 'test';
   return rateLimit({
@@ -42,6 +59,7 @@ function limiter(name: string, limit: number, scope: LimiterScope = 'shared') {
     limit,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: rateLimitKey,
     ...(shared ? { store: new PrismaRateLimitStore(name) } : {}),
     handler: (_request, response) => {
       response.status(429).json({
@@ -54,13 +72,15 @@ function limiter(name: string, limit: number, scope: LimiterScope = 'shared') {
   });
 }
 
-export const oauthStartLimiter = limiter(
-  'oauthStartLimiter',
-  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
-);
+/**
+ * Sign-in and Gmail connection, counted by address because nobody is signed in yet. Each sign-up
+ * is two starts and two callbacks (sign in, then connect Gmail), so the ten that used to be here
+ * let five people on one Wi-Fi join in ten minutes. A start costs one short-lived row.
+ */
+export const oauthStartLimiter = limiter('oauthStartLimiter', env.AUTH_RATE_LIMIT_MAX_REQUESTS);
 export const oauthCallbackLimiter = limiter(
   'oauthCallbackLimiter',
-  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 20),
+  env.AUTH_RATE_LIMIT_MAX_REQUESTS,
 );
 export const sessionRefreshLimiter = limiter(
   'sessionRefreshLimiter',
@@ -78,7 +98,11 @@ export const authGeneralLimiter = limiter(
  */
 export const sessionReadLimiter = limiter(
   'sessionReadLimiter',
-  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 60),
+  // It runs before the session is checked — it is what stands between a stranger and a session
+  // lookup — so it counts by address, and an address can be a whole campus. Sixty per window was
+  // measured refusing 240 of 300 people opening the app from one network at once. One a second per
+  // address still stops anything hammering it.
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60),
   'per-instance',
 );
 export const gmailSyncLimiter = limiter(

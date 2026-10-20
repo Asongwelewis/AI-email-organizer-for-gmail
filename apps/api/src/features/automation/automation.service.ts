@@ -576,6 +576,8 @@ export class AutomationService {
       where: {
         gmail_connected: true,
         connection_status: 'CONNECTED',
+        // Onboarding owns a mailbox until it has finished; see onboarding.service.ts.
+        onboarding_completed_at: { not: null },
         AND: [
           {
             OR: [{ automation_settings: null }, { automation_settings: { is: { enabled: true } } }],
@@ -591,7 +593,10 @@ export class AutomationService {
         ],
       },
       select: { id: true, user_id: true },
-      take: 20,
+      // A run moves its mailbox's next_run_at forward, so whatever one tick does not reach is
+      // still due on the next; the scheduler works through these AUTOMATION_FULL_RUN_CONCURRENCY
+      // at a time.
+      take: 200,
     });
   }
 

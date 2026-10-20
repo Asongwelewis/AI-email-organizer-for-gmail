@@ -94,10 +94,25 @@ const environmentSchema = z
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
     GMAIL_SYNC_PAGE_SIZE: z.coerce.number().int().min(1).max(500).default(100),
-    GMAIL_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(10),
+    // Messages fetched from Gmail at once. 25 parallel `messages.get` calls are 125 quota units,
+    // half of the 250 per user per second Gmail allows, and a page then costs one database trip.
+    GMAIL_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(25),
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+    /**
+     * How far back a first sync reaches, in days; 0 reads the whole mailbox. A first sync used to
+     * read everything, which for one mailbox of 9,550 messages was fine and for several hundred is
+     * the free database's 500 MB several times over. Older mail stays in Gmail and in search there;
+     * what MailMind sorts is the mail people are actually reading.
+     */
+    GMAIL_INITIAL_SYNC_LOOKBACK_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
+    /**
+     * The most messages a first sync stores, newest first; 0 for no ceiling. A stored message costs
+     * about 1 KB with its facets and indexes (measured by `npm run test:scale`), so a thousand per
+     * mailbox is roughly 440 mailboxes in the free tier's 500 MB, before new mail adds to it.
+     */
+    GMAIL_INITIAL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(0).max(200_000).default(1000),
     /**
      * Whether MailMind may write labels into the mailbox at all.
      *
@@ -196,6 +211,35 @@ const environmentSchema = z
     /** Who a push service can contact about our pushes: a mailto: or https: URL. */
     WEB_PUSH_SUBJECT: optionalUrl,
     AUTOMATION_LEASE_SECONDS: z.coerce.number().int().min(60).max(7200).default(1800),
+    /**
+     * How many of the newest messages onboarding sorts before it calls a mailbox ready. Enough to
+     * fill the folders someone sees on day one; the rest is backlog, which the full runs work
+     * through. Bounded because a new mailbox waits on it with a progress bar on screen.
+     */
+    ONBOARDING_SORT_LIMIT: z.coerce.number().int().min(10).max(5000).default(300),
+    /**
+     * Mailboxes onboarded at once, per instance. The Gemini key is shared, so a fourth sign-up
+     * waiting a minute behind three is better than all four sharing one request queue and every
+     * progress bar crawling.
+     */
+    ONBOARDING_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(3),
+    /** Mailboxes the watcher checks at once. Each check is mostly waiting on Gmail. */
+    AUTOMATION_WATCH_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(8),
+    /** Full runs at once. Each one holds Gemini for minutes, so few. */
+    AUTOMATION_FULL_RUN_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
+    /**
+     * Gemini requests the one shared key may make per day, across every mailbox. The free tier
+     * enforces its own ceiling per project, not per user — this is how the app keeps to it instead
+     * of finding it with a 429. Check the key's real limit in Google AI Studio and set it here.
+     */
+    GEMINI_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(1).max(1_000_000).default(1000),
+    /**
+     * The share of that budget the backlog may spend. The rest is held for onboarding and for new
+     * mail, so a busy full run at 02:00 cannot leave a new sign-up at 09:00 with nothing.
+     */
+    GEMINI_BACKLOG_SHARE: z.coerce.number().min(0).max(1).default(0.6),
+    /** How long old housekeeping rows (finished runs, read notifications) are kept, in days. */
+    HOUSEKEEPING_RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(30),
     AUTOMATION_BATCH_SIZE: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_MAX_MESSAGES_PER_RUN: z.coerce.number().int().min(1).max(1000).default(250),
     // Caps approved LEAF folders: the vocabulary automation classifies into. The default

@@ -12,23 +12,24 @@ MailMind AI — a human-in-the-loop Gmail organization app. npm-workspaces monor
 
 Run from the repository root. Node 22+ / npm 10+.
 
-| Purpose                    | Command                                                                  |
-| -------------------------- | ------------------------------------------------------------------------ |
-| Dev (web + api)            | `npm run dev` (or `npm run dev:web` / `npm run dev:api`)                 |
-| All tests                  | `npm test`                                                               |
-| API tests only             | `npm test --workspace @mailmind/api`                                     |
-| Web tests only             | `npm test --workspace @mailmind/web`                                     |
-| Single test file           | `npm exec --workspace @mailmind/api -- vitest run test/security.test.ts` |
-| Single test by name        | add `-t "partial name"` to the vitest command                            |
-| Watch a file               | same as above with `vitest watch` instead of `vitest run`                |
-| Database lifecycle tests   | `npm run test:database --workspace @mailmind/api`                        |
-| Database invariant audit   | `npm run audit:database --workspace @mailmind/api`                       |
-| E2E (Playwright)           | `npm run test:e2e`                                                       |
-| Typecheck (all workspaces) | `npm run typecheck` (root `tsc -b --force` over project references)      |
-| Lint / format              | `npm run lint`, `npm run format`, `npm run format:check`                 |
-| Build all                  | `npm run build`                                                          |
-| Prisma client / validate   | `npm run prisma:generate` / `prisma:validate --workspace @mailmind/api`  |
-| Apply migrations           | `npm exec --workspace @mailmind/api -- prisma migrate deploy`            |
+| Purpose                    | Command                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| Dev (web + api)            | `npm run dev` (or `npm run dev:web` / `npm run dev:api`)                         |
+| All tests                  | `npm test`                                                                       |
+| API tests only             | `npm test --workspace @mailmind/api`                                             |
+| Web tests only             | `npm test --workspace @mailmind/web`                                             |
+| Single test file           | `npm exec --workspace @mailmind/api -- vitest run test/security.test.ts`         |
+| Single test by name        | add `-t "partial name"` to the vitest command                                    |
+| Watch a file               | same as above with `vitest watch` instead of `vitest run`                        |
+| Database lifecycle tests   | `npm run test:database --workspace @mailmind/api`                                |
+| Database invariant audit   | `npm run audit:database --workspace @mailmind/api`                               |
+| Scale test (local DB only) | `RUN_SCALE_TEST=true NODE_ENV=test npm run test:scale --workspace @mailmind/api` |
+| E2E (Playwright)           | `npm run test:e2e`                                                               |
+| Typecheck (all workspaces) | `npm run typecheck` (root `tsc -b --force` over project references)              |
+| Lint / format              | `npm run lint`, `npm run format`, `npm run format:check`                         |
+| Build all                  | `npm run build`                                                                  |
+| Prisma client / validate   | `npm run prisma:generate` / `prisma:validate --workspace @mailmind/api`          |
+| Apply migrations           | `npm exec --workspace @mailmind/api -- prisma migrate deploy`                    |
 
 Notes:
 
@@ -124,10 +125,12 @@ so mail that was never classified stays findable. No model call, no Gmail call.
 domains and intents one account approved, through the same propose → confirm shape as the folder
 tree: `POST /api/facets/vocabulary/propose` grounds a candidate set in that mailbox's own mail and
 writes it where the classifier cannot see it; `POST /api/facets/vocabulary/confirm` is the human
-approval. Until one exists, classification refuses with `FACET_VOCABULARY_NOT_APPROVED` — there is
-no default, because "career, development, education" describes one person's life. The checked-in
-constant in `features/label-discovery/facets.ts` is now a _starter set_ offered to a new mailbox
-and the seed the existing accounts were migrated with, never a fallback. `prompt_version` carries a
+approval. Until one exists, classification refuses with `FACET_VOCABULARY_NOT_APPROVED`, and the
+classifier itself never falls back to a default. The checked-in constant in
+`features/label-discovery/facets.ts` is the _starter set_: first setup (below) approves it on a
+new mailbox's behalf, audited as `automatic: true`, because the approval screen never existed and
+its absence left every new sign-up with nothing sorted. It only ever fills a gap — a mailbox that
+approved its own keeps it. `prompt_version` carries a
 fingerprint of the vocabulary, so approving a change re-classifies the affected mail through the
 staleness machinery that already exists.
 
@@ -210,6 +213,34 @@ string, since ours carry facet values, search phrases and message ids — and no
 collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
 authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
 The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
+**First setup runs itself.** Connecting Gmail starts `features/onboarding` from the Gmail callback:
+an `ONBOARDING` activity run through `SYNCING` (a first sync bounded by
+`GMAIL_INITIAL_SYNC_LOOKBACK_DAYS`/`_MAX_MESSAGES`, default 90 days and 1,000 messages — about
+1 KB per message, so the free 500 MB holds roughly 440 mailboxes), `LEARNING` (the starter
+vocabulary), `SORTING` (the newest `ONBOARDING_SORT_LIMIT`) and `DONE`, which stamps
+`connected_google_accounts.onboarding_completed_at`. The watcher and the full runs skip a mailbox
+until that stamp exists. The watcher's tick also sweeps up setups that were lost or stopped, five
+minutes after they stopped, `ONBOARDING_CONCURRENCY` per instance. The PWA shows the stages on
+Setup and at the top of the Inbox, and every stop reason maps to a sentence for the person — never
+an operator's setting name. A missing `GEMINI_API_KEY` pauses at `SORTING` and resumes by itself.
+
+**One Gemini key, one shared day.** The free tier caps requests per day per project, not per
+user, so `classifyAccount` checks a shared ceiling (`GEMINI_DAILY_REQUEST_LIMIT`, read as a sum of
+`provider_call_count` over every account's `automation_runs` today) before every call:
+onboarding and new mail may spend all of it, the backlog `GEMINI_BACKLOG_SHARE`. Every caller
+records usage through `features/automation/usage-ledger.ts`, one row per account per source per
+day. Onboarding sends 25 messages per call with three calls in flight; the pacer still spaces
+the request starts.
+
+**Built for several hundred mailboxes.** A sync page is one `INSERT … ON CONFLICT` (it was two
+round trips per message). The watcher checks every onboarded mailbox each pass,
+`AUTOMATION_WATCH_CONCURRENCY` at a time, and full runs go `AUTOMATION_FULL_RUN_CONCURRENCY` at a
+time. A valid session row is cached for 30 seconds per instance and use is recorded at most every
+ten minutes. Rate limiters after `requireSession` count per user, the ones in front of it per
+address. `services/housekeeping.ts` deletes dead sessions, OAuth states, rate-limit rows and
+old runs and notifications every six hours, never audit logs. `npm run test:scale` seeds 300
+mailboxes into a local Postgres and measures all of it.
 
 **Concurrency and idempotency.** Every long-running per-account operation (sync, automation) takes
 an expiring account-scoped DB lease and writes checkpoints, so multiple API instances can share one

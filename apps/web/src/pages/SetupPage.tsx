@@ -3,20 +3,18 @@ import { Check } from 'lucide-react';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { LoadingState } from '@web/components/app/StateViews';
-import { formatCount } from '@web/lib/format';
+import { OnboardingProgress } from '@web/components/app/OnboardingProgress';
+import { useOnboarding } from '@web/queries/onboarding';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api, getBackendRedirectUrl } from '@web/services/http';
 
 /**
- * The first-run path, which until now did not exist.
+ * The first-run path: one button, then progress.
  *
- * Signing in landed on an empty Sorted screen and the only route onwards was Approve, which
- * answered `409` because Gmail had never been connected and no mail had ever been synced. Every
- * call needed to get past that already existed on the HTTP client and no component called any of
- * them. This is those calls, in the order they have to happen.
- *
- * Each step is gated on the one before it rather than merely listed, because the failure this
- * replaces was a screen that offered an action the account was not ready for.
+ * This used to be three manual steps — connect, "Start reading", "Sort my mail" — and the last one
+ * failed for anybody but the owner, because sorting needs an approved vocabulary and there was no
+ * screen to approve one on. Everything after connecting Gmail now runs on the server by itself
+ * (see the API's onboarding service), and this screen shows it happening.
  */
 
 type StepState = 'done' | 'current' | 'waiting';
@@ -62,30 +60,7 @@ export function SetupPage() {
   });
   const connection = connectionQuery.data;
   const connected = Boolean(connection?.connected);
-
-  const syncQuery = useQuery({
-    queryKey: queryKeys.gmailSyncStatus,
-    queryFn: () => api.getGmailSyncStatus(),
-    enabled: connected,
-    // Only while a sync is actually moving. A screen that polls a finished mailbox forever is a
-    // battery cost for nothing.
-    refetchInterval: (query) => (query.state.data?.syncRunning ? 2000 : false),
-  });
-  const sync = syncQuery.data;
-  const synced = Boolean(sync?.initialSyncCompleted);
-
-  const syncMutation = useMutation({
-    mutationFn: async () => {
-      // Labels first: a sync stores label ids per message, and without the label table those ids
-      // are opaque numbers the rest of the app cannot render.
-      await api.initializeGmailLabels();
-      return api.initialGmailSync();
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.gmailSyncStatus });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.activityRuns });
-    },
-  });
+  const onboarding = useOnboarding(connected);
 
   /*
    * Card 25. Google's grants are cumulative per client, so asking for less does not take the wider
@@ -101,19 +76,7 @@ export function SetupPage() {
     },
   });
 
-  const classifyMutation = useMutation({
-    mutationFn: () => api.classifyFacets(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.activityRuns });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.pivotPlan });
-    },
-  });
-
   if (connectionQuery.isPending) return <LoadingState label="Checking your mailbox…" />;
-
-  const step: 1 | 2 | 3 = !connected ? 1 : !synced ? 2 : 3;
-  const stateOf = (index: number): StepState =>
-    step > index ? 'done' : step === index ? 'current' : 'waiting';
 
   return (
     <section className="screen">
@@ -121,70 +84,46 @@ export function SetupPage() {
         <h1 className="screen__title">Set up</h1>
       </header>
       <p className="screen__lede">
-        Three steps, once. After this, new mail is filed on its own every day.
+        Connect Gmail and MailMind does the rest: it reads your recent mail, sets up your categories
+        and sorts your newest mail into folders. After that, new mail is sorted as it arrives.
       </p>
 
       {connectionQuery.isError ? (
         <ErrorNotice error={connectionQuery.error} onRetry={() => void connectionQuery.refetch()} />
       ) : null}
 
-      <ol className="setup-steps">
-        <Step
-          index={1}
-          state={stateOf(1)}
-          title="Connect Gmail"
-          description={
-            connection?.requiresReauthentication
-              ? 'Your Gmail access expired. Reconnect to carry on.'
-              : 'MailMind asks for read-only access and reads message headers only — never the body of an email, and never an attachment.'
-          }
-        >
-          <a
-            className="button button--primary"
-            href={getBackendRedirectUrl('/integrations/google/connect')}
+      {!connected || connection?.requiresReauthentication ? (
+        <ol className="setup-steps">
+          <Step
+            index={1}
+            state="current"
+            title="Connect Gmail"
+            description={
+              connection?.requiresReauthentication
+                ? 'Your Gmail access expired. Reconnect to carry on.'
+                : 'MailMind asks for read-only access and reads message headers only — never the body of an email, and never an attachment.'
+            }
           >
-            {connection?.requiresReauthentication ? 'Reconnect Gmail' : 'Connect Gmail'}
-          </a>
-        </Step>
-
-        <Step
-          index={2}
-          state={stateOf(2)}
-          title="Read the mailbox"
-          description={
-            sync?.syncRunning
-              ? `Reading your mail — ${formatCount(sync.syncedMessages)} of ${formatCount(sync.totalGmailMessages)} so far. You can leave this page.`
-              : 'A one-off pass over your mailbox to learn what is in it. Only headers are stored.'
-          }
-        >
-          <button
-            className="button button--primary"
-            type="button"
-            disabled={syncMutation.isPending || Boolean(sync?.syncRunning)}
-            onClick={() => syncMutation.mutate()}
-          >
-            {sync?.syncRunning ? 'Reading…' : 'Start reading'}
-          </button>
-        </Step>
-
-        <Step
-          index={3}
-          state={stateOf(3)}
-          title="Sort it"
-          description={
-            'Every message gets a brand, a subject area and an intent. Nothing moves in Gmail yet — you choose the folder shape on the Folders screen first.'
-          }
-        >
-          <button
-            className="button button--primary"
-            type="button"
-            disabled={classifyMutation.isPending}
-            onClick={() => classifyMutation.mutate()}
-          >
-            {classifyMutation.isPending ? 'Starting…' : 'Sort my mail'}
-          </button>
-        </Step>
-      </ol>
+            <a
+              className="button button--primary"
+              href={getBackendRedirectUrl('/integrations/google/connect')}
+            >
+              {connection?.requiresReauthentication ? 'Reconnect Gmail' : 'Connect Gmail'}
+            </a>
+          </Step>
+        </ol>
+      ) : onboarding.status ? (
+        <OnboardingProgress
+          status={onboarding.status}
+          onRetry={onboarding.retry}
+          retrying={onboarding.retrying}
+          showWhenDone
+        />
+      ) : onboarding.error ? (
+        <ErrorNotice error={onboarding.error} />
+      ) : (
+        <LoadingState label="Checking setup…" />
+      )}
 
       {/*
         MailMind cannot write to a mailbox it only reads, and it no longer needs to. Holding an
@@ -213,15 +152,6 @@ export function SetupPage() {
       ) : null}
 
       {narrowMutation.isError ? <ErrorNotice error={narrowMutation.error} /> : null}
-      {syncMutation.isError ? <ErrorNotice error={syncMutation.error} /> : null}
-      {classifyMutation.isError ? <ErrorNotice error={classifyMutation.error} /> : null}
-
-      {classifyMutation.isSuccess ? (
-        <p className="notice" role="status">
-          Sorting started. It runs in the background — watch it on Activity, then shape the folders
-          on Folders.
-        </p>
-      ) : null}
     </section>
   );
 }

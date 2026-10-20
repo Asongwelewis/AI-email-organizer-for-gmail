@@ -55,6 +55,7 @@ vi.mock('../src/integrations/google/google-token.service.js', () => ({
   googleTokenService: { refreshGoogleAccessToken: mocks.refreshGoogleAccessToken },
 }));
 
+import { env } from '../src/config/env.js';
 import { GmailSyncService } from '../src/integrations/gmail/gmail.service.js';
 
 const account = {
@@ -418,6 +419,107 @@ describe('GmailSyncService', () => {
 
       await expect(new GmailSyncService().hasNewHistory('user-id')).resolves.toBe(false);
       expect(mocks.createGmailClient).not.toHaveBeenCalled();
+    });
+  });
+  /*
+   * A first sync used to read the whole mailbox. For one owner with 9,550 messages that was fine;
+   * for several hundred people it is the free database's 500 MB several times over.
+   */
+  describe('a bounded first sync', () => {
+    const started = new Date('2026-10-20T00:00:00.000Z');
+
+    function gmailWith(pages: Array<{ ids: string[]; next?: string }>) {
+      const list = vi.fn();
+      for (const page of pages) {
+        list.mockResolvedValueOnce({
+          data: {
+            messages: page.ids.map((id) => ({ id })),
+            ...(page.next ? { nextPageToken: page.next } : {}),
+          },
+        });
+      }
+      const gmail = {
+        users: {
+          getProfile: vi.fn().mockResolvedValue({
+            data: { emailAddress: account.email, historyId: 'history-2', messagesTotal: 9550 },
+          }),
+          labels: {
+            list: vi.fn().mockResolvedValue({ data: { labels: [{ id: 'L', name: 'MailMind' }] } }),
+            create: vi.fn(),
+          },
+          messages: {
+            list,
+            get: vi
+              .fn()
+              .mockImplementation(({ id }) =>
+                Promise.resolve({ data: { id, labelIds: ['INBOX'], payload: { headers: [] } } }),
+              ),
+          },
+          history: { list: vi.fn() },
+        },
+      };
+      mocks.createGmailClient.mockResolvedValue(gmail);
+      return gmail;
+    }
+
+    beforeEach(() => {
+      env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS = 90;
+      env.GMAIL_INITIAL_SYNC_MAX_MESSAGES = 2000;
+      mocks.beginBackfill.mockResolvedValue({
+        backfill_page_token: null,
+        backfill_history_id: 'history-2',
+        backfill_started_at: started,
+        backfill_messages_processed: 0,
+      });
+    });
+
+    it('asks Gmail for the recent window only, without spam or trash', async () => {
+      const gmail = gmailWith([{ ids: ['a', 'b'] }]);
+
+      await new GmailSyncService().initialSync('user-id');
+
+      const since = new Date(started.getTime() - 90 * 86_400_000);
+      expect(gmail.users.messages.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: `after:${Math.floor(since.getTime() / 1000)}`,
+          includeSpamTrash: false,
+        }),
+      );
+      // Only what the window could have listed can be missing from it: older mail an earlier,
+      // wider sync stored is left alone.
+      expect(mocks.markMissingFromBackfill).toHaveBeenCalledWith(account.id, started, since);
+    });
+
+    it('stops at the ceiling, newest first, and marks nothing missing from a partial listing', async () => {
+      env.GMAIL_INITIAL_SYNC_MAX_MESSAGES = 2;
+      const gmail = gmailWith([
+        { ids: ['a', 'b'], next: 'page-2' },
+        { ids: ['c'], next: 'page-3' },
+      ]);
+
+      const result = await new GmailSyncService().initialSync('user-id');
+
+      expect(gmail.users.messages.list).toHaveBeenCalledTimes(1);
+      expect(gmail.users.messages.list).toHaveBeenCalledWith(
+        expect.objectContaining({ maxResults: 2 }),
+      );
+      // Checkpointed as finished, so a resumed backfill does not walk on past the ceiling.
+      expect(mocks.checkpointBackfillPage).toHaveBeenCalledWith(lease, null, 2);
+      expect(mocks.markMissingFromBackfill).not.toHaveBeenCalled();
+      expect(result.messagesUpserted).toBe(2);
+    });
+
+    it('reads the whole mailbox, as it used to, when both bounds are zero', async () => {
+      env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS = 0;
+      env.GMAIL_INITIAL_SYNC_MAX_MESSAGES = 0;
+      const gmail = gmailWith([{ ids: ['a'] }]);
+
+      await new GmailSyncService().initialSync('user-id');
+
+      const request = gmail.users.messages.list.mock.calls[0]![0] as Record<string, unknown>;
+      expect(request['includeSpamTrash']).toBe(true);
+      expect(request).not.toHaveProperty('q');
+      expect(mocks.markMissingFromBackfill).toHaveBeenCalledWith(account.id, started, null);
     });
   });
 });

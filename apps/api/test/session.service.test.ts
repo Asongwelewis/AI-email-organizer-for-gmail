@@ -13,7 +13,11 @@ const repository = vi.hoisted(() => ({
 vi.mock('../src/repositories/session.repository.js', () => ({ sessionRepository: repository }));
 
 import { sha256 } from '../src/security/hashing.service.js';
-import { SessionService, slidingExpiry } from '../src/sessions/session.service.js';
+import {
+  SessionService,
+  forgetCachedSessions,
+  slidingExpiry,
+} from '../src/sessions/session.service.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -41,6 +45,8 @@ const requestWithToken = () =>
 describe('SessionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Every test here uses the same token, so a row one test cached would answer for the next.
+    forgetCachedSessions();
   });
 
   it('returns the raw token only to the cookie layer and persists only its hash', async () => {
@@ -51,6 +57,28 @@ describe('SessionService', () => {
     expect(stored.session_token_hash).toBe(sha256(result.rawToken));
     expect(stored.session_token_hash).not.toBe(result.rawToken);
     expect(JSON.stringify(result.session)).not.toContain(result.rawToken);
+  });
+
+  /*
+   * Every authenticated request used to read its session row first — a round trip in front of
+   * every screen, and most of the database's work once several hundred people use the app.
+   */
+  it('answers a repeat request from memory, and reads again after a logout', async () => {
+    repository.findByTokenHash.mockResolvedValue(activeRecord());
+    repository.revoke.mockResolvedValue({ count: 1 });
+    const service = new SessionService();
+
+    await service.authenticate(requestWithToken());
+    await service.authenticate(requestWithToken());
+    expect(repository.findByTokenHash).toHaveBeenCalledTimes(1);
+    // Use was recorded once, not on every request.
+    expect(repository.touch).toHaveBeenCalledTimes(1);
+
+    await service.revokeCurrent(requestWithToken());
+    repository.findByTokenHash.mockResolvedValue(activeRecord({ revoked_at: new Date() }));
+    await expect(service.authenticate(requestWithToken())).rejects.toMatchObject({
+      code: 'AUTH_SESSION_REVOKED',
+    });
   });
 
   it('authenticates a valid session and throttles its touch', async () => {
