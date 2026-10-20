@@ -104,23 +104,23 @@ describe('AutomationPanel', () => {
     renderScreen(<AutomationPanel />);
 
     expect(await screen.findByText('Automation is off')).toBeInTheDocument();
-    expect(screen.getByText(/AUTOMATION_ENABLED is false/)).toBeInTheDocument();
+    expect(screen.getByText(/switched off for MailMind right now/)).toBeInTheDocument();
     expect(screen.queryByText(/checks every/i)).not.toBeInTheDocument();
   });
 
   /**
-   * Three separate things switch automation off, and the panel used to blame the deployment flag
-   * for all of them. That sends someone to change a setting that was already correct, while the
-   * real cause sits untouched — which is exactly what happened with a missing Gemini key.
+   * Three separate things switch automation off, and each gets its own sentence. They are written
+   * for whoever is signed in: a friend who signed up was shown "GEMINI_API_KEY is not set on the
+   * server", an operator's setting they could do nothing about.
    */
-  it('names the missing Gemini key rather than blaming the wrong switch', async () => {
+  it('explains a server that cannot sort yet without naming its settings', async () => {
     mocks.getAutomationStatus.mockResolvedValue(
       status({ enabled: false, nextRunAt: null, disabledReason: 'AUTOMATION_NOT_CONFIGURED' }),
     );
     renderScreen(<AutomationPanel />);
 
-    expect(await screen.findByText(/GEMINI_API_KEY is not set/)).toBeInTheDocument();
-    expect(screen.queryByText(/AUTOMATION_ENABLED is false/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/nothing you need to do/)).toBeInTheDocument();
+    expect(screen.queryByText(/GEMINI|AUTOMATION_ENABLED/)).not.toBeInTheDocument();
   });
 
   it('says the account is paused when the switch is the account, not the server', async () => {
@@ -129,7 +129,7 @@ describe('AutomationPanel', () => {
     );
     renderScreen(<AutomationPanel />);
 
-    expect(await screen.findByText(/paused for this account/)).toBeInTheDocument();
+    expect(await screen.findByText(/paused for your account/)).toBeInTheDocument();
   });
 
   // A backoff is not the schedule. Reading one as the other is how a stalled account looks healthy.

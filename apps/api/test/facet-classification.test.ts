@@ -903,3 +903,110 @@ describe('the facet classification pass', () => {
     });
   });
 });
+
+/**
+ * One Gemini key serves every mailbox, and its free tier caps requests per day per project. The
+ * per-account caps above cannot see that; this ceiling can.
+ */
+describe('the shared Gemini budget', () => {
+  const decisionsFor = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      key: `m${index + 1}`,
+      domain: 'finance',
+      domainConfidence: 0.5,
+      intent: 'newsletter',
+      intentConfidence: 0.5,
+    }));
+
+  function sharedService() {
+    mocks.classify.mockImplementation(async (inputs: unknown[]) => ({
+      classifications: decisionsFor(inputs.length),
+      usage: { inputTokens: 120, cachedInputTokens: 0, outputTokens: 40 },
+    }));
+    return new FacetClassificationService({ classify: mocks.classify }, {
+      requireApproved: async () => APPROVED_FACET_VOCABULARY,
+    } as never);
+  }
+
+  const mail = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      message({
+        id: `m${index}`,
+        subject: `Subject number ${index}`,
+        sender: `x${index}@example.com`,
+      }),
+    );
+
+  function spentToday(providerCalls: number) {
+    mocks.runAggregate.mockResolvedValue({
+      _sum: {
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_microusd: 0,
+        provider_call_count: providerCalls,
+      },
+    });
+  }
+
+  it('stops before a call once the whole key has spent its day', async () => {
+    spentToday(env.GEMINI_DAILY_REQUEST_LIMIT);
+    mocks.messageFindMany.mockResolvedValue(mail(3));
+
+    const counters = await sharedService().classifyAccount(ACCOUNT, { priority: 'onboarding' });
+
+    expect(mocks.classify).not.toHaveBeenCalled();
+    expect(counters.stoppedReason).toBe('SHARED_DAILY_LIMIT_REACHED');
+    // Asked across every account, not this one.
+    const sharedQuery = mocks.runAggregate.mock.calls
+      .map(([query]) => query as { where: Record<string, unknown> })
+      .find((query) => !('connected_google_account_id' in query.where));
+    expect(sharedQuery).toBeDefined();
+  });
+
+  // The backlog can wait a day; somebody watching a progress bar cannot.
+  it('holds part of the day back from the backlog for onboarding and new mail', async () => {
+    spentToday(Math.floor(env.GEMINI_DAILY_REQUEST_LIMIT * env.GEMINI_BACKLOG_SHARE));
+    mocks.messageFindMany.mockResolvedValue(mail(3));
+
+    const backlog = await sharedService().classifyAccount(ACCOUNT);
+    expect(backlog.stoppedReason).toBe('SHARED_DAILY_LIMIT_REACHED');
+    expect(mocks.classify).not.toHaveBeenCalled();
+
+    const onboarding = await sharedService().classifyAccount(ACCOUNT, { priority: 'onboarding' });
+    expect(onboarding.stoppedReason).toBeNull();
+    expect(onboarding.modelDecided).toBe(3);
+  });
+
+  it('keeps several batches in flight when asked, and still decides every message', async () => {
+    spentToday(0);
+    mocks.messageFindMany.mockResolvedValue(mail(9));
+    let inFlight = 0;
+    let most = 0;
+    const service = sharedService();
+    mocks.classify.mockImplementation(async (inputs: unknown[]) => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return {
+        classifications: decisionsFor(inputs.length),
+        usage: { inputTokens: 120, cachedInputTokens: 0, outputTokens: 40 },
+      };
+    });
+    const progress: number[] = [];
+
+    const counters = await service.classifyAccount(ACCOUNT, {
+      batchSize: 3,
+      concurrency: 3,
+      onProgress: async (current) => {
+        progress.push(current.modelDecided);
+      },
+    });
+
+    expect(mocks.classify).toHaveBeenCalledTimes(3);
+    expect(most).toBe(3);
+    expect(counters.modelDecided).toBe(9);
+    expect(mocks.facetUpsert).toHaveBeenCalledTimes(9);
+    expect(progress.at(-1)).toBe(9);
+  });
+});

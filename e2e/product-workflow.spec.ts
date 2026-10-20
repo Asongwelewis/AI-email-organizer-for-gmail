@@ -73,6 +73,20 @@ async function apiMock(route: Route) {
       backlogRemaining: 0,
     },
     '/api/automation/review': { items: [] },
+    // Set up already, so no screen shows the setup card unless a test says otherwise.
+    '/api/onboarding': {
+      state: 'DONE',
+      stage: 'DONE',
+      processed: 300,
+      total: 300,
+      sorted: 300,
+      message: null,
+      stopReason: null,
+      runId: 'run-onboarding',
+      startedAt: '2026-08-25T00:00:00.000Z',
+      finishedAt: '2026-08-25T00:03:00.000Z',
+      completedAt: '2026-08-25T00:03:00.000Z',
+    },
     '/api/gmail/sync/status': {
       status: 'IDLE',
       initialSyncCompleted: true,
@@ -208,22 +222,38 @@ test('every screen is reachable from the navigation', async ({ page }) => {
 });
 
 /**
- * Setup is deliberately absent from the navigation — it is a path you walk once. What matters is
- * that it exists and is reachable, because the first-run failure this card removes was landing on
- * an empty Sorted screen whose only route onwards answered 409.
+ * Setup is deliberately absent from the navigation — it is a path you walk once. After Gmail is
+ * connected it has no buttons: the server sets the mailbox up on its own and this screen shows it
+ * happening, because a friend who signed up once saw nothing sorted and an operator's error.
  */
-test('the setup path exists and gates its steps in order', async ({ page }) => {
-  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+test('setup shows a connected mailbox being set up, with nothing to press', async ({ page }) => {
+  await page.route('http://127.0.0.1:4174/api/**', async (route) => {
+    if (new URL(route.request().url()).pathname !== '/api/onboarding') return apiMock(route);
+    await route.fulfill({
+      status: 200,
+      json: {
+        state: 'RUNNING',
+        stage: 'SORTING',
+        processed: 75,
+        total: 300,
+        sorted: 0,
+        message: null,
+        stopReason: null,
+        runId: 'run-onboarding',
+        startedAt: '2026-08-25T00:00:00.000Z',
+        finishedAt: null,
+        completedAt: null,
+      },
+    });
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/setup');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Set up' })).toBeVisible();
-  // This account is connected and already synced, so the first two steps are behind it and only
-  // the last one offers an action — which is the gating this screen exists to do.
-  await expect(page.getByText('Connect Gmail')).toBeVisible();
-  await expect(page.getByText('Read the mailbox')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Sort my mail/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Start reading/i })).toHaveCount(0);
+  await expect(page.getByText('Setting up your inbox')).toBeVisible();
+  await expect(page.getByText('Sorting your newest mail into folders')).toBeVisible();
+  await expect(page.getByText('75 of 300')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Start reading|Sort my mail/i })).toHaveCount(0);
 });
 
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {

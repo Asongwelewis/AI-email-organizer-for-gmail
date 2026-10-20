@@ -468,6 +468,39 @@ would leave someone who asked to be forgotten in the database because a third pa
 { "success": true, "connectedAccounts": 1 }
 ```
 
+## First setup
+
+### `GET /api/onboarding`
+
+Where this mailbox is in its first setup. Polled every two seconds while it runs.
+
+```json
+{
+  "state": "RUNNING",
+  "stage": "SORTING",
+  "processed": 120,
+  "total": 300,
+  "sorted": 0,
+  "message": null,
+  "stopReason": null,
+  "runId": "…",
+  "startedAt": "2026-10-20T09:00:00.000Z",
+  "finishedAt": null,
+  "completedAt": null
+}
+```
+
+`state` is `PENDING` (nothing started), `RUNNING`, `STOPPED` (paused for a reason in
+`message`, retried by the server), `FAILED`, or `DONE`. `stage` is `SYNCING`, `LEARNING`,
+`SORTING` or `DONE`; `processed`/`total` count the current stage, and `total` is null while it
+is unknown. `409 GMAIL_ACCOUNT_NOT_CONNECTED` before Gmail is connected.
+
+### `POST /api/onboarding/start`
+
+Starts the first setup or joins the run already going, and answers with the status above:
+`202` while work is running, `200` once it is done. The server starts it from the Gmail
+callback on its own; this is the client's safety net. Trusted origin required.
+
 ## Facets and the pivot
 
 A message carries three orthogonal facets, and a folder tree is a **view** of them. These routes

@@ -1444,6 +1444,157 @@
   padding-top: 0.5rem;
 }
 
+/* First setup, shown on Setup and at the top of the inbox while it runs. */
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1.125rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+  box-shadow: var(--highlight-inset);
+}
+
+.onboarding--done {
+  border-color: var(--line);
+  align-items: flex-start;
+}
+
+.onboarding__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.onboarding__lede {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--app-ink-soft);
+}
+
+.onboarding__stages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding__stage {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.onboarding__stage--waiting {
+  opacity: 0.55;
+}
+
+.onboarding__marker {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.onboarding__marker svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.onboarding__stage--done .onboarding__marker,
+.onboarding__stage--current .onboarding__marker {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink-inverted);
+}
+
+.onboarding__body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.onboarding__stage-title {
+  margin: 0;
+  font-weight: 500;
+}
+
+.onboarding__detail {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--app-ink-soft);
+}
+
+.onboarding__progress {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding-top: 0.25rem;
+}
+
+.onboarding__bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--app-line);
+}
+
+.onboarding__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 400ms ease;
+}
+
+/* No count to show yet, so the bar says "working" rather than inventing a percentage. */
+.onboarding__bar--working > span {
+  width: 35%;
+  animation: onboarding-working 1.4s ease-in-out infinite;
+}
+
+@keyframes onboarding-working {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding__bar > span {
+    transition: none;
+  }
+
+  .onboarding__bar--working > span {
+    width: 100%;
+    animation: none;
+    opacity: 0.4;
+  }
+}
+
+.onboarding__count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-ink-soft);
+}
+
 /* ----------------------------------------------------------------- review */
 
 .review-list {

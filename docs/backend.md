@@ -81,7 +81,14 @@ Session lifetime and rate-limit controls:
 ### Gmail synchronization
 
 - `GMAIL_SYNC_PAGE_SIZE`
-- `GMAIL_SYNC_BATCH_SIZE`
+- `GMAIL_SYNC_BATCH_SIZE` — messages fetched from Gmail at once (default 25). A page is written
+  in one `INSERT … ON CONFLICT` statement, not one upsert per message.
+- `GMAIL_INITIAL_SYNC_LOOKBACK_DAYS` / `GMAIL_INITIAL_SYNC_MAX_MESSAGES` — what a first sync
+  reads: the last 90 days, at most 1,000 messages, newest first, without spam or trash (0 for
+  both reads the whole mailbox, as it used to). A stored message costs about 1 KB with its
+  facets and indexes (`npm run test:scale`), so 1,000 per mailbox is roughly 440 mailboxes in
+  Supabase's free 500 MB. A sync that stopped at its ceiling marks nothing missing; one bounded
+  by date marks only inside its window.
 - `GMAIL_SYNC_MAX_RETRIES`
 - `GMAIL_SYNC_RETRY_BASE_MS`
 - `GMAIL_SYNC_LEASE_SECONDS`
@@ -379,6 +386,17 @@ New mail is sorted as it arrives by the watcher, between the twice-daily full ru
   leave waits for Gemini until this many queue (10) or the oldest has waited this long (5).
 - `AUTOMATION_FULL_RUN_HOURS_UTC` — comma-separated UTC hours for the full run (default `2,14`).
   `AUTOMATION_SCHEDULE_HOUR_UTC` is retired and ignored with a boot warning.
+- `AUTOMATION_WATCH_CONCURRENCY` (8) / `AUTOMATION_FULL_RUN_CONCURRENCY` (2) — mailboxes checked
+  or run at once. The watcher covers every onboarded mailbox each pass; it used to stop at 50.
+- `ONBOARDING_SORT_LIMIT` (300) / `ONBOARDING_CONCURRENCY` (3) — see First setup below.
+- `GEMINI_DAILY_REQUEST_LIMIT` (1000) / `GEMINI_BACKLOG_SHARE` (0.6) — the one key is shared by
+  every mailbox, and the free tier caps requests per day per project. Today's requests are read
+  as a sum over every account's `automation_runs`; onboarding and new mail may spend all of
+  the limit, the backlog only its share. A run that reaches it stops with
+  `SHARED_DAILY_LIMIT_REACHED`. Set the limit to the key's real one from Google AI Studio.
+- `HOUSEKEEPING_RETENTION_DAYS` (30) — every six hours the API deletes dead sessions (a week
+  after expiry or revocation), expired OAuth states and rate-limit rows, and finished runs,
+  sync runs and notifications older than this. Audit logs are never deleted.
 - `KEEP_AWAKE_INTERVAL_MINUTES` — production only; the API requests its own public `/health` this
   often (default 10, max 14, 0 disables) so Render's free plan, which counts only inbound traffic,
   never puts it to sleep.
@@ -536,3 +554,36 @@ non-zero status. Readiness responses expose only dependency state, not connectio
 
 See [API reference](api.md) for endpoint contracts and [Architecture](architecture.md) for
 cross-component data flow.
+
+## First setup (onboarding)
+
+Connecting Gmail starts `features/onboarding/onboarding.service.ts` from the Gmail callback, and
+the watcher's tick sweeps up any mailbox whose setup was lost or stopped (retried five minutes
+after it stopped, at most `ONBOARDING_CONCURRENCY` per instance). It is an `ONBOARDING` activity
+run in four stages, recorded on `connected_google_accounts.onboarding_stage`:
+
+1. `SYNCING` — the bounded first sync, skipped if one finished.
+2. `LEARNING` — a mailbox with no approved vocabulary is given the starter set, approved on the
+   person's behalf and audited as `automatic: true`. The propose/approve endpoints still exist to
+   change it.
+3. `SORTING` — the newest `ONBOARDING_SORT_LIMIT` messages, 25 per Gemini call with three calls
+   in flight, at onboarding priority on the shared budget, recorded as it goes.
+4. `DONE` — sets `onboarding_completed_at`. Until then the watcher and the full runs leave the
+   mailbox alone.
+
+Without `GEMINI_API_KEY` it stops at `SORTING` with `SORTING_NOT_CONFIGURED` and resumes by itself
+once the key is set. If something is sorted before a budget or rate limit stops it, the mailbox
+is handed over anyway and the full runs finish the backlog. Every stop reason maps to a sentence
+written for the person, not the operator.
+
+## Sessions and rate limits at scale
+
+A session row read from the database answers for itself for 30 seconds in memory (keyed by token
+hash; only valid sessions are cached), and use is recorded at most every ten minutes. Logout,
+rotation and logout-all drop the copy on the instance that handled them; on another instance a
+revoked session stays usable for at most those 30 seconds.
+
+Limiters that run after `requireSession` count per user (`user:<id>`); the ones in front of it —
+sign-in, the OAuth callbacks, `/auth/me`, feedback — count per address, because a made-up cookie
+must not buy a fresh budget. People behind one network therefore no longer share one budget
+once signed in.

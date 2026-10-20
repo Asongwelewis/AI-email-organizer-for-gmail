@@ -146,13 +146,19 @@ export class FacetsController {
     if (!isIconDomain(domain)) {
       throw new AppError('FACET_VALIDATION_FAILED', 'That is not a domain.', 400);
     }
+    response.set('Cross-Origin-Resource-Policy', 'same-site');
     let icon;
     try {
       icon = await brandIconService.icon(domain);
     } catch {
-      throw new AppError('ICON_UNAVAILABLE', 'The logo could not be fetched right now.', 503);
+      // The logo source being unreachable is not this API failing. It used to answer 503, which
+      // the error handler reports, and a folder grid asks for forty logos at once — one outage of
+      // Google's favicon service filled Sentry. The tile shows its folder icon either way, so say
+      // "no logo" and let the browser ask again in five minutes rather than tomorrow.
+      response.set('Cache-Control', 'private, max-age=300');
+      response.status(404).end();
+      return;
     }
-    response.set('Cross-Origin-Resource-Policy', 'same-site');
     if (!icon) {
       response.set('Cache-Control', 'private, max-age=86400');
       response.status(404).end();
