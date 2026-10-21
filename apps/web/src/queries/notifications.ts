@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { useAuth } from '@web/context/useAuth';
+
 import { api } from '@web/services/http';
 import { queryKeys } from './queryKeys';
 
@@ -11,10 +13,12 @@ export const NOTIFICATION_POLL_MS = 60_000;
  * toasts all read the same cache, so they can never disagree about what is unread.
  */
 export function useNotificationFeed(enabled = true) {
+  // The feed belongs to a mailbox. Asked before one is connected it can only answer 409.
+  const { gmailConnection } = useAuth();
   return useQuery({
     queryKey: queryKeys.notifications,
     queryFn: () => api.getNotifications(),
-    enabled,
+    enabled: enabled && gmailConnection?.connected === true,
     refetchInterval: NOTIFICATION_POLL_MS,
   });
 }

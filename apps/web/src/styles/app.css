@@ -2131,3 +2131,49 @@
     flex-direction: column;
   }
 }
+
+/* Signed in, Gmail not connected: the one missing step, in place of a mailbox screen. */
+.connect-gmail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  align-items: flex-start;
+  max-width: 34rem;
+  margin: 2rem auto 0;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-content);
+}
+
+.connect-gmail__icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.connect-gmail__icon svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.connect-gmail__title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+
+.connect-gmail__lede,
+.connect-gmail__detail {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--app-ink-soft);
+}
+
+.connect-gmail__detail {
+  font-size: 0.8125rem;
+}
