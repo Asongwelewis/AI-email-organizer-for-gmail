@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { formatCount } from '@web/lib/format';
+import { getBackendRedirectUrl } from '@web/services/http';
 import type { OnboardingStage, OnboardingStatus } from '@web/types/onboarding';
 
 /**
@@ -35,7 +36,14 @@ const STAGES: Array<{ stage: Exclude<OnboardingStage, 'DONE'>; title: string; de
 const ORDER: Record<OnboardingStage, number> = { SYNCING: 0, LEARNING: 1, SORTING: 2, DONE: 3 };
 
 /** Stop reasons that no button here can fix, so none is offered. */
-const NOT_RETRYABLE = new Set(['SORTING_NOT_CONFIGURED', 'GMAIL_REAUTH_REQUIRED']);
+const NOT_RETRYABLE = new Set([
+  'SORTING_NOT_CONFIGURED',
+  'GMAIL_REAUTH_REQUIRED',
+  'GMAIL_PERMISSION_DENIED',
+]);
+
+/** Stop reasons about the Gmail grant itself, answered by connecting again. */
+const NEEDS_RECONNECT = new Set(['GMAIL_REAUTH_REQUIRED', 'GMAIL_PERMISSION_DENIED']);
 
 function StageProgress({ status }: { status: OnboardingStatus }) {
   const total = status.total ?? 0;
@@ -92,7 +100,7 @@ export function OnboardingProgress({
 
   const current = ORDER[status.stage ?? 'SYNCING'];
   const paused = status.state === 'STOPPED' || status.state === 'FAILED';
-  const reconnect = status.stopReason === 'GMAIL_REAUTH_REQUIRED';
+  const reconnect = NEEDS_RECONNECT.has(status.stopReason ?? '');
   const canRetry = paused && !NOT_RETRYABLE.has(status.stopReason ?? '');
 
   return (
@@ -129,9 +137,12 @@ export function OnboardingProgress({
         <div className="notice" role="status">
           <p className="notice__message">{status.message}</p>
           {reconnect ? (
-            <Link className="button button--quiet" to="/setup">
+            <a
+              className="button button--quiet"
+              href={getBackendRedirectUrl('/integrations/google/connect')}
+            >
               Reconnect Gmail
-            </Link>
+            </a>
           ) : null}
           {canRetry && onRetry ? (
             <button

@@ -238,6 +238,22 @@ describe('onboarding a new mailbox', () => {
     });
   });
 
+  // A grant problem is answered by the person reconnecting; retrying every five minutes would only
+  // fail the same way and report it to Sentry each time.
+  it('asks for a reconnect when Gmail refuses permission', async () => {
+    const run = harness();
+    run.gmail.initialSync.mockRejectedValue(
+      new AppError('GMAIL_PERMISSION_DENIED', 'Gmail permission is insufficient.', 403),
+    );
+
+    await run.service.begin(USER_ID);
+
+    await expect(run.outcomes[0]).resolves.toMatchObject({
+      state: 'STOPPED',
+      stopReason: 'GMAIL_PERMISSION_DENIED',
+    });
+  });
+
   it('does nothing for a mailbox that has finished', async () => {
     const run = harness({ account: account({ onboarding_completed_at: new Date() }) });
 

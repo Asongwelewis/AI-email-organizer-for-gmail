@@ -108,6 +108,8 @@ const STOP_MESSAGES: Record<string, string> = {
   WAITING_FOR_SYNC: 'Your mail is still being read. Sorting starts as soon as that finishes.',
   WAITING_FOR_SLOT: 'A few people are setting up at once. Yours starts in a moment.',
   GMAIL_REAUTH_REQUIRED: 'MailMind lost access to Gmail. Reconnect Gmail to carry on.',
+  GMAIL_PERMISSION_DENIED:
+    'Gmail did not give MailMind permission to read your mail. Reconnect Gmail and allow access to carry on.',
 };
 
 const FAILED_MESSAGE = 'Setting up hit a problem. It will try again in a few minutes.';
@@ -281,8 +283,12 @@ export class OnboardingService {
         if (error instanceof AppError && error.code === 'GMAIL_SYNC_ALREADY_RUNNING') {
           return { state: 'STOPPED', stopReason: 'WAITING_FOR_SYNC' };
         }
-        if (error instanceof AppError && error.code === 'GMAIL_REAUTH_REQUIRED') {
-          return { state: 'STOPPED', stopReason: 'GMAIL_REAUTH_REQUIRED' };
+        // Both are about the grant, so the answer is the person reconnecting, not a retry.
+        if (
+          error instanceof AppError &&
+          (error.code === 'GMAIL_REAUTH_REQUIRED' || error.code === 'GMAIL_PERMISSION_DENIED')
+        ) {
+          return { state: 'STOPPED', stopReason: error.code };
         }
         throw error;
       }
