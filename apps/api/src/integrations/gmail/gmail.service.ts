@@ -7,6 +7,7 @@ import {
   type ProgressReporter,
   type StartedRun,
 } from '@api/features/activity/activity.service.js';
+import { hasGmailWriteScope } from '@api/integrations/google/google-scopes.js';
 import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
 import { createGmailClient, withGmailRetry } from './gmail.client.js';
@@ -78,7 +79,7 @@ export class GmailSyncService {
     try {
       const gmail = await createGmailClient(account.id);
       await this.loadAndValidateProfile(gmail, account.email);
-      counts.labelsUpserted = await this.synchronizeLabels(gmail, account.id);
+      counts.labelsUpserted = await this.synchronizeLabels(gmail, account);
       await gmailRepository.complete(lease, counts, null, false);
       return { success: true, labelsUpserted: counts.labelsUpserted };
     } catch (error) {
@@ -126,7 +127,7 @@ export class GmailSyncService {
     try {
       const gmail = await createGmailClient(account.id);
       const profile = await this.loadAndValidateProfile(gmail, account.email);
-      counts.labelsUpserted = await this.synchronizeLabels(gmail, account.id);
+      counts.labelsUpserted = await this.synchronizeLabels(gmail, account);
       const backfill = await gmailRepository.beginBackfill(
         lease,
         profile.messagesTotal ?? 0,
@@ -366,9 +367,22 @@ export class GmailSyncService {
     return response.data.labels ?? [];
   }
 
-  private async synchronizeLabels(gmail: GmailClient, accountId: string): Promise<number> {
+  private async synchronizeLabels(
+    gmail: GmailClient,
+    account: { id: string; granted_scopes: string[] },
+  ): Promise<number> {
+    const accountId = account.id;
     const labels = await this.listLabels(gmail);
-    for (const managed of MANAGED_LABELS) {
+    /*
+     * Creating the parent label is a write, and a sync is a read. It used to happen on every first
+     * sync regardless, which worked only for mailboxes connected back when MailMind asked for
+     * `gmail.modify`: everyone connected since gets `gmail.readonly`, Google answered 403, and the
+     * whole first sync — and with it every new person's setup — failed before reading a message.
+     * The parent is only needed by the label export, so it is created only where that export is
+     * both switched on and granted, the same two checks every other write makes.
+     */
+    const mayWrite = env.GMAIL_WRITE_ENABLED && hasGmailWriteScope(account.granted_scopes);
+    for (const managed of mayWrite ? MANAGED_LABELS : []) {
       if (!labels.some((label) => label.name === managed.name)) {
         const created = await withGmailRetry(() =>
           gmail.users.labels.create({

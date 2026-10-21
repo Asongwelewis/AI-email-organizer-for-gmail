@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createGmailClient: vi.fn(),
@@ -149,7 +149,8 @@ describe('GmailSyncService', () => {
     );
     expect(mocks.complete).toHaveBeenCalledWith(
       lease,
-      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 1 }),
+      // The parent label is not created: reading a mailbox never writes to it.
+      expect.objectContaining({ messagesUpserted: 2, labelsUpserted: 0 }),
       'history-2',
       true,
     );
@@ -425,6 +426,79 @@ describe('GmailSyncService', () => {
    * A first sync used to read the whole mailbox. For one owner with 9,550 messages that was fine;
    * for several hundred people it is the free database's 500 MB several times over.
    */
+  /*
+   * Every account connected since the read-only downgrade holds `gmail.readonly`, and creating a
+   * label with it is a 403. The first sync used to create one regardless, so it failed — and with it
+   * every new person's setup — before reading a single message (Sentry JAVASCRIPT-REACT-E).
+   */
+  describe('the MailMind parent label', () => {
+    function gmailWithoutParent() {
+      const gmail = {
+        users: {
+          getProfile: vi.fn().mockResolvedValue({
+            data: { emailAddress: account.email, historyId: 'history-2', messagesTotal: 0 },
+          }),
+          labels: {
+            list: vi.fn().mockResolvedValue({ data: { labels: [{ id: 'INBOX', name: 'INBOX' }] } }),
+            create: vi
+              .fn()
+              .mockResolvedValue({ data: { id: 'Label_9', name: 'MailMind', type: 'user' } }),
+          },
+          messages: { list: vi.fn().mockResolvedValue({ data: {} }), get: vi.fn() },
+          history: { list: vi.fn() },
+        },
+      };
+      mocks.createGmailClient.mockResolvedValue(gmail);
+      return gmail;
+    }
+
+    afterEach(() => {
+      env.GMAIL_WRITE_ENABLED = false;
+    });
+
+    it('is never created by a sync of a read-only mailbox', async () => {
+      env.GMAIL_WRITE_ENABLED = true;
+      mocks.activeAccountForUser.mockResolvedValue({
+        ...account,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+      });
+      const gmail = gmailWithoutParent();
+
+      await new GmailSyncService().initialSync('user-id');
+
+      expect(gmail.users.labels.create).not.toHaveBeenCalled();
+      expect(mocks.complete).toHaveBeenCalled();
+      expect(mocks.fail).not.toHaveBeenCalled();
+    });
+
+    it('is not created while the export is switched off, whatever was granted', async () => {
+      mocks.activeAccountForUser.mockResolvedValue({
+        ...account,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+      });
+      const gmail = gmailWithoutParent();
+
+      await new GmailSyncService().initialSync('user-id');
+
+      expect(gmail.users.labels.create).not.toHaveBeenCalled();
+    });
+
+    it('is created when the export is on and the mailbox granted writing', async () => {
+      env.GMAIL_WRITE_ENABLED = true;
+      mocks.activeAccountForUser.mockResolvedValue({
+        ...account,
+        granted_scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+      });
+      const gmail = gmailWithoutParent();
+
+      await new GmailSyncService().initialSync('user-id');
+
+      expect(gmail.users.labels.create).toHaveBeenCalledWith(
+        expect.objectContaining({ requestBody: expect.objectContaining({ name: 'MailMind' }) }),
+      );
+    });
+  });
+
   describe('a bounded first sync', () => {
     const started = new Date('2026-10-20T00:00:00.000Z');
 
