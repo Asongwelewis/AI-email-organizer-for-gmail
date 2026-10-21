@@ -12,6 +12,7 @@ vi.mock('@web/context/useAuth', () => ({
   useAuth: () => ({
     user: { displayName: 'Ada Lovelace', email: 'ada@gmail.com', avatarUrl: null },
     logout: mocks.logout,
+    gmailConnection: { connected: true, email: 'ada@gmail.com', status: 'CONNECTED' },
   }),
 }));
 

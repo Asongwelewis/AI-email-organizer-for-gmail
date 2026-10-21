@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@web/services/http', () => ({ api: mocks.api }));
 vi.mock('@web/lib/push', () => mocks.push);
 vi.mock('@web/context/useAuth', () => ({
-  useAuth: () => ({ gmailConnection: { email: 'ada@gmail.com' } }),
+  useAuth: () => ({
+    gmailConnection: { connected: true, email: 'ada@gmail.com', status: 'CONNECTED' },
+  }),
 }));
 
 import { renderScreen } from '@web/test/renderScreen';

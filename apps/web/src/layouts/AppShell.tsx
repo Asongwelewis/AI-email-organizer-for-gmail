@@ -1,7 +1,8 @@
 import { FolderTree, History, Inbox, LogOut, Menu, Search, Shield, Star } from 'lucide-react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
+import { ConnectGmailScreen } from '@web/components/app/ConnectGmailScreen';
 import { NotificationCenter } from '@web/components/app/NotificationCenter';
 import { ServerWakeNotice } from '@web/components/app/ServerWakeNotice';
 import { ThemeToggle } from '@web/components/ThemeToggle';
@@ -29,6 +30,9 @@ const NAV = [
   { to: '/activity', label: 'Activity', Icon: History },
 ] as const;
 
+/** Screens that work without a mailbox: setting one up, the menu, and the account itself. */
+const NO_MAILBOX_NEEDED = new Set(['/setup', '/menu', '/account']);
+
 function MenuButton() {
   const feed = useNotificationFeed();
   const unread = feed.data?.unreadCount ?? 0;
@@ -50,7 +54,14 @@ function MenuButton() {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, gmailConnection } = useAuth();
+  const { pathname } = useLocation();
+  // Only an answer from the server counts. A status request that failed is not proof that
+  // Gmail is disconnected, and telling a connected person to connect would be its own bug.
+  const answered = gmailConnection !== null && gmailConnection.status !== 'ERROR';
+  const needsGmail =
+    answered && (!gmailConnection.connected || gmailConnection.requiresReauthentication);
+  const gated = needsGmail && !NO_MAILBOX_NEEDED.has(pathname);
 
   if (!user) return null;
 
@@ -106,7 +117,13 @@ export function AppShell() {
             <ThemeToggle variant="compact" className="shell__toolbar-theme" />
           </div>
           <ServerWakeNotice />
-          <Outlet />
+          {/* Every mailbox screen asks the API for a mailbox; without one, each request can
+              only fail. The step that is missing is shown instead of the screen. */}
+          {gated ? (
+            <ConnectGmailScreen reconnect={Boolean(gmailConnection?.requiresReauthentication)} />
+          ) : (
+            <Outlet />
+          )}
         </div>
       </main>
 

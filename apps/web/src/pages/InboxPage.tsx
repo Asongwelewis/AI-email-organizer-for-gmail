@@ -234,7 +234,10 @@ export function InboxPage() {
   }, [saved]);
 
   const isSaved = saved.length > 0 && pivotOrderKey(order) === pivotOrderKey(saved);
-  const loading = settingsQuery.isPending || viewQuery.isPending;
+  // A tree that cannot be asked for — the settings failed, so there is no ordering yet — is not
+  // loading. Counting it as loading is how this screen once said "Loading folders" forever.
+  const loading =
+    settingsQuery.isPending || (viewQuery.isPending && viewQuery.fetchStatus !== 'idle');
 
   return (
     <section className="screen">
@@ -348,6 +351,13 @@ export function InboxPage() {
       ) : null}
 
       {loading ? <LoadingState label="Loading folders" /> : null}
+      {settingsQuery.isError && !settingsQuery.data ? (
+        <ErrorNotice
+          error={settingsQuery.error}
+          title="Folders could not be loaded"
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      ) : null}
       {viewQuery.isError ? (
         <ErrorNotice
           error={viewQuery.error}

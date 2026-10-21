@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@web/services/http', () => ({ api: { getNotifications: mocks.getNotifications } }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
+vi.mock('@web/context/useAuth', () => ({
+  useAuth: () => ({ gmailConnection: { connected: true, status: 'CONNECTED' } }),
+}));
 
 import { queryKeys } from '@web/queries/queryKeys';
 import { NotificationCenter } from './NotificationCenter';

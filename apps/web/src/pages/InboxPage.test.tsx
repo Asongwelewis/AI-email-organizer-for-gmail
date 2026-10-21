@@ -124,6 +124,18 @@ describe('InboxPage', () => {
     expect(screen.queryByText('No folders at this arrangement')).not.toBeInTheDocument();
   });
 
+  // A tree that cannot be asked for is not loading. This screen once said "Loading folders" forever
+  // when its settings request failed, because the folder request it was waiting on never started.
+  it('says the folders could not be loaded rather than loading forever', async () => {
+    mocks.getPivotSettings.mockRejectedValue(
+      apiError('GMAIL_ACCOUNT_NOT_CONNECTED', 'Connect Gmail before using synchronization.', 409),
+    );
+    renderScreen(<InboxPage />, '/inbox');
+
+    expect(await screen.findByText('Folders could not be loaded')).toBeInTheDocument();
+    expect(screen.queryByText('Loading folders')).not.toBeInTheDocument();
+  });
+
   it('shows no setup card once setup has finished', async () => {
     renderScreen(<InboxPage />, '/inbox');
 

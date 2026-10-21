@@ -256,6 +256,44 @@ test('setup shows a connected mailbox being set up, with nothing to press', asyn
   await expect(page.getByRole('button', { name: /Start reading|Sort my mail/i })).toHaveCount(0);
 });
 
+/**
+ * Signing in and connecting Gmail are two permissions. Someone who had only signed in used to land
+ * on an Inbox that said "Loading folders" forever and an Activity page of errors; every mailbox
+ * screen now shows the one step they are missing, and nothing on the way logs an error.
+ */
+test('a signed-in visitor without Gmail is asked to connect it, not left loading', async ({
+  page,
+}) => {
+  const failures: string[] = [];
+  page.on('pageerror', (error) => failures.push(error.message));
+  await page.route('http://127.0.0.1:4174/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/integrations/google/status') {
+      await route.fulfill({
+        status: 200,
+        json: {
+          connected: false,
+          email: null,
+          status: 'DISCONNECTED',
+          grantedScopes: [],
+          requiresReauthentication: false,
+        },
+      });
+      return;
+    }
+    return apiMock(route);
+  });
+  await page.goto('/inbox');
+
+  await expect(page.getByRole('heading', { name: /connect gmail/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Connect Gmail' })).toBeVisible();
+  await expect(page.getByText('Loading folders')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Activity', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: /connect gmail/i })).toBeVisible();
+  expect(failures).toEqual([]);
+});
+
 test('retired screens redirect into the authenticated area rather than 404', async ({ page }) => {
   await page.route('http://127.0.0.1:4174/api/**', apiMock);
 
