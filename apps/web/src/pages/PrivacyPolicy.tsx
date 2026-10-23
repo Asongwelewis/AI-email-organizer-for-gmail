@@ -18,9 +18,9 @@ export function PrivacyPolicy() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          MailMind reads the <strong>headers</strong> of your Gmail — subject, sender, recipients,
-          date, labels and Gmail&rsquo;s own short preview line — to work out what each message is
-          about, and shows you the result as folders. It never reads the body of an email or any
+          AMO reads the <strong>headers</strong> of your Gmail — subject, sender, recipients, date,
+          labels and Gmail&rsquo;s own short preview line — to work out what each message is about,
+          and shows you the result as folders. It never reads the body of an email or any
           attachment, because it never asks Gmail for them. It does not sell anything, does not
           advertise, and does not share your mail with anyone except the one AI provider named
           below.
@@ -29,18 +29,18 @@ export function PrivacyPolicy() {
     >
       <h2>Who this is</h2>
       <p>
-        MailMind AI is operated by {LEGAL_ENTITY}. Questions about this policy, or about the data
-        held about you, go to <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>.
+        AMO is operated by {LEGAL_ENTITY}. Questions about this policy, or about the data held about
+        you, go to <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>.
       </p>
 
       <h2>What is collected</h2>
       <p>
-        When you sign in with Google, MailMind stores your Google account id, email address and
-        display name, and the profile picture URL Google supplies. That is what an account is.
+        When you sign in with Google, AMO stores your Google account id, email address and display
+        name, and the profile picture URL Google supplies. That is what an account is.
       </p>
       <p>
-        When you connect Gmail, MailMind requests <code>gmail.readonly</code> — read-only access —
-        and asks Gmail only for message <em>metadata</em>. For each message it stores:
+        When you connect Gmail, AMO requests <code>gmail.readonly</code> — read-only access — and
+        asks Gmail only for message <em>metadata</em>. For each message it stores:
       </p>
       <ul>
         <li>Gmail&rsquo;s message and thread identifiers.</li>
@@ -48,7 +48,7 @@ export function PrivacyPolicy() {
         <li>The date, the Gmail labels already on it, and flags such as read, starred or draft.</li>
         <li>
           The short snippet Gmail itself generates, truncated. This is the only text from inside a
-          message that MailMind ever holds.
+          message that AMO ever holds.
         </li>
         <li>
           Whether the message has attachments, and its approximate size. Never the attachments.
@@ -56,14 +56,14 @@ export function PrivacyPolicy() {
       </ul>
       <p>
         <strong>
-          MailMind never requests, receives or stores the body of an email, its raw MIME, or any
+          AMO never requests, receives or stores the body of an email, its raw MIME, or any
           attachment.
         </strong>{' '}
         This is not a promise about restraint; it is what the request to Gmail asks for.
       </p>
       <p>
-        Separately, if you use the <Link to="/feedback">feedback form</Link>, MailMind stores what
-        you typed, which of the four kinds you picked, and the route you were on. It stores an email
+        Separately, if you use the <Link to="/feedback">feedback form</Link>, AMO stores what you
+        typed, which of the four kinds you picked, and the route you were on. It stores an email
         address only if you enter one, and leaving that blank is a real choice: nothing else is
         recorded either way — not your IP address, not your browser, not where you came from. You do
         not need an account to send feedback, and if you have one it is attached so a reply can find
@@ -88,9 +88,9 @@ export function PrivacyPolicy() {
       </p>
       <p>
         Google&rsquo;s terms for the <em>free</em> Gemini tier permit Google to use submitted
-        content to improve its products. MailMind is not operated on the free tier for anyone other
-        than its own author; if you are using a MailMind instance you did not deploy yourself and
-        are unsure which tier it uses, ask before connecting a mailbox.
+        content to improve its products. AMO is not operated on the free tier for anyone other than
+        its own author; if you are using a AMO instance you did not deploy yourself and are unsure
+        which tier it uses, ask before connecting a mailbox.
       </p>
       <p>
         <strong>Your browser&rsquo;s push service.</strong> If you turn on notifications for a
@@ -109,7 +109,7 @@ export function PrivacyPolicy() {
 
       <h2>Google API Services User Data Policy</h2>
       <p>
-        MailMind&rsquo;s use of information received from Google APIs adheres to the{' '}
+        AMO&rsquo;s use of information received from Google APIs adheres to the{' '}
         <a
           href="https://developers.google.com/terms/api-services-user-data-policy"
           target="_blank"
@@ -135,8 +135,8 @@ export function PrivacyPolicy() {
 
       <h2>Deleting your data</h2>
       <p>
-        You can disconnect Gmail at any time, which revokes MailMind&rsquo;s access to your mailbox.
-        You can delete your account and everything stored about it from the{' '}
+        You can disconnect Gmail at any time, which revokes AMO&rsquo;s access to your mailbox. You
+        can delete your account and everything stored about it from the{' '}
         <Link to="/data-deletion">data deletion page</Link>. It is immediate and it is not
         recoverable.
       </p>

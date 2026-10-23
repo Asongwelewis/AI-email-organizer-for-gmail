@@ -40,7 +40,7 @@ app.use(cookieParser(env.SESSION_SECRET));
 
 app.get('/', (_request, response) => {
   response.json({
-    message: 'MailMind AI API',
+    message: 'AMO API',
     status: 'running',
   });
 });

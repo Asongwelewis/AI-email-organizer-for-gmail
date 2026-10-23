@@ -89,7 +89,7 @@ export function FeedbackPage() {
     <main className="legal-doc">
       <div className="legal-doc__column">
         <Link className="legal-doc__back" to="/">
-          ← MailMind AI
+          ← AMO
         </Link>
         <h1>Send feedback</h1>
 
@@ -154,8 +154,8 @@ export function FeedbackPage() {
                   What happened? <span aria-hidden="true">*</span>
                 </label>
                 <p className="feedback-help" id="feedback-message-help">
-                  If something went wrong, the error code MailMind showed you is the single most
-                  useful thing to include.
+                  If something went wrong, the error code AMO showed you is the single most useful
+                  thing to include.
                 </p>
                 <textarea
                   id="feedback-message"

@@ -62,7 +62,7 @@ describe('SetupPage', () => {
    * grant is revoked. Holding an unused permission to alter someone's mail is worth offering to
    * give back rather than quietly keeping.
    */
-  it('offers to narrow a grant that is wider than MailMind uses', async () => {
+  it('offers to narrow a grant that is wider than AMO uses', async () => {
     mocks.getGmailStatus.mockResolvedValue(
       connection({ holdsUnusedWriteScope: true, canModifyMail: true }),
     );
@@ -137,7 +137,7 @@ describe('SetupPage', () => {
         stage: 'SORTING',
         stopReason: 'SORTING_NOT_CONFIGURED',
         message:
-          'Your mail is synced. Sorting has not been switched on for MailMind yet — it will start on its own as soon as it is.',
+          'Your mail is synced. Sorting has not been switched on for AMO yet — it will start on its own as soon as it is.',
       }),
     );
     renderScreen(<SetupPage />, '/setup');

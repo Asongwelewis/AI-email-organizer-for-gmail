@@ -185,7 +185,7 @@ describe('PivotPage', () => {
    */
   it('explains a refused mirror as a setting, not a failure', async () => {
     mocks.applyPivot.mockRejectedValue(
-      apiError('GMAIL_WRITE_DISABLED', 'MailMind is not set up to write labels into Gmail.', 503),
+      apiError('GMAIL_WRITE_DISABLED', 'AMO is not set up to write labels into Gmail.', 503),
     );
     renderScreen(<PivotPage />, '/folders');
 

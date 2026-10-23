@@ -293,29 +293,39 @@ img {
 }
 
 .brand-mark__symbol {
-  width: 2.45rem;
-  height: 2.45rem;
-  overflow: visible;
+  position: relative;
+  display: block;
+  /* The artwork's own proportions, 497 x 220. */
+  width: 3.6rem;
+  aspect-ratio: 497 / 220;
+}
+
+.brand-mark__layer {
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.brand-mark__layer--letters {
+  mask-image: url('/brand/amo-mark-primary.png');
+}
+
+/* The ring sits a step back from the letters, as it does in the artwork. */
+.brand-mark__layer--ring {
+  mask-image: url('/brand/amo-mark-secondary.png');
+  opacity: 0.45;
 }
 
 .brand-mark__name {
   font-family: var(--font-wordmark);
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
-.brand-mark__name em {
-  margin-left: 0.15em;
-  color: var(--vermilion);
-  font-family: var(--font-mono);
-  font-size: 0.62em;
-  font-style: normal;
-  letter-spacing: 0.04em;
-  vertical-align: super;
-}
-
-/* Sits on a dark photographic panel in both themes, so it does not follow the surface tokens. */
 .brand-mark--inverted {
   color: #ffffff;
 }
@@ -754,8 +764,7 @@ img {
 }
 
 .landing-final-cta .brand-mark__symbol {
-  width: 4.5rem;
-  height: 4.5rem;
+  width: 7rem;
 }
 
 .landing-final-cta h2 {

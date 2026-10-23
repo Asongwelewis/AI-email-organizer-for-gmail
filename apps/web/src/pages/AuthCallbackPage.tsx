@@ -11,7 +11,7 @@ import { queryKeys } from '@web/queries/queryKeys';
 const statuses = {
   login_success: {
     kind: 'success',
-    title: 'Welcome to MailMind.',
+    title: 'Welcome to AMO.',
     copy: 'Your secure session is ready.',
     destination: '/inbox',
   },
@@ -24,13 +24,13 @@ const statuses = {
   gmail_connected: {
     kind: 'success',
     title: 'Gmail is connected.',
-    copy: 'MailMind is reading your recent mail and sorting it into folders now.',
+    copy: 'AMO is reading your recent mail and sorting it into folders now.',
     destination: '/inbox',
   },
   gmail_denied: {
     kind: 'error',
     title: 'Gmail stayed private.',
-    copy: 'Access was not approved. Your MailMind login is still active.',
+    copy: 'Access was not approved. Your AMO login is still active.',
     destination: '/inbox',
   },
   gmail_permission_incomplete: {
@@ -42,13 +42,13 @@ const statuses = {
   gmail_reauth_required: {
     kind: 'error',
     title: 'A fresh connection is needed.',
-    copy: 'Reconnect Gmail to renew MailMind’s access.',
+    copy: 'Reconnect Gmail to renew AMO’s access.',
     destination: '/inbox',
   },
   gmail_connection_failed: {
     kind: 'error',
     title: 'Connection interrupted.',
-    copy: 'Gmail could not be connected. Your MailMind account is unchanged.',
+    copy: 'Gmail could not be connected. Your AMO account is unchanged.',
     destination: '/inbox',
   },
 } as const;

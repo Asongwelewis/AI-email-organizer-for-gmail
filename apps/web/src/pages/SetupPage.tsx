@@ -84,8 +84,8 @@ export function SetupPage() {
         <h1 className="screen__title">Set up</h1>
       </header>
       <p className="screen__lede">
-        Connect Gmail and MailMind does the rest: it reads your recent mail, sets up your categories
-        and sorts your newest mail into folders. After that, new mail is sorted as it arrives.
+        Connect Gmail and AMO does the rest: it reads your recent mail, sets up your categories and
+        sorts your newest mail into folders. After that, new mail is sorted as it arrives.
       </p>
 
       {connectionQuery.isError ? (
@@ -101,7 +101,7 @@ export function SetupPage() {
             description={
               connection?.requiresReauthentication
                 ? 'Your Gmail access expired. Reconnect to carry on.'
-                : 'MailMind asks for read-only access and reads message headers only — never the body of an email, and never an attachment.'
+                : 'AMO asks for read-only access and reads message headers only — never the body of an email, and never an attachment.'
             }
           >
             <a
@@ -126,16 +126,16 @@ export function SetupPage() {
       )}
 
       {/*
-        MailMind cannot write to a mailbox it only reads, and it no longer needs to. Holding an
+        AMO cannot write to a mailbox it only reads, and it no longer needs to. Holding an
         unused permission to alter someone's mail is worth offering to give back rather than
         quietly keeping.
       */}
       {connection?.holdsUnusedWriteScope ? (
         <div className="notice" role="status">
           <div className="notice__body">
-            <p className="notice__title">MailMind can still change your mail</p>
+            <p className="notice__title">AMO can still change your mail</p>
             <p className="notice__message">
-              This mailbox was connected when MailMind wrote labels into Gmail, so it still holds
+              This mailbox was connected when AMO wrote labels into Gmail, so it still holds
               permission to alter and delete your mail. It does not use it. Narrowing reconnects you
               with read-only access — your folders are built here and are unaffected.
             </p>

@@ -41,7 +41,7 @@ if (env.MIGRATE_ON_START) {
 }
 
 const server = app.listen(env.PORT, () => {
-  logger.info({ port: env.PORT }, 'MailMind AI API is ready');
+  logger.info({ port: env.PORT }, 'AMO API is ready');
   startAutomationScheduler();
   startDatabaseHeartbeat();
   startKeepAwake();

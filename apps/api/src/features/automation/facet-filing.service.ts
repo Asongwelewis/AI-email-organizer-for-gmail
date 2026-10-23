@@ -133,7 +133,7 @@ export class FacetFilingService {
     if (!env.GMAIL_WRITE_ENABLED && !options.dryRun) {
       throw new AppError(
         'GMAIL_WRITE_DISABLED',
-        'MailMind is not set up to write labels into Gmail.',
+        'AMO is not set up to write labels into Gmail.',
         503,
       );
     }

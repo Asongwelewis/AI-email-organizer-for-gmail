@@ -12,7 +12,7 @@ import { useAuth } from '@web/context/useAuth';
 
 const safeLoginErrors: Record<string, string> = {
   login_failed: 'Google sign-in could not be completed. Nothing was connected—please try again.',
-  all_sessions_ended: 'Every MailMind session has been securely ended.',
+  all_sessions_ended: 'Every AMO session has been securely ended.',
 };
 
 export function LoginPage() {
@@ -22,7 +22,7 @@ export function LoginPage() {
   const message = safeLoginErrors[status];
 
   useEffect(() => {
-    document.title = 'Sign in · MailMind AI';
+    document.title = 'Sign in · AMO';
   }, []);
 
   if (isLoading) return <RouteLoader />;

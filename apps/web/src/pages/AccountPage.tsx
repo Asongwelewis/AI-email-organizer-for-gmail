@@ -32,7 +32,7 @@ export function AccountPage() {
         </div>
       </header>
       <p className="screen__lede">
-        See what is connected, end access, and remove your MailMind data without hunting through a
+        See what is connected, end access, and remove your AMO data without hunting through a
         settings maze.
       </p>
 
@@ -41,7 +41,7 @@ export function AccountPage() {
           <div className="account-card__icon">
             <ShieldCheck aria-hidden="true" />
           </div>
-          <span className="eyebrow">MailMind identity</span>
+          <span className="eyebrow">AMO identity</span>
           <h2>{user.displayName || 'Your account'}</h2>
           <p>{user.email}</p>
           <dl className="account-facts">
@@ -65,7 +65,7 @@ export function AccountPage() {
           <p>
             {gmailConnection?.connected
               ? `Connected as ${gmailConnection.email ?? 'your Google account'}.`
-              : 'Your MailMind sign-in does not grant Gmail access.'}
+              : 'Your AMO sign-in does not grant Gmail access.'}
           </p>
           {gmailConnection?.connected ? (
             <button
@@ -95,7 +95,7 @@ export function AccountPage() {
 
       <div className="account-actions account-actions--danger">
         <div>
-          <h2>Delete your MailMind data</h2>
+          <h2>Delete your AMO data</h2>
           <p>
             This removes your account, synchronized metadata, folders, decisions, and stored Gmail
             tokens.
@@ -109,7 +109,7 @@ export function AccountPage() {
       <ConfirmDialog
         open={disconnectOpen}
         title="Disconnect Gmail?"
-        description="MailMind will revoke the Gmail grant and remove stored connection tokens. Your MailMind account and existing synchronized view will remain."
+        description="AMO will revoke the Gmail grant and remove stored connection tokens. Your AMO account and existing synchronized view will remain."
         confirmLabel="Disconnect Gmail"
         busy={isDisconnecting}
         onConfirm={() => void confirmDisconnect()}

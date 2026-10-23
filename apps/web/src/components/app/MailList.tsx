@@ -26,7 +26,7 @@ export interface MailListItem {
 /** `MailMind/Netflix/Payment failed` reads as `Netflix / Payment failed` to a person. */
 function readablePath(fullPath: string): string {
   return fullPath
-    .replace(/^MailMind\//, '')
+    .replace(/^AMO\//, '')
     .split('/')
     .join(' / ');
 }

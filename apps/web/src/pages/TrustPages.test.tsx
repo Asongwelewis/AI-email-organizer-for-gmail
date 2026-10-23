@@ -15,7 +15,7 @@ describe('public trust surfaces', () => {
   it('explains the product boundary on the about page', () => {
     renderPage(<AboutPage />);
 
-    expect(screen.getByRole('heading', { name: 'About MailMind' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'About AMO' })).toBeInTheDocument();
     expect(
       screen.getByText(/does not send mail, answer mail, or silently change/i),
     ).toBeInTheDocument();
@@ -25,7 +25,7 @@ describe('public trust surfaces', () => {
   it('keeps FAQ answers collapsed until a visitor asks', () => {
     renderPage(<FaqPage />);
 
-    const question = screen.getByText('Does MailMind read my email body or attachments?');
+    const question = screen.getByText('Does AMO read my email body or attachments?');
     const details = question.closest('details');
     expect(details).not.toHaveAttribute('open');
     fireEvent.click(question);

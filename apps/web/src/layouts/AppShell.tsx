@@ -69,7 +69,7 @@ export function AppShell() {
     <div className="shell">
       <NotificationCenter />
       <nav className="shell__rail" aria-label="Primary">
-        <span className="shell__brand">MailMind</span>
+        <span className="shell__brand">AMO</span>
         <ul className="shell__nav">
           {NAV.map(({ to, label, Icon }) => (
             <li key={to}>
