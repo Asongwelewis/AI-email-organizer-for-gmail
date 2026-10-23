@@ -17,7 +17,7 @@ describe('public trust surfaces', () => {
 
     expect(screen.getByRole('heading', { name: 'About AMO' })).toBeInTheDocument();
     expect(
-      screen.getByText(/does not send mail, answer mail, or silently change/i),
+      screen.getByText(/does not send mail, answer mail, or change your Gmail/i),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /privacy policy/i })).toBeInTheDocument();
   });

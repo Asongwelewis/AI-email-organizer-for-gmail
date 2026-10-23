@@ -27,7 +27,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       <main>{children}</main>
       <footer className="public-footer">
         <BrandMark />
-        <p>Thoughtful inbox organization. You stay in control.</p>
+        <p>Automatic inbox organization. You stay in control.</p>
         <nav className="public-footer__links" aria-label="Footer">
           <Link to="/about">About</Link>
           <Link to="/faq">FAQ</Link>

@@ -22,14 +22,16 @@
   color-scheme: light;
 
   /* -------------------------------------------------------------- surfaces */
-  /* window is the desktop ground, content is the sheet you read, elevated is a card on top of it. */
-  --surface-window: #ececee;
-  --surface-content: #ffffff;
-  --surface-elevated: #ffffff;
-  --surface-inset: #f5f5f7;
+  /* window is the desktop ground, content is the sheet you read, elevated is a card on top of it.
+     Cream with a little grey, not white: pure white was bright enough to wash out every hairline
+     and translucent stroke on the page, so the whole ramp sits about half way down to paper. */
+  --surface-window: #e2ded5;
+  --surface-content: #eeeae1;
+  --surface-elevated: #f2eee6;
+  --surface-inset: #e7e3da;
   /* Chrome is translucent on purpose: vibrancy is the single most macOS-reading detail there is. */
-  --surface-chrome: rgb(246 246 248 / 0.72);
-  --surface-chrome-opaque: #f6f6f8;
+  --surface-chrome: rgb(236 232 223 / 0.76);
+  --surface-chrome-opaque: #ebe7de;
   --surface-scrim: rgb(0 0 0 / 0.28);
   /* The deliberately inverted band on the landing page. Dark in BOTH themes: a section that flips
      to blazing white on a dark page is not an inversion, it is a flashbang. */
@@ -47,10 +49,11 @@
   --ink-inverted: #ffffff;
 
   /* ---------------------------------------------------------------- lines */
-  --line: rgb(0 0 0 / 0.1);
-  --line-strong: rgb(0 0 0 / 0.2);
+  /* Warm and a step deeper than on white, so a hairline on cream still reads as a line. */
+  --line: rgb(52 44 30 / 0.16);
+  --line-strong: rgb(52 44 30 / 0.28);
   /* The inner top highlight. This is what stops a card reading as a flat rectangle. */
-  --highlight-inset: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --highlight-inset: inset 0 1px 0 rgb(255 252 244 / 0.55);
 
   /* --------------------------------------------------------------- accent */
   /* One accent, spent only on focus, selection, and the single primary action per screen. */
@@ -105,12 +108,12 @@
   --grain-opacity: 0.2;
   --grain-blend: multiply;
   /* The single soft light source at the top-left of the public pages. */
-  --page-glow: rgb(255 255 255 / 0.86);
+  --page-glow: rgb(250 246 236 / 0.7);
   /* The drifting envelopes behind the public pages. Tuned per theme: a stroke that is a whisper on
      cream is invisible on graphite. */
-  --atmosphere-opacity: 0.055;
-  --atmosphere-opacity-landing: 0.068;
-  --atmosphere-opacity-auth: 0.038;
+  --atmosphere-opacity: 0.075;
+  --atmosphere-opacity-landing: 0.09;
+  --atmosphere-opacity-auth: 0.055;
 
   /* ---------------------------------------------------------- folder tiles */
   /*
@@ -122,9 +125,9 @@
    * element that DECLARES it, so composing the colour here would resolve `--tile-hue` against
    * `:root` — where it is never set — and paint every folder the same fallback blue.
    */
-  --tile-sl-surface: 46% 94%;
+  --tile-sl-surface: 40% 88%;
   --tile-sl-ink: 58% 26%;
-  --tile-sl-line: 34% 84%;
+  --tile-sl-line: 30% 76%;
 }
 
 /* The OS asked for dark and nobody overrode it. */

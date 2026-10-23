@@ -85,10 +85,11 @@ body::before {
 .mail-shape {
   position: absolute;
   display: block;
-  width: clamp(7rem, 12vw, 12.5rem);
   opacity: var(--atmosphere-opacity);
+  rotate: var(--tilt, 0deg);
   will-change: transform;
-  animation: mail-drift-a 18s ease-in-out infinite alternate;
+  /* Position, size, pace, phase and the waypoints are set per shape by MailAtmosphere. */
+  animation: mail-float 50s ease-in-out infinite alternate;
 }
 
 .mail-shape svg {
@@ -99,92 +100,16 @@ body::before {
   vector-effect: non-scaling-stroke;
 }
 
-.mail-shape:nth-child(1) {
-  top: 9%;
-  left: 4%;
-  rotate: -9deg;
-}
-
-.mail-shape:nth-child(2) {
-  top: 18%;
-  right: 7%;
-  width: clamp(9rem, 17vw, 17rem);
-  animation-name: mail-drift-b;
-  animation-delay: -7s;
-  animation-duration: 24s;
-}
-
-.mail-shape:nth-child(3) {
-  top: 43%;
-  left: 13%;
-  width: clamp(5rem, 8vw, 8rem);
-  rotate: 13deg;
-  animation-delay: -11s;
-  animation-duration: 22s;
-}
-
-.mail-shape:nth-child(4) {
-  top: 57%;
-  right: 17%;
-  rotate: 7deg;
-  animation-name: mail-drift-b;
-  animation-delay: -3s;
-  animation-duration: 20s;
-}
-
-.mail-shape:nth-child(5) {
-  right: 3%;
-  bottom: 7%;
-  width: clamp(5.5rem, 9vw, 9rem);
-  rotate: -6deg;
-  animation-delay: -14s;
-  animation-duration: 26s;
-}
-
-.mail-shape:nth-child(6) {
-  bottom: 12%;
-  left: 2%;
-  width: clamp(8rem, 15vw, 15rem);
-  animation-name: mail-drift-b;
-  animation-delay: -8s;
-}
-
-.mail-shape:nth-child(7) {
-  top: 30%;
-  left: 48%;
-  width: clamp(4rem, 6vw, 6rem);
-  rotate: -17deg;
-  animation-delay: -5s;
-  animation-duration: 25s;
-}
-
-.mail-shape:nth-child(8) {
-  bottom: 3%;
-  left: 38%;
-  width: clamp(6rem, 10vw, 10rem);
-  rotate: 10deg;
-  animation-name: mail-drift-b;
-  animation-delay: -12s;
-  animation-duration: 21s;
-}
-
 .mail-atmosphere[data-scene='landing'] .mail-shape {
   opacity: var(--atmosphere-opacity-landing);
 }
 
 .mail-atmosphere[data-scene='auth'] .mail-shape {
   opacity: var(--atmosphere-opacity-auth);
-  animation-duration: 28s;
-}
-
-.mail-atmosphere[data-scene='auth'] .mail-shape:nth-child(n + 6),
-.mail-atmosphere[data-scene='legal'] .mail-shape:nth-child(n + 5) {
-  display: none;
 }
 
 .mail-atmosphere[data-scene='app'] .mail-shape {
   opacity: 0.045;
-  animation-duration: 24s;
 }
 
 .mail-atmosphere.is-paused .mail-shape {
@@ -221,27 +146,19 @@ body::before {
   text-transform: uppercase;
 }
 
-@keyframes mail-drift-a {
+/* A slow wander through three random waypoints and back, each shape on its own path. */
+@keyframes mail-float {
   0% {
-    transform: translate3d(-4px, -6px, 0) rotate(-1deg);
+    transform: translate3d(0, 0, 0) rotate(-2deg);
   }
-  50% {
-    transform: translate3d(10px, 8px, 0) rotate(2deg);
+  33% {
+    transform: translate3d(var(--x1), var(--y1), 0) rotate(3deg);
+  }
+  66% {
+    transform: translate3d(var(--x2), var(--y2), 0) rotate(-1deg);
   }
   100% {
-    transform: translate3d(-2px, 17px, 0) rotate(-2deg);
-  }
-}
-
-@keyframes mail-drift-b {
-  0% {
-    transform: translate3d(8px, 5px, 0) rotate(1deg);
-  }
-  55% {
-    transform: translate3d(-12px, 13px, 0) rotate(-2deg);
-  }
-  100% {
-    transform: translate3d(5px, -8px, 0) rotate(2deg);
+    transform: translate3d(var(--x3), var(--y3), 0) rotate(2deg);
   }
 }
 
@@ -293,14 +210,18 @@ img {
 }
 
 .brand-mark__symbol {
+  width: 3.6rem;
+}
+
+/* The AMO mark: two masks of the artwork, painted with the current ink. */
+.amo-logo {
   position: relative;
   display: block;
   /* The artwork's own proportions, 497 x 220. */
-  width: 3.6rem;
   aspect-ratio: 497 / 220;
 }
 
-.brand-mark__layer {
+.amo-logo__layer {
   position: absolute;
   inset: 0;
   background-color: currentColor;
@@ -309,12 +230,12 @@ img {
   mask-size: contain;
 }
 
-.brand-mark__layer--letters {
+.amo-logo__layer--letters {
   mask-image: url('/brand/amo-mark-primary.png');
 }
 
 /* The ring sits a step back from the letters, as it does in the artwork. */
-.brand-mark__layer--ring {
+.amo-logo__layer--ring {
   mask-image: url('/brand/amo-mark-secondary.png');
   opacity: 0.45;
 }
@@ -448,6 +369,15 @@ img {
 .page-heading h1 em {
   color: var(--accent);
   font-style: normal;
+}
+
+/* The hero's name is the mark itself, as large as the wordmark it replaces. */
+.landing-hero__logo {
+  line-height: 0;
+}
+
+.landing-hero__logo .amo-logo {
+  width: clamp(10rem, 22vw, 20rem);
 }
 
 .landing-hero__promise {
@@ -655,6 +585,42 @@ img {
   color: var(--ink-on-invert-soft);
   font-size: 0.93rem;
   line-height: 1.7;
+}
+
+/* Real numbers, and where they came from. */
+.principle-card__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1.75rem 0 0;
+}
+
+.principle-card__facts div {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line-on-invert);
+}
+
+.principle-card__facts dt {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 1.9vw, 1.75rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-on-invert);
+}
+
+.principle-card__facts dd {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--ink-on-invert-soft);
+}
+
+.principle-card p.principle-card__source {
+  margin-top: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-on-invert-soft);
 }
 
 .principle-card > svg {
@@ -1630,6 +1596,10 @@ img {
   line-height: 1.7;
 }
 
+.sign-out__error {
+  color: var(--status-danger-ink);
+}
+
 .confirm-dialog__actions {
   display: flex;
   justify-content: flex-end;
@@ -1753,12 +1723,12 @@ img {
 }
 
 @media (max-width: 780px) {
+  /* Fewer on a phone, and fainter: a small screen has less room for them to wander in. */
   .mail-shape {
-    animation: none;
-    opacity: 0.032 !important;
+    opacity: 0.045 !important;
   }
 
-  .mail-shape:nth-child(n + 5),
+  .mail-shape:nth-child(n + 9),
   .motion-pause {
     display: none;
   }
@@ -2274,7 +2244,7 @@ img {
   padding-inline: 0.7rem;
   color: var(--ink);
   border: 1px solid var(--line);
-  background: white;
+  background: var(--surface-elevated);
 }
 
 .recommendation-card__decision button {
@@ -2447,7 +2417,7 @@ img {
   align-items: center;
   padding: 1.6rem;
   border: 1px solid var(--line);
-  background: white;
+  background: var(--surface-elevated);
 }
 
 .automation-run-panel h2,
@@ -2558,7 +2528,7 @@ img {
   min-height: 2.8rem;
   padding-inline: 0.7rem;
   border: 1px solid var(--line);
-  background: white;
+  background: var(--surface-elevated);
 }
 
 .automation-review-card__decision > div {
@@ -2754,7 +2724,7 @@ img {
   padding: 1.25rem;
   color: var(--ink);
   border-right: 1px solid var(--line);
-  background: white;
+  background: var(--surface-elevated);
 }
 
 .product-metric:last-child {
@@ -3291,7 +3261,7 @@ summary,
   padding-inline: 0.7rem;
   color: var(--ink);
   border: 1px solid var(--line);
-  background: white;
+  background: var(--surface-elevated);
 }
 
 .candidate-actions button.secondary {

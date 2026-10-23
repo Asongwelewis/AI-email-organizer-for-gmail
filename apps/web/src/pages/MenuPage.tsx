@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
 import { ThemeToggle } from '@web/components/ThemeToggle';
+import { useSignOut } from '@web/components/app/SignOutDialog';
 import { useAuth } from '@web/context/useAuth';
 import { formatCount } from '@web/lib/format';
 import { useNotificationFeed } from '@web/queries/notifications';
@@ -14,7 +15,8 @@ import { useNotificationFeed } from '@web/queries/notifications';
  * lives here, behind the menu icon on the left of every screen, starting with notifications.
  */
 export function MenuPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { requestSignOut, dialog: signOutDialog } = useSignOut();
   const feed = useNotificationFeed();
   const unread = feed.data?.unreadCount ?? 0;
 
@@ -67,7 +69,8 @@ export function MenuPage() {
         <ThemeToggle variant="compact" />
       </div>
 
-      <button type="button" className="button menu-logout" onClick={() => void logout()}>
+      {signOutDialog}
+      <button type="button" className="button menu-logout" onClick={requestSignOut}>
         <LogOut aria-hidden="true" strokeWidth={1.5} />
         Log out
       </button>

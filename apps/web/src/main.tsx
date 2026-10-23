@@ -5,10 +5,14 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from './App';
+import { captureInstallPrompt } from '@web/lib/installPrompt';
 // theme.css first: it defines every colour token the other two consume.
 import '@web/styles/theme.css';
 import '@web/styles/index.css';
 import '@web/styles/app.css';
+
+// Before anything renders: the browser offers installation once, early, and does not repeat it.
+captureInstallPrompt();
 
 const queryClient = new QueryClient({
   defaultOptions: {

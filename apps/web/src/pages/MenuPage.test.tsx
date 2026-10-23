@@ -5,9 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getNotifications: vi.fn(),
   logout: vi.fn(),
+  deleteAccount: vi.fn(),
 }));
 
-vi.mock('@web/services/http', () => ({ api: { getNotifications: mocks.getNotifications } }));
+vi.mock('@web/services/http', () => ({
+  api: { getNotifications: mocks.getNotifications, deleteAccount: mocks.deleteAccount },
+}));
 vi.mock('@web/context/useAuth', () => ({
   useAuth: () => ({
     user: { displayName: 'Ada Lovelace', email: 'ada@gmail.com', avatarUrl: null },
@@ -48,9 +51,40 @@ describe('MenuPage', () => {
     );
   });
 
-  it('logs out', async () => {
+  // Signing out is where a person decides what happens to their data.
+  it('asks whether to keep the data, and keeps it when asked to', async () => {
     renderScreen(<MenuPage />, '/menu');
     await userEvent.click(screen.getByRole('button', { name: /Log out/ }));
+
+    expect(screen.getByRole('dialog', { name: 'Sign out of AMO' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Keep my data' }));
+
     expect(mocks.logout).toHaveBeenCalledOnce();
+    expect(mocks.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('deletes everything only after a second, explicit tap', async () => {
+    mocks.deleteAccount.mockResolvedValue({ success: true, connectedAccounts: 1 });
+    renderScreen(<MenuPage />, '/menu');
+    await userEvent.click(screen.getByRole('button', { name: /Log out/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    expect(mocks.deleteAccount).not.toHaveBeenCalled();
+    expect(screen.getByText(/cannot be undone/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Yes, delete everything' }));
+    expect(mocks.deleteAccount).toHaveBeenCalledOnce();
+    expect(mocks.logout).toHaveBeenCalledOnce();
+  });
+
+  it('stays signed in and says so when the deletion fails', async () => {
+    mocks.deleteAccount.mockRejectedValue(new Error('offline'));
+    renderScreen(<MenuPage />, '/menu');
+    await userEvent.click(screen.getByRole('button', { name: /Log out/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Yes, delete everything' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/still signed in/);
+    expect(mocks.logout).not.toHaveBeenCalled();
   });
 });
