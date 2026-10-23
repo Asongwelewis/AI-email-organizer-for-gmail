@@ -16,14 +16,14 @@ describe('LandingPage', () => {
   beforeAll(() => vi.stubGlobal('IntersectionObserver', IntersectionObserverStub));
   afterAll(() => vi.unstubAllGlobals());
 
-  it('prominently names and clearly explains MailMind AI', () => {
+  it('prominently names and clearly explains AMO', () => {
     render(
       <MemoryRouter>
         <LandingPage />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { level: 1, name: 'MailMind AI' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'AMO' })).toBeInTheDocument();
     expect(screen.getByText(/securely analyzes synchronized Gmail metadata/i)).toBeInTheDocument();
   });
 

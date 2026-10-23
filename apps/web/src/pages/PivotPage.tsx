@@ -265,7 +265,7 @@ export function PivotPage() {
       ) : null}
 
       {/*
-        Optional, and off unless it was turned on. MailMind is the folder view; labelling Gmail
+        Optional, and off unless it was turned on. AMO is the folder view; labelling Gmail
         buys organisation visible inside the Gmail app and costs a nested label per folder and one
         modify per message. Only this arrangement can be exported — a message wears one Gmail label
         and no more, which is the constraint that used to make "canonical" a real word here.
@@ -273,10 +273,10 @@ export function PivotPage() {
       <details className="export">
         <summary>Also mirror this into Gmail</summary>
         <p className="screen__hint">
-          MailMind does not need Gmail labels: a message opens by id whether it is filed, archived
-          or still in the inbox. Mirroring adds the folders to Gmail&rsquo;s own sidebar, and only
-          this arrangement can be mirrored — a message wears one Gmail label and no more. It is off
-          unless your MailMind server was configured to allow it.
+          AMO does not need Gmail labels: a message opens by id whether it is filed, archived or
+          still in the inbox. Mirroring adds the folders to Gmail&rsquo;s own sidebar, and only this
+          arrangement can be mirrored — a message wears one Gmail label and no more. It is off
+          unless your AMO server was configured to allow it.
         </p>
         <div className="screen__actions">
           <button

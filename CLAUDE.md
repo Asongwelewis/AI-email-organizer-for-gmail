@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-MailMind AI — a human-in-the-loop Gmail organization app. npm-workspaces monorepo: `apps/web`
+**AMO: Automated Mail Organizer** (formerly MailMind AI) — a Gmail organization app. The product
+name people see is AMO; the code, packages (`@mailmind/*`), database, cookie (`mailmind_session`)
+and the Gmail label root `MailMind/` keep the old name on purpose, so no session, row or label
+moves. Brand assets are generated from `docs/brand/amo-logo-source.jpeg`: the PWA icons, the
+favicons, the two theme-aware wordmark masks in `apps/web/public/brand/`, and
+`docs/brand/amo-logo-120.png` for Google's consent screen. npm-workspaces monorepo: `apps/web`
 (React 19 + Vite SPA), `apps/api` (Express 5 + Prisma), `packages/shared`, `packages/ui`,
 `packages/config`. Requires Node.js 22+ / npm 10+.
 

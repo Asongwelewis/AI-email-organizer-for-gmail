@@ -10,7 +10,7 @@ const principles = [
   {
     number: '01',
     title: 'Suggestions, not surprises',
-    copy: 'MailMind finds useful patterns in synchronized Gmail metadata and turns them into label suggestions for you to review.',
+    copy: 'AMO finds useful patterns in synchronized Gmail metadata and turns them into label suggestions for you to review.',
   },
   {
     number: '02',
@@ -20,22 +20,22 @@ const principles = [
   {
     number: '03',
     title: 'Permission on your terms',
-    copy: 'Google sign-in and Gmail access stay separate. You can disconnect Gmail without deleting your MailMind account.',
+    copy: 'Google sign-in and Gmail access stay separate. You can disconnect Gmail without deleting your AMO account.',
   },
 ] as const;
 
 const workflow = [
   {
     title: 'Sign in with Google.',
-    copy: 'Create your MailMind identity using your basic Google profile. This step does not grant Gmail access.',
+    copy: 'Create your AMO identity using your basic Google profile. This step does not grant Gmail access.',
   },
   {
     title: 'Connect Gmail.',
-    copy: 'Authorize Gmail separately, then synchronize the message metadata MailMind needs to find organization patterns.',
+    copy: 'Authorize Gmail separately, then synchronize the message metadata AMO needs to find organization patterns.',
   },
   {
     title: 'Review suggested labels.',
-    copy: 'MailMind groups recurring senders and topics into controlled label suggestions with clear reasons.',
+    copy: 'AMO groups recurring senders and topics into controlled label suggestions with clear reasons.',
   },
   {
     title: 'Approve or reject suggestions.',
@@ -62,18 +62,16 @@ export function LandingPage() {
           <motion.div className="landing-kicker" {...entrance(0)}>
             <span /> A human-reviewed Gmail organizer
           </motion.div>
-          <motion.h1 {...entrance(1)}>
-            MailMind <em>AI</em>
-          </motion.h1>
+          <motion.h1 {...entrance(1)}>AMO</motion.h1>
           <motion.p className="landing-hero__promise" {...entrance(2)}>
             Thoughtful Gmail organization,
             <br />
             with every suggestion reviewed by you.
           </motion.p>
           <motion.p className="landing-hero__lede" {...entrance(3)}>
-            MailMind AI securely analyzes synchronized Gmail metadata to identify recurring senders
-            and topics, then suggests useful labels for you to approve or reject. Reviewing a
-            suggestion does not change Gmail at this stage.
+            AMO securely analyzes synchronized Gmail metadata to identify recurring senders and
+            topics, then suggests useful labels for you to approve or reject. Reviewing a suggestion
+            does not change Gmail at this stage.
           </motion.p>
           <motion.div className="landing-hero__actions" {...entrance(4)}>
             <Link className="cta-link" to="/login" data-cursor>
@@ -106,7 +104,7 @@ export function LandingPage() {
             alt="Artful paper correspondence arranged into an organized filing system"
           />
           <figcaption>
-            <span>MailMind study № 01</span>
+            <span>AMO study № 01</span>
             <span>Order without overreach</span>
           </figcaption>
         </motion.figure>
@@ -147,8 +145,8 @@ export function LandingPage() {
               Every choice stays yours.
             </h2>
             <p>
-              From secure sign-in to label review, MailMind keeps identity, Gmail permission, and
-              every organization decision explicit.
+              From secure sign-in to label review, AMO keeps identity, Gmail permission, and every
+              organization decision explicit.
             </p>
           </motion.div>
           <ol className="workflow-steps">
@@ -170,8 +168,8 @@ export function LandingPage() {
         <BrandMark compact />
         <h2>Bring calm to the review queue.</h2>
         <p>
-          Start with a secure MailMind AI identity. Connect Gmail only when you choose, and keep
-          every label suggestion under your control.
+          Start with a secure AMO identity. Connect Gmail only when you choose, and keep every label
+          suggestion under your control.
         </p>
         <Link className="cta-link cta-link--paper" to="/login">
           Continue with Google <ArrowRight aria-hidden="true" />

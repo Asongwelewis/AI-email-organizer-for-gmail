@@ -23,8 +23,8 @@ export function ConnectGmailScreen({ reconnect = false }: { reconnect?: boolean 
         </h1>
         <p className="connect-gmail__lede">
           {reconnect
-            ? 'MailMind’s access to your Gmail has expired. Reconnect it and your folders pick up where they left off.'
-            : 'Signing in only tells MailMind who you are. To sort your mail it needs your permission to read it — Google asks for that separately.'}
+            ? 'AMO’s access to your Gmail has expired. Reconnect it and your folders pick up where they left off.'
+            : 'Signing in only tells AMO who you are. To sort your mail it needs your permission to read it — Google asks for that separately.'}
         </p>
         <a
           className="button button--primary"
@@ -34,8 +34,8 @@ export function ConnectGmailScreen({ reconnect = false }: { reconnect?: boolean 
         </a>
         <p className="connect-gmail__detail">
           Read-only, and only the sender, subject and date of each email — never the body or an
-          attachment. Once connected, MailMind reads your recent mail and builds your folders on its
-          own; it takes a minute or two.
+          attachment. Once connected, AMO reads your recent mail and builds your folders on its own;
+          it takes a minute or two.
         </p>
       </div>
     </section>

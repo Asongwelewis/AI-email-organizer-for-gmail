@@ -8,7 +8,7 @@ const promises = [
   {
     Icon: Eye,
     title: 'See the pattern',
-    copy: 'MailMind works from Gmail metadata: the subject, sender, date, labels, and short preview Gmail provides.',
+    copy: 'AMO works from Gmail metadata: the subject, sender, date, labels, and short preview Gmail provides.',
   },
   {
     Icon: FolderKanban,
@@ -25,16 +25,16 @@ const promises = [
 export function AboutPage() {
   return (
     <LegalDocument
-      title="About MailMind"
+      title="About AMO"
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          MailMind is a quieter way to understand a crowded Gmail account: a private working view of
-          your mailbox, built from the smallest useful amount of information.
+          AMO is a quieter way to understand a crowded Gmail account: a private working view of your
+          mailbox, built from the smallest useful amount of information.
         </p>
       }
     >
-      <div className="trust-grid" aria-label="MailMind principles">
+      <div className="trust-grid" aria-label="AMO principles">
         {promises.map(({ Icon, title, copy }) => (
           <article className="trust-card" key={title}>
             <Icon aria-hidden="true" />
@@ -46,7 +46,7 @@ export function AboutPage() {
 
       <h2>Built for useful restraint</h2>
       <p>
-        MailMind does not send mail, answer mail, or silently change your Gmail. It separates Google
+        AMO does not send mail, answer mail, or silently change your Gmail. It separates Google
         identity from Gmail permission, keeps the session in an HttpOnly cookie, and puts the
         organization decision in front of you.
       </p>

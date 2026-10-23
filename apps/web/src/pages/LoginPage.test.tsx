@@ -36,9 +36,11 @@ describe('LoginPage', () => {
     authState.login.mockReset();
   });
 
-  it('renders MailMind branding, legal links, and the Google action', () => {
+  it('renders AMO branding, legal links, and the Google action', () => {
     renderLogin();
-    expect(screen.getByRole('link', { name: 'MailMind AI home' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'AMO: Automated Mail Organizer — home' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();

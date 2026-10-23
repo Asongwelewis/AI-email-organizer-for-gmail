@@ -57,7 +57,7 @@ describe('AccountPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /disconnect gmail/i }));
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('MailMind will revoke the Gmail grant');
+    expect(dialog).toHaveTextContent('AMO will revoke the Gmail grant');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect Gmail' }));
     expect(auth.disconnectGmail).toHaveBeenCalledTimes(1);
   });

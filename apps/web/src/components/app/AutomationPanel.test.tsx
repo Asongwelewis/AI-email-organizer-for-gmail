@@ -104,7 +104,7 @@ describe('AutomationPanel', () => {
     renderScreen(<AutomationPanel />);
 
     expect(await screen.findByText('Automation is off')).toBeInTheDocument();
-    expect(screen.getByText(/switched off for MailMind right now/)).toBeInTheDocument();
+    expect(screen.getByText(/switched off for AMO right now/)).toBeInTheDocument();
     expect(screen.queryByText(/checks every/i)).not.toBeInTheDocument();
   });
 

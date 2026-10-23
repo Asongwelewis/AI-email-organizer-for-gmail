@@ -5,36 +5,26 @@ interface BrandMarkProps {
   inverted?: boolean;
 }
 
+/**
+ * The AMO logo, drawn in the theme's own colours.
+ *
+ * The supplied artwork is white letters and a grey ring on black, which disappears on the light
+ * theme. It is shipped as two transparent masks instead — the letters and the ring — and each is
+ * painted with a CSS colour, so the mark is dark on light, light on dark, and inverted where asked,
+ * from one source image. `compact` drops the spelled-out name beside it.
+ */
 export function BrandMark({ compact = false, inverted = false }: BrandMarkProps) {
   return (
     <Link
       className={`brand-mark ${inverted ? 'brand-mark--inverted' : ''}`}
       to="/"
-      aria-label="MailMind AI home"
+      aria-label="AMO: Automated Mail Organizer — home"
     >
-      <svg className="brand-mark__symbol" viewBox="0 0 44 44" aria-hidden="true">
-        <path d="M4 9.5 22 22 40 9.5v25H4z" fill="currentColor" opacity=".16" />
-        <path
-          d="M4 9.5h36L22 22z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.3"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M4 9.5v25h36v-25M4 34.5l13.2-16M40 34.5l-13.2-16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.3"
-          strokeLinejoin="round"
-        />
-        <circle cx="34.5" cy="8.5" r="5.5" fill="var(--vermilion)" />
-      </svg>
-      {!compact && (
-        <span className="brand-mark__name">
-          MailMind <em>AI</em>
-        </span>
-      )}
+      <span className="brand-mark__symbol" aria-hidden="true">
+        <span className="brand-mark__layer brand-mark__layer--ring" />
+        <span className="brand-mark__layer brand-mark__layer--letters" />
+      </span>
+      {!compact && <span className="brand-mark__name">Automated Mail Organizer</span>}
     </Link>
   );
 }

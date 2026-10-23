@@ -14,7 +14,7 @@ export function SupportPage() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          Something wrong, or a question about what MailMind does with your mail?{' '}
+          Something wrong, or a question about what AMO does with your mail?{' '}
           <Link to="/feedback">Send it straight through the app</Link> — no account needed — or
           write to <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>.
         </p>
@@ -22,7 +22,7 @@ export function SupportPage() {
     >
       <h2>Before you write</h2>
       <p>
-        Most reports are quicker to act on with the error code attached. MailMind shows the
+        Most reports are quicker to act on with the error code attached. AMO shows the
         server&rsquo;s own code next to whatever failed — a short string like{' '}
         <code>GMAIL_REAUTH_REQUIRED</code> — rather than a generic apology, and a screenshot of that
         is usually enough.
@@ -36,9 +36,9 @@ export function SupportPage() {
         Folders screen re-files everything instantly and costs nothing.
       </p>
 
-      <h3>MailMind says my Gmail connection needs renewing</h3>
+      <h3>AMO says my Gmail connection needs renewing</h3>
       <p>
-        Google expires access periodically, and revokes it if you remove MailMind from your Google
+        Google expires access periodically, and revokes it if you remove AMO from your Google
         account&rsquo;s connected apps. Reconnect from the Set up screen.
       </p>
 
@@ -50,7 +50,7 @@ export function SupportPage() {
 
       <h3>I want it to stop</h3>
       <p>
-        Disconnecting Gmail revokes MailMind&rsquo;s access immediately.{' '}
+        Disconnecting Gmail revokes AMO&rsquo;s access immediately.{' '}
         <Link to="/data-deletion">Deleting your account</Link> removes everything stored about you.
       </p>
 

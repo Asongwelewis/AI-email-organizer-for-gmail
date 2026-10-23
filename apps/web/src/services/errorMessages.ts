@@ -8,16 +8,16 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   AUTH_SESSION_REVOKED: 'This session is no longer active. Please sign in again.',
   AUTH_USER_SUSPENDED: 'This account is currently suspended.',
   AUTH_USER_DELETED: 'This account is no longer available.',
-  GMAIL_PERMISSION_DENIED: 'Gmail access was not approved. Your MailMind login is still active.',
+  GMAIL_PERMISSION_DENIED: 'Gmail access was not approved. Your AMO login is still active.',
   GMAIL_PERMISSION_INCOMPLETE:
-    'MailMind did not receive all required Gmail permissions. Please reconnect and approve the requested access.',
+    'AMO did not receive all required Gmail permissions. Please reconnect and approve the requested access.',
   GMAIL_REAUTH_REQUIRED: 'Your Gmail connection needs to be renewed.',
   GMAIL_CONNECTION_FAILED: 'We could not update your Gmail connection. Please try again.',
   GMAIL_ACCOUNT_NOT_CONNECTED: 'Connect Gmail before working with labels.',
   GMAIL_WRITE_SCOPE_MISSING:
-    'This mailbox was connected for reading only, so MailMind cannot write labels into it. Your folders are unaffected — they are built here, not in Gmail.',
+    'This mailbox was connected for reading only, so AMO cannot write labels into it. Your folders are unaffected — they are built here, not in Gmail.',
   GMAIL_WRITE_DISABLED:
-    'This MailMind is not set up to write labels into Gmail. Your folders are here either way — nothing in the app depends on them existing in Gmail.',
+    'This AMO server is not set up to write labels into Gmail. Your folders are here either way — nothing in the app depends on them existing in Gmail.',
   LABEL_NAME_INVALID:
     'That label name cannot be used. Use 2-60 characters, no slashes, and something more specific than a generic word.',
   LABEL_DUPLICATE: 'Two of those labels are too similar to keep both. Rename one and try again.',
@@ -37,7 +37,7 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   ACTIVITY_VALIDATION_FAILED: 'That activity request was not valid.',
   RUN_ABANDONED:
     'The server restarted while this run was in progress. No work was lost; run it again to continue.',
-  CSRF_ORIGIN_INVALID: 'This request came from an origin MailMind does not trust.',
+  CSRF_ORIGIN_INVALID: 'This request came from an origin AMO does not trust.',
   FEEDBACK_VALIDATION_FAILED:
     'Add a little more detail — at least a sentence, and under 4000 characters.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please try again shortly.',

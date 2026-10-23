@@ -40,7 +40,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           <Link to="/privacy">Privacy</Link>
           <Link to="/terms">Terms</Link>
         </nav>
-        <span>© {new Date().getFullYear()} MailMind AI</span>
+        <span>© {new Date().getFullYear()} AMO</span>
       </footer>
     </div>
   );

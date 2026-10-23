@@ -33,9 +33,9 @@ import { api } from '@web/services/http';
  */
 const DISABLED_REASONS: Record<string, string> = {
   AUTOMATION_DISABLED:
-    'Automatic sorting is switched off for MailMind right now. Your mail stays synced and searchable.',
+    'Automatic sorting is switched off for AMO right now. Your mail stays synced and searchable.',
   AUTOMATION_NOT_CONFIGURED:
-    'Sorting has not been switched on for MailMind yet. Your mail is synced, and it will be sorted on its own as soon as it is — there is nothing you need to do.',
+    'Sorting has not been switched on for AMO yet. Your mail is synced, and it will be sorted on its own as soon as it is — there is nothing you need to do.',
   ACCOUNT_PAUSED: 'Automatic sorting is paused for your account.',
   UNKNOWN: 'Automatic sorting is off right now. Your mail stays synced and searchable.',
 };

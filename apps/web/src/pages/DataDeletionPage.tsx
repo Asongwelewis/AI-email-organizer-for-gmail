@@ -44,15 +44,15 @@ export function DataDeletionPage() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          Deleting your MailMind account removes everything stored about you and revokes
-          MailMind&rsquo;s access to your mailbox. Your mail itself is untouched: it is in Gmail,
-          where it always was.
+          Deleting your AMO account removes everything stored about you and revokes AMO&rsquo;s
+          access to your mailbox. Your mail itself is untouched: it is in Gmail, where it always
+          was.
         </p>
       }
     >
       <h2>What is deleted</h2>
       <ul>
-        <li>Your MailMind account, and every session signed in to it.</li>
+        <li>Your AMO account, and every session signed in to it.</li>
         <li>The stored metadata for every message — subjects, senders, dates, snippets.</li>
         <li>Every facet, folder, routing rule and filing decision derived from them.</li>
         <li>
@@ -70,8 +70,8 @@ export function DataDeletionPage() {
 
       <h2>What is not affected</h2>
       <p>
-        Your email. MailMind holds a description of your mailbox, not a copy of it, and by default
-        it cannot change anything in Gmail at all. If you used the optional Gmail label export, the
+        Your email. AMO holds a description of your mailbox, not a copy of it, and by default it
+        cannot change anything in Gmail at all. If you used the optional Gmail label export, the
         labels it created stay in your mailbox — deleting a label in Gmail never unlabels the mail
         beneath it, so removing them is yours to do, in Gmail.
       </p>
@@ -115,10 +115,9 @@ export function DataDeletionPage() {
           <h2>Deleting your account</h2>
           <p>
             <Link to="/login">Sign in</Link> and return to this page to delete your account
-            yourself. If you cannot sign in — because you have already removed MailMind from your
-            Google account, for instance — write to{' '}
-            <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a> from the address the account was
-            created with and it will be deleted for you.
+            yourself. If you cannot sign in — because you have already removed AMO from your Google
+            account, for instance — write to <a href={`mailto:${LEGAL_CONTACT}`}>{LEGAL_CONTACT}</a>{' '}
+            from the address the account was created with and it will be deleted for you.
           </p>
         </>
       )}

@@ -33,7 +33,7 @@ const FILTERS: PivotFacet[] = ['entity', 'domain', 'intent'];
 /** `MailMind/Career/Job match` reads as `Career / Job match`. */
 function readableFolder(fullPath: string): string {
   return fullPath
-    .replace(/^MailMind\//, '')
+    .replace(/^AMO\//, '')
     .split('/')
     .join(' / ');
 }
@@ -162,8 +162,8 @@ export function FindPage() {
         </label>
       </header>
       <p className="screen__lede">
-        Everything MailMind knows about your mail, searchable at once. Half a subject line, a brand,
-        or just what the message wanted — a failed payment from some streaming service is a question
+        Everything AMO knows about your mail, searchable at once. Half a subject line, a brand, or
+        just what the message wanted — a failed payment from some streaming service is a question
         folders alone cannot answer.
       </p>
 
