@@ -31,6 +31,7 @@ import {
   type AccountPolicySource,
 } from '@api/features/accounts/account-policy.js';
 import { heuristicFacets } from '@api/features/label-discovery/heuristics.js';
+import { decideWithoutModel } from '@api/features/label-discovery/rules-decision.js';
 import {
   referenceRules,
   type ReferenceRule,
@@ -98,9 +99,6 @@ const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
 /** Messages a rules-only run reads per page, and the most it sorts in one run. */
 const RULES_PAGE_SIZE = 500;
 const RULES_RUN_LIMIT = 50_000;
-
-/** What a heuristic decision is worth beside a learned rule's measured confidence. */
-const HEURISTIC_CONFIDENCE = 0.6;
 
 /** Sender groups written at once after a batch. The pool holds five connections. */
 const PERSIST_CONCURRENCY = 3;
@@ -622,8 +620,6 @@ export class FacetClassificationService {
       confidence: rule.share,
       learnedFromEntity: null,
     }));
-    const approved = (value: string | null, axis: 'domain' | 'intent') =>
-      value && approvedValues[axis].has(value) ? value : null;
     const limit = options.limit ?? RULES_RUN_LIMIT;
 
     while (counters.messagesSeen < limit) {
@@ -637,33 +633,18 @@ export class FacetClassificationService {
       counters.messagesSeen += messages.length;
 
       const rows = messages.map((message) => {
-        const routable = { subject: message.subject, senderEmail: message.sender_email };
-        const mine = resolveFacetRules(own, routable);
-        const borrowed = resolveFacetRules(reference, routable);
-        const guessed = heuristicFacets(
+        const { domain, intent, source } = decideWithoutModel(
           {
             subject: message.subject,
             senderEmail: message.sender_email,
             snippet: message.snippet,
             labelIds: message.label_ids,
           },
+          own,
+          reference,
           approvedValues,
         );
-        const pick = (axis: 'domain' | 'intent') => {
-          for (const hit of [mine[axis], borrowed[axis]]) {
-            const value = approved(hit?.value ?? null, axis);
-            if (value && hit) return { value, confidence: hit.rule.confidence, fromRule: true };
-          }
-          const value = guessed[axis];
-          return value
-            ? { value, confidence: HEURISTIC_CONFIDENCE, fromRule: false }
-            : { value: null, confidence: 0, fromRule: false };
-        };
-        const domain = pick('domain');
-        const intent = pick('intent');
         const entity = entityFor(message.sender_email);
-        const source: 'RULE' | 'HEURISTIC' =
-          domain.fromRule || intent.fromRule ? 'RULE' : 'HEURISTIC';
         this.countAssignments(counters, entity, domain.value, intent.value);
         if (source === 'HEURISTIC') counters.heuristicDecided += 1;
         return {

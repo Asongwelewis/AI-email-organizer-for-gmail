@@ -245,6 +245,75 @@ describe('the reference rules', () => {
   });
 });
 
+describe('which answer wins', () => {
+  // A reference rule was learned from one person's mailbox, where amazon.com sent AWS webinars.
+  // For most people it sends orders; what is true for everyone goes first.
+  it('lets a well-known brand and the subject outrank a rule learned from one mailbox', async () => {
+    const { decideWithoutModel } =
+      await import('../src/features/label-discovery/rules-decision.js');
+    const reference = [
+      {
+        kind: 'SENDER_DOMAIN' as const,
+        value: 'amazon.com',
+        domain: 'development',
+        intent: 'webinar-event',
+        confidence: 0.9,
+      },
+    ];
+    const decision = decideWithoutModel(
+      {
+        subject: 'Limited-time: 50% off your next order',
+        senderEmail: 'store-news@amazon.com',
+        snippet: null,
+        labelIds: ['CATEGORY_PROMOTIONS'],
+      },
+      [],
+      reference,
+      APPROVED,
+    );
+    expect(decision.domain.value).toBe('shopping');
+    expect(decision.intent.value).toBe('promotional');
+    expect(decision.source).toBe('HEURISTIC');
+  });
+
+  it('still uses the reference rule where nothing public says otherwise', async () => {
+    const { decideWithoutModel } =
+      await import('../src/features/label-discovery/rules-decision.js');
+    const decision = decideWithoutModel(
+      {
+        subject: 'Something new',
+        senderEmail: 'news@digitaltrends.com',
+        snippet: null,
+        labelIds: [],
+      },
+      [],
+      [
+        {
+          kind: 'SENDER_DOMAIN' as const,
+          value: 'digitaltrends.com',
+          domain: 'entertainment',
+          intent: 'newsletter',
+          confidence: 0.9,
+        },
+      ],
+      APPROVED,
+    );
+    expect(decision).toMatchObject({
+      domain: { value: 'entertainment', fromRule: true },
+      intent: { value: 'newsletter', fromRule: true },
+      source: 'RULE',
+    });
+  });
+
+  // Proton the company writes from news.proton.me; a person on Proton writes from proton.me.
+  it('files a provider`s own newsletters under the provider, and only people as personal', async () => {
+    const { entityFor } = await import('../src/features/label-discovery/entity.js');
+    expect(entityFor('friend@proton.me')).toBe('personal');
+    expect(entityFor('newsletter@news.proton.me')).toBe('proton');
+    expect(entityFor('no-reply@gmail.com')).not.toBe('personal');
+  });
+});
+
 describe('sorting a beta mailbox', () => {
   const ACCOUNT = '33333333-3333-4333-8333-333333333333';
   const WINDOW = new Date('2024-10-23T00:00:00.000Z');

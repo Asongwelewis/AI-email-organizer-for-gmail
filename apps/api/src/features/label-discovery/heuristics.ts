@@ -216,11 +216,17 @@ function text(message: HeuristicMessage): string {
   return `${message.subject ?? ''} ${message.snippet ?? ''}`.toLowerCase().replace(/\s+/g, ' ');
 }
 
-export function heuristicIntent(message: HeuristicMessage): string | null {
+/** What the subject or snippet says outright: "verification code", "50% off". */
+export function keywordIntent(message: HeuristicMessage): string | null {
   const body = text(message);
   for (const [intent, pattern] of INTENT_PATTERNS) {
     if (pattern.test(body)) return intent;
   }
+  return null;
+}
+
+/** What a sender usually sends, then which Gmail tab it is in: the guesses of last resort. */
+export function fallbackIntent(message: HeuristicMessage): string | null {
   const identity = emailIdentity(message.senderEmail);
   const brand =
     BRAND_INTENTS[identity.registrableDomain] ?? BRAND_INTENTS[identity.senderDomain] ?? null;
@@ -237,11 +243,19 @@ export function heuristicIntent(message: HeuristicMessage): string | null {
   return null;
 }
 
-export function heuristicDomain(message: HeuristicMessage): string | null {
+export function heuristicIntent(message: HeuristicMessage): string | null {
+  return keywordIntent(message) ?? fallbackIntent(message);
+}
+
+/** A well-known sender's area of life: public knowledge, true for everyone. */
+export function brandDomain(message: HeuristicMessage): string | null {
   const identity = emailIdentity(message.senderEmail);
-  const brand =
-    BRAND_DOMAINS[identity.registrableDomain] ?? BRAND_DOMAINS[identity.senderDomain] ?? null;
-  if (brand) return brand;
+  return BRAND_DOMAINS[identity.registrableDomain] ?? BRAND_DOMAINS[identity.senderDomain] ?? null;
+}
+
+/** Words in the sender's host or the subject, then the Social tab. */
+export function guessedDomain(message: HeuristicMessage): string | null {
+  const identity = emailIdentity(message.senderEmail);
   const host = identity.senderDomain;
   for (const [domain, pattern] of DOMAIN_WORDS) {
     if (host && pattern.test(host)) return domain;
@@ -252,6 +266,10 @@ export function heuristicDomain(message: HeuristicMessage): string | null {
   }
   if ((message.labelIds ?? []).includes('CATEGORY_SOCIAL')) return 'social';
   return null;
+}
+
+export function heuristicDomain(message: HeuristicMessage): string | null {
+  return brandDomain(message) ?? guessedDomain(message);
 }
 
 /**
