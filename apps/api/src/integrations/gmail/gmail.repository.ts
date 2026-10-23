@@ -4,6 +4,7 @@ import type { gmail_sync_status, gmail_sync_type } from '@prisma/client';
 import { env } from '@api/config/env.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
+import { invalidatePivotViews } from '@api/features/labels/pivot-cache.js';
 import type { GmailMessageRecord, SyncCounts } from './gmail.types.js';
 
 export interface SyncLease {
@@ -339,6 +340,8 @@ export class GmailRepository {
   async upsertMessages(accountId: string, records: GmailMessageRecord[]): Promise<void> {
     const rows = [...new Map(records.map((record) => [record.gmail_message_id, record])).values()];
     if (rows.length === 0) return;
+    // An unread flag or a subject changed: the remembered folder view is no longer true.
+    invalidatePivotViews(accountId);
     const payload = JSON.stringify(rows);
     const now = new Date();
     await prisma.$executeRaw`
@@ -384,6 +387,7 @@ export class GmailRepository {
 
   markDeleted(accountId: string, messageIds: string[]) {
     if (messageIds.length === 0) return Promise.resolve({ count: 0 });
+    invalidatePivotViews(accountId);
     return prisma.gmail_message_metadata.updateMany({
       where: {
         connected_google_account_id: accountId,

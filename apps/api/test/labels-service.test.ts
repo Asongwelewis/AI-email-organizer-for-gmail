@@ -23,6 +23,10 @@ const mocks = vi.hoisted(() => ({
   descendantsOf: vi.fn(),
 }));
 
+// The owner's mailbox: planning a tree is one of the features only it may use the model for.
+vi.mock('../src/features/accounts/account-policy.js', () => ({
+  assertModelAllowed: async () => undefined,
+}));
 vi.mock('../src/audit/audit.service.js', () => ({
   auditService: { record: mocks.auditRecord },
 }));

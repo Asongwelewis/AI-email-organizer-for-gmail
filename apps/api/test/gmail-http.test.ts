@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   denyConnection: vi.fn(),
   status: vi.fn(),
   disconnect: vi.fn(),
+  mayConnectMailbox: vi.fn(),
 }));
 
 vi.mock('../src/sessions/session.service.js', () => ({
@@ -29,6 +30,10 @@ vi.mock('../src/integrations/google/google-login.service.js', () => ({
     status: mocks.status,
     disconnect: mocks.disconnect,
   },
+}));
+
+vi.mock('../src/features/accounts/beta-capacity.js', () => ({
+  mayConnectMailbox: mocks.mayConnectMailbox,
 }));
 
 import { authenticationRequired } from '../src/errors/AppError.js';
@@ -64,6 +69,7 @@ describe('Gmail integration HTTP routes', () => {
       return authenticated;
     });
     mocks.beginConnection.mockResolvedValue('https://accounts.google.test/gmail-consent');
+    mocks.mayConnectMailbox.mockResolvedValue(true);
     mocks.completeConnection.mockResolvedValue({
       status: 'gmail_connected',
       redirectPath: '/settings/connections',
@@ -86,6 +92,19 @@ describe('Gmail integration HTTP routes', () => {
       .set('Cookie', 'mailmind_session=valid-session');
     expect(connected.status).toBe(302);
     expect(connected.headers['location']).toBe('https://accounts.google.test/gmail-consent');
+  });
+
+  // The beta is sized for the free plan. Past the cap a person is told so before Google asks them
+  // for anything, rather than after granting access to a mailbox that will never be read.
+  it('turns a new mailbox away before Google consent when the beta is full', async () => {
+    mocks.mayConnectMailbox.mockResolvedValue(false);
+    const response = await request(testApp)
+      .get('/api/integrations/google/connect')
+      .set('Cookie', 'mailmind_session=valid-session');
+
+    expect(response.status).toBe(302);
+    expect(response.headers['location']).toContain('/auth/callback?status=beta_full');
+    expect(mocks.beginConnection).not.toHaveBeenCalled();
   });
 
   it('preserves the MailMind cookie when Gmail consent is denied', async () => {

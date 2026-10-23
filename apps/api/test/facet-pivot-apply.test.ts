@@ -25,6 +25,7 @@ vi.mock('../src/audit/audit.service.js', () => ({
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
+    $queryRaw: () => facetRowsAsJoin(),
     facet_pivot_settings: { upsert: mocks.pivotSettingsUpsert },
     message_facets: { findMany: mocks.facetFindMany, count: mocks.facetCount },
     gmail_labels: { findMany: mocks.gmailLabelFindMany },
@@ -39,6 +40,31 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 
+/**
+ * The folder rows come from one SQL join now, not Prisma's nested select. The suites still describe
+ * them as message_facets rows, so the join's mock reads those and flattens them as the join would.
+ */
+async function facetRowsAsJoin(): Promise<unknown[]> {
+  const rows = ((await mocks.facetFindMany({})) ?? []) as Array<{
+    gmail_message_id: string;
+    entity: string | null;
+    domain: string | null;
+    intent: string | null;
+    message?: { internal_date?: Date | null; is_unread?: boolean; sender_email?: string | null };
+  }>;
+  return rows.map((row) => ({
+    id: row.gmail_message_id,
+    entity: row.entity,
+    domain: row.domain,
+    intent: row.intent,
+    received_at: row.message?.internal_date ?? null,
+    unread: row.message?.is_unread === true,
+    sender_email: row.message?.sender_email ?? null,
+  }));
+}
+
+const { forgetPivotViews, invalidatePivotViews } =
+  await import('../src/features/labels/pivot-cache.js');
 const { env } = await import('../src/config/env.js');
 const { PivotService } = await import('../src/features/labels/pivot.service.js');
 
@@ -124,6 +150,7 @@ function service() {
 }
 
 beforeEach(() => {
+  forgetPivotViews();
   vi.clearAllMocks();
   // Apply is the only step here that creates anything in a mailbox, so it is opt-in and off by
   // default. This suite is about what it does once someone has asked for it.
@@ -331,6 +358,17 @@ describe('the orderings that are never materialised', () => {
     expect(domainFirst.nodes.find((node) => node.depth === 1)?.leafName).toBe('Entertainment');
     expect(mocks.facetFindMany).toHaveBeenCalledTimes(2);
     expect(mocks.ensureLabel).not.toHaveBeenCalled();
+  });
+
+  // The Inbox asks every minute; the answer changes only when mail is stored or sorted.
+  it('answers a repeat view from memory until the mailbox changes', async () => {
+    await service().view(ACCOUNT, ['entity', 'intent'], undefined, 'all');
+    await service().view(ACCOUNT, ['entity', 'intent'], undefined, 'all');
+    expect(mocks.facetFindMany).toHaveBeenCalledTimes(1);
+
+    invalidatePivotViews(ACCOUNT);
+    await service().view(ACCOUNT, ['entity', 'intent'], undefined, 'all');
+    expect(mocks.facetFindMany).toHaveBeenCalledTimes(2);
   });
 
   it('plans without writing anything at all', async () => {

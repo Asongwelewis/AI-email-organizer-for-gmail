@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   notifications: vi.fn(),
   activityRuns: vi.fn(),
   syncRuns: vi.fn(),
+  accounts: vi.fn(),
+  messages: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -17,6 +19,8 @@ vi.mock('../src/database/prisma.js', () => ({
     notifications: { deleteMany: mocks.notifications },
     activity_runs: { deleteMany: mocks.activityRuns },
     gmail_sync_runs: { deleteMany: mocks.syncRuns },
+    connected_google_accounts: { findMany: mocks.accounts },
+    gmail_message_metadata: { deleteMany: mocks.messages },
   },
 }));
 
@@ -29,6 +33,8 @@ const DAY = 86_400_000;
 beforeEach(() => {
   vi.clearAllMocks();
   for (const mock of Object.values(mocks)) mock.mockResolvedValue({ count: 2 });
+  mocks.accounts.mockResolvedValue([]);
+  env.OWNER_ACCOUNT_EMAILS = ['owner@example.com'];
 });
 
 describe('housekeeping', () => {
@@ -58,6 +64,43 @@ describe('housekeeping', () => {
       notifications: 2,
       activityRuns: 2,
       syncRuns: 2,
+      outsideWindow: 0,
     });
+  });
+
+  // Without an owner configured, the owner's mailbox would look like a beta mailbox and lose its
+  // older mail. Deleting is irreversible, so nothing is deleted.
+  it('deletes no mail at all while no owner is configured', async () => {
+    env.OWNER_ACCOUNT_EMAILS = [];
+    mocks.accounts.mockResolvedValue([
+      { id: 'owner', email: 'owner@example.com', created_at: new Date(), mail_history_days: null },
+    ]);
+
+    const result = await runHousekeeping(NOW);
+
+    expect(mocks.messages).not.toHaveBeenCalled();
+    expect(result.outsideWindow).toBe(0);
+  });
+
+  // The sync never stores older mail and the classifier never reads it; this removes whatever got
+  // in anyway, for every mailbox but the owner's.
+  it('removes mail older than a beta mailbox`s window and leaves the owner`s alone', async () => {
+    const created = new Date('2026-10-01T00:00:00.000Z');
+    mocks.accounts.mockResolvedValue([
+      { id: 'beta', email: 'friend@example.com', created_at: created, mail_history_days: null },
+      { id: 'owner', email: 'owner@example.com', created_at: created, mail_history_days: null },
+    ]);
+    mocks.messages.mockResolvedValue({ count: 7 });
+
+    const result = await runHousekeeping(NOW);
+
+    expect(mocks.messages).toHaveBeenCalledTimes(1);
+    expect(mocks.messages).toHaveBeenCalledWith({
+      where: {
+        connected_google_account_id: 'beta',
+        internal_date: { lt: new Date(created.getTime() - env.MAIL_HISTORY_DAYS * DAY) },
+      },
+    });
+    expect(result.outsideWindow).toBe(7);
   });
 });

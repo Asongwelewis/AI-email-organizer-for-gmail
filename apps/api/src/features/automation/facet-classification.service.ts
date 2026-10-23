@@ -13,6 +13,7 @@ import {
 } from '@api/features/label-discovery/facet-vocabulary.repository.js';
 import { captureApiException } from '@api/observability/sentry.js';
 import { forEachWithConcurrency } from '@api/utils/concurrency.js';
+import { invalidatePivotViews } from '@api/features/labels/pivot-cache.js';
 import {
   normalizeRuleValue,
   resolveFacetRules,
@@ -25,6 +26,15 @@ import {
 } from '@api/integrations/gemini/gemini.client.js';
 import type { AutomationUsage } from './automation.types.js';
 import { geminiRequestCeiling, geminiRequestsToday, type GeminiPriority } from './usage-ledger.js';
+import {
+  accountPolicies,
+  type AccountPolicySource,
+} from '@api/features/accounts/account-policy.js';
+import { heuristicFacets } from '@api/features/label-discovery/heuristics.js';
+import {
+  referenceRules,
+  type ReferenceRule,
+} from '@api/features/label-discovery/reference-rules.js';
 import {
   facetPromptVersion,
   geminiFacetClassifier,
@@ -54,6 +64,8 @@ export interface FacetRunCounters {
   rulesLearned: number;
   /** Left for a later pass because the model gate said the queue was not worth a call yet. */
   deferred: number;
+  /** Decided by the built-in heuristics alone, with no rule behind either facet. */
+  heuristicDecided: number;
   failed: number;
   providerCalls: number;
   usage: AutomationUsage;
@@ -72,6 +84,7 @@ const emptyCounters = (): FacetRunCounters => ({
   crossEntityRuleHits: 0,
   rulesLearned: 0,
   deferred: 0,
+  heuristicDecided: 0,
   failed: 0,
   providerCalls: 0,
   usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
@@ -81,6 +94,13 @@ const emptyCounters = (): FacetRunCounters => ({
 });
 
 const MAX_CONSECUTIVE_BATCH_FAILURES = 3;
+
+/** Messages a rules-only run reads per page, and the most it sorts in one run. */
+const RULES_PAGE_SIZE = 500;
+const RULES_RUN_LIMIT = 50_000;
+
+/** What a heuristic decision is worth beside a learned rule's measured confidence. */
+const HEURISTIC_CONFIDENCE = 0.6;
 
 /** Sender groups written at once after a batch. The pool holds five connections. */
 const PERSIST_CONCURRENCY = 3;
@@ -201,6 +221,8 @@ export class FacetClassificationService {
   constructor(
     private readonly classifier: FacetClassifier = geminiFacetClassifier,
     private readonly vocabularies: FacetVocabularyRepository = facetVocabularyRepository,
+    private readonly policies: AccountPolicySource = accountPolicies,
+    private readonly references: () => Promise<ReferenceRule[]> = referenceRules,
   ) {}
 
   /**
@@ -213,13 +235,12 @@ export class FacetClassificationService {
     accountId: string,
     options: ClassifyOptions = {},
   ): Promise<FacetRunCounters> {
-    if (!env.GEMINI_API_KEY) {
-      throw new AppError(
-        'AUTOMATION_NOT_CONFIGURED',
-        'Sorting is not switched on for this server yet. Your mail is synced and will be sorted as soon as it is.',
-        503,
-      );
-    }
+    /*
+     * Who this mailbox is decides how it is sorted. Only the owner's mail may reach Gemini;
+     * everyone else's is sorted by rules and heuristics inside their history window, and the
+     * model path below is never entered for them. Without a key the owner is sorted by rules too.
+     */
+    const policy = await this.policies.forAccount(accountId);
     /*
      * The vocabulary this mailbox approved, resolved before the lease and before a single token is
      * spent. There is no default to fall back to: "career, development, education" describes one
@@ -257,6 +278,17 @@ export class FacetClassificationService {
     }
 
     try {
+      if (policy.mode === 'RULES') {
+        return await this.classifyByRules(
+          accountId,
+          token,
+          approvedValues,
+          promptVersion,
+          policy.windowStart,
+          options,
+          counters,
+        );
+      }
       /*
        * The token and cost caps are daily and cumulative since 00:00 UTC, not per run — the
        * scheduler can start several runs in a day after a backoff, and each one taking a fresh
@@ -280,8 +312,13 @@ export class FacetClassificationService {
 
       const messages =
         options.scope === 'new'
-          ? await this.newMessages(accountId, options.limit)
-          : await this.unclassifiedMessages(accountId, promptVersion, options.limit);
+          ? await this.newMessages(accountId, policy.windowStart, options.limit)
+          : await this.unclassifiedMessages(
+              accountId,
+              promptVersion,
+              policy.windowStart,
+              options.limit,
+            );
       counters.messagesSeen = messages.length;
       const rules = await this.facetRules(accountId);
 
@@ -452,8 +489,17 @@ export class FacetClassificationService {
                   const decision = byKey.get(key)!;
                   // A rule already settled an axis; the model's answer for it is context, not a
                   // vote.
-                  const domain = entry.known.domain ?? decision.domain;
-                  const intent = entry.known.intent ?? decision.intent;
+                  const filled = heuristicFacets(
+                    {
+                      subject: entry.message.subject,
+                      senderEmail: entry.message.sender_email,
+                      snippet: entry.message.snippet,
+                      labelIds: entry.message.label_ids,
+                    },
+                    approvedValues,
+                  );
+                  const domain = entry.known.domain ?? decision.domain ?? filled.domain;
+                  const intent = entry.known.intent ?? decision.intent ?? filled.intent;
                   const entity = entityFor(entry.message.sender_email);
                   // Each message is written on its own. The model answered for all of them and
                   // those tokens are already spent, so letting one unwritable row discard the
@@ -531,6 +577,7 @@ export class FacetClassificationService {
       );
       return counters;
     } finally {
+      invalidatePivotViews(accountId);
       // Releasing the lease is a courtesy, not a correctness requirement — it expires on its own,
       // which is why a crashed run never wedges an account. Letting this throw would replace the
       // real failure with a second one about the same dead connection, so it only ever logs.
@@ -546,6 +593,140 @@ export class FacetClassificationService {
         );
       }
     }
+  }
+
+  /**
+   * Sorts a mailbox with no model at all: the mailbox's own rules, then the reference rules, then
+   * the built-in heuristics, for each facet independently.
+   *
+   * Nothing here can stop on a budget or a provider, so it is run to the end: every message in the
+   * window gets a decision in the same pass, which is what "no unclassified mail" rests on. A
+   * decision may still leave a facet empty — a personal note from a friend has no area of life a
+   * keyword can name — and the row exists anyway, so the message is in its sender's folder rather
+   * than nowhere. Pages are written one statement each: a two-year mailbox is tens of thousands of
+   * rows, and a round trip per row would be most of an hour on the free plan.
+   */
+  private async classifyByRules(
+    accountId: string,
+    token: string,
+    approvedValues: { domain: Set<string>; intent: Set<string> },
+    promptVersion: string,
+    windowStart: Date | null,
+    options: ClassifyOptions,
+    counters: FacetRunCounters,
+  ): Promise<FacetRunCounters> {
+    const own = await this.facetRules(accountId);
+    const reference = (await this.references()).map((rule) => ({
+      ...rule,
+      id: `reference:${rule.kind}:${rule.value}`,
+      confidence: rule.share,
+      learnedFromEntity: null,
+    }));
+    const approved = (value: string | null, axis: 'domain' | 'intent') =>
+      value && approvedValues[axis].has(value) ? value : null;
+    const limit = options.limit ?? RULES_RUN_LIMIT;
+
+    while (counters.messagesSeen < limit) {
+      await this.renewLease(accountId, token);
+      const page = Math.min(RULES_PAGE_SIZE, limit - counters.messagesSeen);
+      const messages =
+        options.scope === 'new'
+          ? await this.newMessages(accountId, windowStart, page)
+          : await this.unclassifiedMessages(accountId, promptVersion, windowStart, page);
+      if (messages.length === 0) break;
+      counters.messagesSeen += messages.length;
+
+      const rows = messages.map((message) => {
+        const routable = { subject: message.subject, senderEmail: message.sender_email };
+        const mine = resolveFacetRules(own, routable);
+        const borrowed = resolveFacetRules(reference, routable);
+        const guessed = heuristicFacets(
+          {
+            subject: message.subject,
+            senderEmail: message.sender_email,
+            snippet: message.snippet,
+            labelIds: message.label_ids,
+          },
+          approvedValues,
+        );
+        const pick = (axis: 'domain' | 'intent') => {
+          for (const hit of [mine[axis], borrowed[axis]]) {
+            const value = approved(hit?.value ?? null, axis);
+            if (value && hit) return { value, confidence: hit.rule.confidence, fromRule: true };
+          }
+          const value = guessed[axis];
+          return value
+            ? { value, confidence: HEURISTIC_CONFIDENCE, fromRule: false }
+            : { value: null, confidence: 0, fromRule: false };
+        };
+        const domain = pick('domain');
+        const intent = pick('intent');
+        const entity = entityFor(message.sender_email);
+        const source: 'RULE' | 'HEURISTIC' =
+          domain.fromRule || intent.fromRule ? 'RULE' : 'HEURISTIC';
+        this.countAssignments(counters, entity, domain.value, intent.value);
+        if (source === 'HEURISTIC') counters.heuristicDecided += 1;
+        return {
+          gmail_message_id: message.id,
+          entity,
+          domain: domain.value,
+          domain_confidence: domain.value ? domain.confidence : null,
+          intent: intent.value,
+          intent_confidence: intent.value ? intent.confidence : null,
+          source,
+          prompt_version: promptVersion,
+          input_hash: hashMessage(message, promptVersion),
+        };
+      });
+      await this.persistMany(accountId, rows);
+      counters.ruleDecided += rows.length;
+      await options.onProgress?.(counters);
+      if (messages.length < page) break;
+    }
+    return counters;
+  }
+
+  /** One statement for a page of decisions; see `classifyByRules` for why. */
+  private async persistMany(
+    accountId: string,
+    rows: Array<{
+      gmail_message_id: string;
+      entity: string | null;
+      domain: string | null;
+      domain_confidence: number | null;
+      intent: string | null;
+      intent_confidence: number | null;
+      source: 'RULE' | 'HEURISTIC';
+      prompt_version: string;
+      input_hash: string;
+    }>,
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    const payload = JSON.stringify(rows);
+    await prisma.$executeRaw`
+      insert into public.message_facets (
+        connected_google_account_id, gmail_message_id, entity, domain, domain_confidence, intent,
+        intent_confidence, source, prompt_version, input_hash, classified_at
+      )
+      select ${accountId}::uuid, r.gmail_message_id, r.entity, r.domain, r.domain_confidence,
+        r.intent, r.intent_confidence, r.source::public.facet_source, r.prompt_version,
+        r.input_hash, now()
+      from jsonb_to_recordset(${payload}::jsonb) as r(
+        gmail_message_id uuid, entity text, domain text, domain_confidence double precision,
+        intent text, intent_confidence double precision, source text, prompt_version text,
+        input_hash text
+      )
+      on conflict (gmail_message_id) do update set
+        entity = excluded.entity,
+        domain = excluded.domain,
+        domain_confidence = excluded.domain_confidence,
+        intent = excluded.intent,
+        intent_confidence = excluded.intent_confidence,
+        source = excluded.source,
+        prompt_version = excluded.prompt_version,
+        input_hash = excluded.input_hash,
+        classified_at = excluded.classified_at
+    `;
   }
 
   private countAssignments(
@@ -744,10 +925,12 @@ export class FacetClassificationService {
   }
 
   /** Mail this account is willing to classify at all. Spam and drafts are never facetted. */
-  private classifiableWhere(accountId: string) {
+  private classifiableWhere(accountId: string, windowStart: Date | null = null) {
     return {
       connected_google_account_id: accountId,
       deleted_at: null,
+      // Outside the window is outside the mailbox, as far as sorting is concerned.
+      ...(windowStart ? { internal_date: { gte: windowStart } } : {}),
       is_draft: false,
       is_sent: false,
       is_trashed: false,
@@ -756,23 +939,30 @@ export class FacetClassificationService {
   }
 
   /** Mail that has never been classified and arrived recently, newest first. */
-  private newMessages(accountId: string, limit?: number) {
+  private newMessages(accountId: string, windowStart: Date | null, limit?: number) {
     return prisma.gmail_message_metadata.findMany({
       where: {
-        ...this.classifiableWhere(accountId),
+        ...this.classifiableWhere(accountId, windowStart),
         facets: null,
-        internal_date: { gte: new Date(Date.now() - NEW_MAIL_WINDOW_MS) },
+        internal_date: {
+          gte: new Date(Math.max(Date.now() - NEW_MAIL_WINDOW_MS, windowStart?.getTime() ?? 0)),
+        },
       },
       orderBy: { internal_date: 'desc' },
       take: limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN,
     });
   }
 
-  private async unclassifiedMessages(accountId: string, promptVersion: string, limit?: number) {
+  private async unclassifiedMessages(
+    accountId: string,
+    promptVersion: string,
+    windowStart: Date | null,
+    limit?: number,
+  ) {
     const take = limit ?? env.AUTOMATION_MAX_MESSAGES_PER_RUN;
     const fresh = await prisma.gmail_message_metadata.findMany({
       where: {
-        ...this.classifiableWhere(accountId),
+        ...this.classifiableWhere(accountId, windowStart),
         // Never classified, or classified under a vocabulary that has since changed. Recording
         // prompt_version was pointless while nothing acted on it: bumping the vocabulary left
         // every existing message describing itself in terms that no longer existed. Re-running
@@ -786,7 +976,12 @@ export class FacetClassificationService {
 
     // Room left in the run, so spend it re-checking decisions against the input they were made
     // from. Newest mail first, and never more than the run's own ceiling.
-    const stale = await this.staleByInput(accountId, promptVersion, take - fresh.length);
+    const stale = await this.staleByInput(
+      accountId,
+      promptVersion,
+      windowStart,
+      take - fresh.length,
+    );
     return [...fresh, ...stale];
   }
 
@@ -803,7 +998,12 @@ export class FacetClassificationService {
    * bounded sweep, not a full scan: a wholesale resync is worked through over successive runs
    * rather than in one, and it only ever uses budget a run was not going to spend anyway.
    */
-  private async staleByInput(accountId: string, promptVersion: string, limit: number) {
+  private async staleByInput(
+    accountId: string,
+    promptVersion: string,
+    windowStart: Date | null,
+    limit: number,
+  ) {
     if (limit <= 0) return [];
     // Asked of the decisions rather than of the mail: the question is whether each recorded
     // decision still matches the message it was made from.
@@ -811,7 +1011,7 @@ export class FacetClassificationService {
       where: {
         connected_google_account_id: accountId,
         prompt_version: promptVersion,
-        message: this.classifiableWhere(accountId),
+        message: this.classifiableWhere(accountId, windowStart),
       },
       orderBy: { message: { last_synced_at: 'desc' } },
       take: limit,

@@ -34,8 +34,8 @@ export function ConnectGmailScreen({ reconnect = false }: { reconnect?: boolean 
         </a>
         <p className="connect-gmail__detail">
           Read-only, and only the sender, subject and date of each email — never the body or an
-          attachment. Once connected, AMO reads your recent mail and builds your folders on its own;
-          it takes a minute or two.
+          attachment. Once connected, AMO sorts the last two years of your mail into folders on its
+          own, and every new email after that; it takes a few minutes.
         </p>
       </div>
     </section>

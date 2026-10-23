@@ -1,4 +1,5 @@
 import type { routing_rule_kind, user_label_source, user_labels } from '@prisma/client';
+import { assertModelAllowed } from '@api/features/accounts/account-policy.js';
 
 import { auditService } from '@api/audit/audit.service.js';
 import { env } from '@api/config/env.js';
@@ -93,6 +94,8 @@ export class LabelsService {
    */
   async propose(userId: string) {
     const account = await this.repository.activeAccountForUser(userId);
+    // One planning call reads a sample of the mailbox in Gemini; only the owner's may go there.
+    await assertModelAllowed(account.id);
     const lease = await this.repository.acquireProposalLease(account.id);
     // One planning call is short enough to answer inline, but its failures are exactly the ones
     // that went unnoticed before, so it still leaves a run record behind either way.

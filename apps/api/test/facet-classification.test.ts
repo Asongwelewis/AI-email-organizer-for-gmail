@@ -49,6 +49,12 @@ const { FacetClassificationService, HASHED_MESSAGE_FIELDS } =
 
 const ACCOUNT = '11111111-1111-4111-8111-111111111111';
 
+/** The model path: these suites are about how the owner's mailbox is sorted with Gemini. */
+const OWNER_POLICY = {
+  forAccount: async () => ({ owner: true, mode: 'MODEL' as const, windowStart: null }),
+};
+const NO_REFERENCE_RULES = async () => [];
+
 function message(input: { id: string; subject: string; sender: string }) {
   return {
     id: input.id,
@@ -116,7 +122,9 @@ describe('the entity facet', () => {
   it('folds a brand`s bulk-mail domain onto the brand itself', () => {
     expect(entityFor('noreply@redditmail.com')).toBe('reddit');
     expect(entityFor('x@facebookmail.com')).toBe('facebook');
-    expect(entityFor('x@googlemail.com')).toBe('google');
+    // A personal provider is a person, not the company that runs it.
+    expect(entityFor('x@googlemail.com')).toBe('personal');
+    expect(entityFor('friend@gmail.com')).toBe('personal');
   });
 
   it('keeps a brand whose name merely ends in a mail word', () => {
@@ -268,9 +276,14 @@ describe('the facet classification pass', () => {
      * module constant. The checked-in set stands in: it is a real approved vocabulary, just no
      * longer the only one there can be.
      */
-    return new FacetClassificationService({ classify: mocks.classify }, {
-      requireApproved: async () => APPROVED_FACET_VOCABULARY,
-    } as never);
+    return new FacetClassificationService(
+      { classify: mocks.classify },
+      {
+        requireApproved: async () => APPROVED_FACET_VOCABULARY,
+      } as never,
+      OWNER_POLICY,
+      NO_REFERENCE_RULES,
+    );
   }
 
   it('decides by rule with no model call when both facets are covered', async () => {
@@ -424,9 +437,12 @@ describe('the facet classification pass', () => {
       domain: [{ name: 'custom-area', definition: 'A mailbox-specific area of life.' }],
       intent: [{ name: 'custom-intent', definition: 'A mailbox-specific message intent.' }],
     };
-    const counters = await new FacetClassificationService({ classify: mocks.classify }, {
-      requireApproved: async () => customVocabulary,
-    } as never).classifyAccount(ACCOUNT);
+    const counters = await new FacetClassificationService(
+      { classify: mocks.classify },
+      { requireApproved: async () => customVocabulary } as never,
+      OWNER_POLICY,
+      NO_REFERENCE_RULES,
+    ).classifyAccount(ACCOUNT);
 
     expect(counters.ruleDecided).toBe(1);
     expect(mocks.classify).not.toHaveBeenCalled();
@@ -923,9 +939,14 @@ describe('the shared Gemini budget', () => {
       classifications: decisionsFor(inputs.length),
       usage: { inputTokens: 120, cachedInputTokens: 0, outputTokens: 40 },
     }));
-    return new FacetClassificationService({ classify: mocks.classify }, {
-      requireApproved: async () => APPROVED_FACET_VOCABULARY,
-    } as never);
+    return new FacetClassificationService(
+      { classify: mocks.classify },
+      {
+        requireApproved: async () => APPROVED_FACET_VOCABULARY,
+      } as never,
+      OWNER_POLICY,
+      NO_REFERENCE_RULES,
+    );
   }
 
   const mail = (count: number) =>

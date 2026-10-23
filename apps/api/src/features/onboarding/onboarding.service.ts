@@ -23,6 +23,10 @@ import {
 } from '@api/features/automation/facet-classification.service.js';
 import { recordDailyUsage } from '@api/features/automation/usage-ledger.js';
 import {
+  accountPolicies,
+  type AccountPolicySource,
+} from '@api/features/accounts/account-policy.js';
+import {
   facetVocabularyRepository,
   type FacetVocabularyRepository,
 } from '@api/features/label-discovery/facet-vocabulary.repository.js';
@@ -79,6 +83,9 @@ export interface OnboardingStatus {
 
 /** Messages one classification pass takes, so progress is reported and usage recorded as it goes. */
 const SORT_PASS_SIZE = 100;
+
+/** Messages a rules-only pass takes: no model, so only progress reporting bounds it. */
+const RULES_PASS_SIZE = 2000;
 
 /** Gemini calls in flight for one onboarding. The pacer still spaces their starts. */
 const SORT_CONCURRENCY = 3;
@@ -171,6 +178,7 @@ export class OnboardingService {
     > = facetClassificationService,
     private readonly vocabularies: FacetVocabularyRepository = facetVocabularyRepository,
     private readonly gmail: Pick<typeof gmailSyncService, 'initialSync'> = gmailSyncService,
+    private readonly policies: AccountPolicySource = accountPolicies,
   ) {}
 
   /**
@@ -301,9 +309,6 @@ export class OnboardingService {
 
     // 3. Sort the newest mail.
     await this.setStage(account.id, 'SORTING');
-    if (!env.GEMINI_API_KEY) {
-      return { state: 'STOPPED', stopReason: 'SORTING_NOT_CONFIGURED' };
-    }
     const sorting = await this.sortRecent(account.id, report);
     // Something sorted is enough to open the folders; the full runs finish the rest. Nothing
     // sorted and a reason to stop means the person would see an empty Inbox, so it stays pending
@@ -362,16 +367,20 @@ export class OnboardingService {
     accountId: string,
     report: ProgressReporter,
   ): Promise<{ sorted: number; total: number; stopReason: string | null }> {
-    const limit = env.ONBOARDING_SORT_LIMIT;
-    const waiting = await this.unsortedCount(accountId);
-    const total = Math.min(limit, waiting);
+    const policy = await this.policies.forAccount(accountId);
+    // Sorting by rules costs nothing but database time, so a rules-sorted mailbox is sorted
+    // to the end of its window here: nothing it holds is left unsorted when setup says done.
+    // The model's share of the day is what bounds the owner's.
+    const rulesOnly = policy.mode === 'RULES';
+    const waiting = await this.unsortedCount(accountId, policy.windowStart);
+    const total = rulesOnly ? waiting : Math.min(env.ONBOARDING_SORT_LIMIT, waiting);
     let sorted = 0;
     await report({ processed: 0, total });
     while (sorted < total) {
       const before = sorted;
       const counters: FacetRunCounters = await this.classification.classifyAccount(accountId, {
         scope: 'backlog',
-        limit: Math.min(SORT_PASS_SIZE, total - sorted),
+        limit: Math.min(rulesOnly ? RULES_PASS_SIZE : SORT_PASS_SIZE, total - sorted),
         priority: 'onboarding',
         batchSize: 25,
         concurrency: SORT_CONCURRENCY,
@@ -392,11 +401,12 @@ export class OnboardingService {
     return { sorted, total, stopReason: null };
   }
 
-  private unsortedCount(accountId: string): Promise<number> {
+  private unsortedCount(accountId: string, windowStart: Date | null): Promise<number> {
     return prisma.gmail_message_metadata.count({
       where: {
         connected_google_account_id: accountId,
         deleted_at: null,
+        ...(windowStart ? { internal_date: { gte: windowStart } } : {}),
         is_draft: false,
         is_sent: false,
         is_trashed: false,

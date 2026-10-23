@@ -60,6 +60,8 @@ model connected_google_accounts {
   onboarding_stage                String?
   /// The gate the watcher and full runs wait behind: until it is set, onboarding owns the mailbox.
   onboarding_completed_at         DateTime?                         @db.Timestamptz(6)
+  /// Days of history sorted, back from the first connection. Null: MAIL_HISTORY_DAYS.
+  mail_history_days               Int?
   users                           users                             @relation(fields: [user_id], references: [id], onDelete: Cascade)
   gmail_labels                    gmail_labels[]
   gmail_message_metadata          gmail_message_metadata[]
@@ -753,6 +755,7 @@ model facet_pivot_settings {
 enum facet_source {
   RULE
   MODEL
+  HEURISTIC
 }
 
 /// What somebody wrote in the feedback form, and deliberately nothing else about them.
@@ -836,4 +839,19 @@ model push_subscriptions {
   users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id], map: "push_subscriptions_user_idx")
+}
+
+/// Facet routing rules owned by no mailbox, derived from a reference mailbox's consistent
+/// decisions and applied to every mailbox sorted without a model. Never committed to the repo.
+model reference_classification_rules {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rule_kind    routing_rule_kind
+  match_value  String
+  facet_domain String?
+  facet_intent String?
+  sample_count Int
+  share        Float             @db.Real
+  built_at     DateTime          @default(now()) @db.Timestamptz(6)
+
+  @@unique([rule_kind, match_value], map: "reference_classification_rules_kind_value_unique")
 }

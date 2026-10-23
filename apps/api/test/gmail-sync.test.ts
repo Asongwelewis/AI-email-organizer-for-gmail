@@ -37,6 +37,19 @@ describe('Gmail metadata boundary', () => {
     expect(JSON.stringify(mapped)).not.toContain('attachment-1');
   });
 
+  // Subjects sent as windows-1252 were stored with replacement characters where their curly
+  // quotes had been, because every charset but latin1 was decoded as UTF-8.
+  it('decodes encoded-word subjects in the charset they name', () => {
+    const subject = (value: string) =>
+      mapGmailMessage({ id: 'm', payload: { headers: [{ name: 'Subject', value }] } }).subject;
+    const quoted = Buffer.from([0x93, 0x53, 0x6f, 0x66, 0x74, 0x94]).toString('base64');
+
+    expect(subject(`=?windows-1252?B?${quoted}?=`)).toBe('“Soft”');
+    expect(subject('=?utf-8?Q?Caf=C3=A9_ouvert?=')).toBe('Café ouvert');
+    expect(subject('=?iso-8859-1?Q?caf=E9?=')).toBe('café');
+    expect(subject('=?x-unknown?Q?plain?=')).toBe('plain');
+  });
+
   it('rejects messages without a stable Gmail id', () => {
     expect(() => mapGmailMessage({ payload: {} })).toThrow('without an id');
   });

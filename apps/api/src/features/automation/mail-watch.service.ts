@@ -154,10 +154,6 @@ export class MailWatchService {
       return { outcome: 'UNCHANGED' };
     }
 
-    // Without a key there is nothing to send the remainder to, but the sync above still keeps
-    // search and unread counts current.
-    if (!env.GEMINI_API_KEY) return { outcome: 'CHECKED', synced };
-
     const counters = await this.classification.classifyAccount(accountId, {
       scope: 'new',
       limit: CHECK_LIMIT,
