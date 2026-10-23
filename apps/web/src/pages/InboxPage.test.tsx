@@ -334,7 +334,7 @@ describe('InboxPage', () => {
     mocks.getGmailStatus.mockResolvedValue({ connected: false, email: null });
     renderScreen(<InboxPage />, '/inbox');
 
-    expect(await screen.findByRole('link', { name: /set up mailmind/i })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /set up amo/i })).toHaveAttribute(
       'href',
       '/setup',
     );

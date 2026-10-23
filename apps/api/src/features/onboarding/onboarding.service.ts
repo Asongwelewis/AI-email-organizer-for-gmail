@@ -96,20 +96,20 @@ const SLOT_WAIT_MS = 4 * 60_000;
  */
 const STOP_MESSAGES: Record<string, string> = {
   SORTING_NOT_CONFIGURED:
-    'Your mail is synced. Sorting has not been switched on for MailMind yet — it will start on its own as soon as it is.',
+    'Your mail is synced. Sorting has not been switched on for AMO yet — it will start on its own as soon as it is.',
   SHARED_DAILY_LIMIT_REACHED:
-    'MailMind has sorted as much mail as it can today. Yours is next in line and will continue automatically.',
+    'AMO has sorted as much mail as it can today. Yours is next in line and will continue automatically.',
   DAILY_BUDGET_REACHED:
-    'MailMind has sorted as much mail as it can today. Yours is next in line and will continue automatically.',
+    'AMO has sorted as much mail as it can today. Yours is next in line and will continue automatically.',
   PROVIDER_RATE_LIMITED:
     'Lots of people are setting up right now. Sorting will pick up again in a few minutes.',
   PROVIDER_UNUSABLE: 'Sorting hit a problem. It will try again in a few minutes.',
-  DATABASE_UNAVAILABLE: 'MailMind could not save its progress. It will try again in a few minutes.',
+  DATABASE_UNAVAILABLE: 'AMO could not save its progress. It will try again in a few minutes.',
   WAITING_FOR_SYNC: 'Your mail is still being read. Sorting starts as soon as that finishes.',
   WAITING_FOR_SLOT: 'A few people are setting up at once. Yours starts in a moment.',
-  GMAIL_REAUTH_REQUIRED: 'MailMind lost access to Gmail. Reconnect Gmail to carry on.',
+  GMAIL_REAUTH_REQUIRED: 'AMO lost access to Gmail. Reconnect Gmail to carry on.',
   GMAIL_PERMISSION_DENIED:
-    'Gmail did not give MailMind permission to read your mail. Reconnect Gmail and allow access to carry on.',
+    'Gmail did not give AMO permission to read your mail. Reconnect Gmail and allow access to carry on.',
 };
 
 const FAILED_MESSAGE = 'Setting up hit a problem. It will try again in a few minutes.';

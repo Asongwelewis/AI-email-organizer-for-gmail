@@ -22,14 +22,14 @@ export function LegalDocument({
   children: ReactNode;
 }) {
   useEffect(() => {
-    document.title = `${title} · MailMind AI`;
+    document.title = `${title} · AMO`;
   }, [title]);
 
   return (
     <main className="legal-doc">
       <div className="legal-doc__column">
         <Link className="legal-doc__back" to="/">
-          ← MailMind AI
+          ← AMO
         </Link>
         <nav className="legal-doc__nav" aria-label="Information">
           <Link to="/about">About</Link>

@@ -64,12 +64,19 @@ export default defineConfig(({ mode }) => {
         // 'prompt', not 'autoUpdate': a filing run or an approval in progress must not be swapped
         // out from under the person doing it. The new build waits behind a toast.
         registerType: 'prompt',
-        includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+        includeAssets: [
+          'icons/icon-192.png',
+          'icons/icon-512.png',
+          'icons/apple-touch-icon.png',
+          'favicon.ico',
+          'favicon.png',
+          'brand/*.png',
+        ],
         manifest: {
-          name: 'MailMind AI',
-          short_name: 'MailMind',
+          name: 'AMO: Automated Mail Organizer',
+          short_name: 'AMO',
           description:
-            'Approve a folder tree for your Gmail, then find filed mail by folder instead of by search.',
+            'Your Gmail, sorted into folders automatically. Read-only, from the sender, subject and date of each email.',
           start_url: '/inbox',
           scope: '/',
           display: 'standalone',

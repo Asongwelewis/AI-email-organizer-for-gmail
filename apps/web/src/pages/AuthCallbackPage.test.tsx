@@ -26,7 +26,7 @@ describe('AuthCallbackPage', () => {
       '/auth/callback?status=login_success&code=secret-code&access_token=secret-token',
     );
 
-    expect(screen.getByRole('heading', { name: 'Welcome to MailMind.' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome to AMO.' })).toBeInTheDocument();
     expect(screen.queryByText(/secret-code|secret-token/)).not.toBeInTheDocument();
   });
 

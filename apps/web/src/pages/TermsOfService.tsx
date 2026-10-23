@@ -10,29 +10,29 @@ export function TermsOfService() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          MailMind organises your Gmail by reading message headers and showing you folders built
-          from them. You keep your mail; MailMind keeps a description of it. You can disconnect or
-          delete everything at any time, and it is offered as-is.
+          AMO organises your Gmail by reading message headers and showing you folders built from
+          them. You keep your mail; AMO keeps a description of it. You can disconnect or delete
+          everything at any time, and it is offered as-is.
         </p>
       }
     >
       <h2>The agreement</h2>
       <p>
-        These terms are between you and {LEGAL_ENTITY}. Using MailMind means accepting them. If you
-        do not, do not connect a mailbox.
+        These terms are between you and {LEGAL_ENTITY}. Using AMO means accepting them. If you do
+        not, do not connect a mailbox.
       </p>
 
       <h2>What the service does</h2>
       <p>
-        MailMind reads the metadata of messages in a Gmail account you connect, classifies each one
-        along three axes, and presents the result as browsable, searchable folders. It does not send
-        mail, delete mail, or reply to anyone.
+        AMO reads the metadata of messages in a Gmail account you connect, classifies each one along
+        three axes, and presents the result as browsable, searchable folders. It does not send mail,
+        delete mail, or reply to anyone.
       </p>
       <p>
-        By default MailMind holds <strong>read-only</strong> access to your mailbox and changes
-        nothing inside it. An optional export can mirror your folders into Gmail&rsquo;s own labels;
-        it is off unless the deployment enables it and you grant the wider permission, and even then
-        it only ever adds and removes MailMind&rsquo;s own labels.
+        By default AMO holds <strong>read-only</strong> access to your mailbox and changes nothing
+        inside it. An optional export can mirror your folders into Gmail&rsquo;s own labels; it is
+        off unless the deployment enables it and you grant the wider permission, and even then it
+        only ever adds and removes AMO&rsquo;s own labels.
       </p>
 
       <h2>Your account</h2>
@@ -44,15 +44,15 @@ export function TermsOfService() {
       <h2>Automated classification</h2>
       <p>
         Classification is performed by a large language model and is <strong>not reliable</strong>.
-        Messages will be put in the wrong folder. MailMind is an aid to finding mail, not a system
-        of record: do not rely on it for anything where being wrong matters, and do not treat the
+        Messages will be put in the wrong folder. AMO is an aid to finding mail, not a system of
+        record: do not rely on it for anything where being wrong matters, and do not treat the
         absence of a message from a folder as evidence that the message does not exist.
       </p>
 
       <h2>Acceptable use</h2>
       <p>
-        Do not attempt to use MailMind to access a mailbox you do not control, to circumvent its
-        rate limits, or to process mail on behalf of people who have not agreed to this.
+        Do not attempt to use AMO to access a mailbox you do not control, to circumvent its rate
+        limits, or to process mail on behalf of people who have not agreed to this.
       </p>
 
       <h2>Availability</h2>
@@ -71,10 +71,10 @@ export function TermsOfService() {
 
       <h2>No warranty, and the limit of liability</h2>
       <p>
-        MailMind is provided &ldquo;as is&rdquo;, without warranty of any kind. To the extent
-        permitted by law, {LEGAL_ENTITY} is not liable for indirect or consequential loss, for lost
-        profits, or for anything arising from a message being classified incorrectly or from mail
-        you did not find.
+        AMO is provided &ldquo;as is&rdquo;, without warranty of any kind. To the extent permitted
+        by law, {LEGAL_ENTITY} is not liable for indirect or consequential loss, for lost profits,
+        or for anything arising from a message being classified incorrectly or from mail you did not
+        find.
       </p>
 
       <h2>Contact</h2>

@@ -34,7 +34,7 @@ const controls = [
 export function SecurityPage() {
   return (
     <LegalDocument
-      title="Security at MailMind"
+      title="Security at AMO"
       updated={LEGAL_UPDATED}
       summary={
         <p>
@@ -47,7 +47,7 @@ export function SecurityPage() {
         <LockKeyhole aria-hidden="true" />
         <div>
           <strong>Read-only by default.</strong>
-          <p>MailMind’s standard Gmail connection cannot change your messages or labels.</p>
+          <p>AMO’s standard Gmail connection cannot change your messages or labels.</p>
         </div>
       </div>
 
@@ -67,8 +67,8 @@ export function SecurityPage() {
       <h2>What we cannot promise</h2>
       <p>
         A browser extension with permission to inspect pages can see information rendered on any
-        website. MailMind cannot override that browser-level authority. We reduce the impact by
-        keeping tokens out of JavaScript storage and the DOM, but only install extensions you trust.
+        website. AMO cannot override that browser-level authority. We reduce the impact by keeping
+        tokens out of JavaScript storage and the DOM, but only install extensions you trust.
       </p>
 
       <h2>Your controls</h2>

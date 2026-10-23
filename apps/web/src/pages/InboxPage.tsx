@@ -374,10 +374,10 @@ export function InboxPage() {
         connectionQuery.data && !connectionQuery.data.connected ? (
           <EmptyState
             title="Connect your mailbox"
-            description="Nothing can be sorted until MailMind can read your mail. It takes about a minute."
+            description="Nothing can be sorted until AMO can read your mail. It takes about a minute."
             action={
               <Link className="button button--primary" to="/setup">
-                Set up MailMind
+                Set up AMO
               </Link>
             }
           />

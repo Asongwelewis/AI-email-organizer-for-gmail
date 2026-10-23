@@ -5,19 +5,19 @@ import { LEGAL_UPDATED } from './legal-contact';
 
 const questions = [
   {
-    question: 'Does MailMind read my email body or attachments?',
+    question: 'Does AMO read my email body or attachments?',
     answer:
-      'No. MailMind requests read-only Gmail access and stores message metadata plus Gmail’s short snippet. It does not request or store raw MIME, full message bodies, or attachments.',
+      'No. AMO requests read-only Gmail access and stores message metadata plus Gmail’s short snippet. It does not request or store raw MIME, full message bodies, or attachments.',
   },
   {
     question: 'What does Google sign-in authorize?',
     answer:
-      'Google sign-in creates your MailMind account from your basic profile. Gmail access is a second, explicit step so you can understand and decline that permission independently.',
+      'Google sign-in creates your AMO account from your basic profile. Gmail access is a second, explicit step so you can understand and decline that permission independently.',
   },
   {
-    question: 'Can MailMind change my Gmail?',
+    question: 'Can AMO change my Gmail?',
     answer:
-      'The normal connection is read-only. Optional label export is a separate capability, disabled unless the deployment enables it and you grant the wider permission. MailMind never sends, deletes, or replies to messages.',
+      'The normal connection is read-only. Optional label export is a separate capability, disabled unless the deployment enables it and you grant the wider permission. AMO never sends, deletes, or replies to messages.',
   },
   {
     question: 'Can I correct a classification?',
@@ -27,10 +27,10 @@ const questions = [
   {
     question: 'What happens when I disconnect Gmail?',
     answer:
-      'MailMind revokes the Gmail grant and removes the stored connection tokens. Your MailMind account and synchronized metadata remain until you choose account deletion.',
+      'AMO revokes the Gmail grant and removes the stored connection tokens. Your AMO account and synchronized metadata remain until you choose account deletion.',
   },
   {
-    question: 'How do I delete everything MailMind stores?',
+    question: 'How do I delete everything AMO stores?',
     answer:
       'Use the public data-deletion page. Signed-in users can confirm deletion there; signed-out users can follow the support instructions. Account deletion is immediate and not recoverable.',
   },

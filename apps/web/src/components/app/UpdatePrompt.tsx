@@ -14,7 +14,7 @@ export function UpdatePrompt() {
 
   return (
     <div className="update-toast" role="status">
-      <p>A new version of MailMind is ready.</p>
+      <p>A new version of AMO is ready.</p>
       <span className="screen__actions">
         <button className="button" type="button" onClick={() => setNeedRefresh(false)}>
           Later

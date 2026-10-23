@@ -88,14 +88,14 @@ function PushSwitch() {
     state = {
       title: 'Not available in this browser',
       detail:
-        'This browser cannot show notifications from websites. Chrome or Edge on Windows can, and so can MailMind installed as an app.',
+        'This browser cannot show notifications from websites. Chrome or Edge on Windows can, and so can AMO installed as an app.',
       action: null,
     };
   } else if (configQuery.data && !configQuery.data.configured) {
     state = {
       title: 'Not switched on for this server yet',
       detail:
-        'New mail still appears here and as a pop-up while MailMind is open. Device notifications need the server to be given its notification keys.',
+        'New mail still appears here and as a pop-up while AMO is open. Device notifications need the server to be given its notification keys.',
       action: null,
     };
   } else if (availability === 'denied') {
@@ -109,14 +109,14 @@ function PushSwitch() {
     state = {
       title: 'On for this device',
       detail:
-        'New mail shows up in your Windows notification centre — or your phone’s — even with MailMind closed.',
+        'New mail shows up in your Windows notification centre — or your phone’s — even with AMO closed.',
       action: 'off',
     };
   } else {
     state = {
       title: 'Off for this device',
       detail:
-        'Turn them on to see new mail in your Windows notification centre, even with MailMind closed. Your browser will ask first.',
+        'Turn them on to see new mail in your Windows notification centre, even with AMO closed. Your browser will ask first.',
       action: 'on',
     };
   }

@@ -9,9 +9,7 @@ export function CookiesPage() {
     <LegalDocument
       title="Cookies and local storage"
       updated={LEGAL_UPDATED}
-      summary={
-        <p>MailMind uses the smallest browser storage surface needed to keep the app usable.</p>
-      }
+      summary={<p>AMO uses the smallest browser storage surface needed to keep the app usable.</p>}
     >
       <div className="security-list">
         <article>
@@ -37,7 +35,7 @@ export function CookiesPage() {
         </article>
       </div>
       <p>
-        MailMind does not use advertising cookies or cross-site tracking cookies. Clearing site data
+        AMO does not use advertising cookies or cross-site tracking cookies. Clearing site data
         resets preferences and signs you out; it does not delete server-side account data. Use the{' '}
         <Link to="/data-deletion">data deletion page</Link> for that.
       </p>
