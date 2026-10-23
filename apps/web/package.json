@@ -27,7 +27,7 @@
     "react-router-dom": "^7.7.1",
     "sonner": "^2.0.8",
     "tailwindcss": "^4.1.11",
-    "zod": "^4.0.17"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@sentry/vite-plugin": "^4.9.0",
