@@ -1363,6 +1363,19 @@
   padding: 0.3rem 0.45rem;
 }
 
+/* Install sits apart from the two themes: a hairline divides an action from a choice. */
+.theme-toggle__option--install {
+  margin-left: 2px;
+  color: var(--accent);
+  border-left: 1px solid var(--line);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.theme-toggle__option--install:hover {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+}
+
 /* ------------------------------------------------------------------ setup */
 
 /* The first-run path. Each step is gated on the one before it, so the marker carries the state

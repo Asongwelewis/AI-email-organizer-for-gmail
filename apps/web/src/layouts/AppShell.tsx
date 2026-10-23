@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Avatar } from '@web/components/Avatar';
 import { ConnectGmailScreen } from '@web/components/app/ConnectGmailScreen';
 import { NotificationCenter } from '@web/components/app/NotificationCenter';
+import { useSignOut } from '@web/components/app/SignOutDialog';
 import { ServerWakeNotice } from '@web/components/app/ServerWakeNotice';
 import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
@@ -54,7 +55,8 @@ function MenuButton() {
 }
 
 export function AppShell() {
-  const { user, logout, gmailConnection } = useAuth();
+  const { user, gmailConnection } = useAuth();
+  const { requestSignOut, dialog: signOutDialog } = useSignOut();
   const { pathname } = useLocation();
   // Only an answer from the server counts. A status request that failed is not proof that
   // Gmail is disconnected, and telling a connected person to connect would be its own bug.
@@ -68,6 +70,7 @@ export function AppShell() {
   return (
     <div className="shell">
       <NotificationCenter />
+      {signOutDialog}
       <nav className="shell__rail" aria-label="Primary">
         <span className="shell__brand">AMO</span>
         <ul className="shell__nav">
@@ -100,7 +103,7 @@ export function AppShell() {
           <button
             className="button button--icon"
             type="button"
-            onClick={() => void logout()}
+            onClick={requestSignOut}
             aria-label="Log out"
           >
             <LogOut aria-hidden="true" strokeWidth={1.5} />

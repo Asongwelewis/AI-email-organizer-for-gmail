@@ -29,7 +29,7 @@ export const THEME_STORAGE_KEY = 'mailmind_theme';
  */
 export const THEME_COLOR: Record<ResolvedTheme, string> = {
   dark: '#1c1c1e',
-  light: '#ececee',
+  light: '#e2ded5',
 };
 
 export function isThemePreference(value: unknown): value is ThemePreference {

@@ -7,7 +7,7 @@ const questions = [
   {
     question: 'Does AMO read my email body or attachments?',
     answer:
-      'No. AMO requests read-only Gmail access and stores message metadata plus Gmail’s short snippet. It does not request or store raw MIME, full message bodies, or attachments.',
+      'No. AMO requests read-only Gmail access and stores message metadata plus Gmail’s short snippet. It does not request or store raw MIME, full message bodies, or attachments, and no AI model ever reads your mail: classification runs on AMO’s own server.',
   },
   {
     question: 'What does Google sign-in authorize?',
@@ -20,9 +20,9 @@ const questions = [
       'The normal connection is read-only. Optional label export is a separate capability, disabled unless the deployment enables it and you grant the wider permission. AMO never sends, deletes, or replies to messages.',
   },
   {
-    question: 'Can I correct a classification?',
+    question: 'Do I have to sort or approve anything?',
     answer:
-      'Yes. Review and folder controls are designed for correction. The model is an aid, not a guarantee, so use Gmail itself as the source of truth for anything important.',
+      'No. AMO classifies the last two years of your mail as soon as you connect Gmail, and every new email within about a minute of arriving, then organizes it into folders. Classification is automated and accurate for most mail, but not infallible, so use Gmail itself as the source of truth for anything important.',
   },
   {
     question: 'What happens when I disconnect Gmail?',
@@ -30,9 +30,14 @@ const questions = [
       'AMO revokes the Gmail grant and removes the stored connection tokens. Your AMO account and synchronized metadata remain until you choose account deletion.',
   },
   {
+    question: 'What happens to my data when I sign out?',
+    answer:
+      'You choose. Keep it, and your folders are waiting when you sign in again with the same Google account; or delete it, and everything AMO stores about you is removed permanently and its Google access revoked.',
+  },
+  {
     question: 'How do I delete everything AMO stores?',
     answer:
-      'Use the public data-deletion page. Signed-in users can confirm deletion there; signed-out users can follow the support instructions. Account deletion is immediate and not recoverable.',
+      'Choose “delete my data” when you sign out, or use the public data-deletion page at any time. Signed-out users can follow the support instructions. Account deletion is immediate and not recoverable.',
   },
 ] as const;
 

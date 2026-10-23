@@ -16,4 +16,4 @@ export const LEGAL_ENTITY = '[OPERATOR NAME — fill in before public release]';
 export const LEGAL_CONTACT = '[support@your-domain — fill in before public release]';
 
 /** The date on the documents. Bump it when their substance changes, not when a typo is fixed. */
-export const LEGAL_UPDATED = '27 August 2026';
+export const LEGAL_UPDATED = '24 October 2026';

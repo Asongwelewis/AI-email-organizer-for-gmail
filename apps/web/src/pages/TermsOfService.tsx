@@ -10,9 +10,10 @@ export function TermsOfService() {
       updated={LEGAL_UPDATED}
       summary={
         <p>
-          AMO organises your Gmail by reading message headers and showing you folders built from
-          them. You keep your mail; AMO keeps a description of it. You can disconnect or delete
-          everything at any time, and it is offered as-is.
+          AMO classifies your Gmail automatically from message headers and organizes it into folders
+          — the body of your mail is never read. You keep your mail; AMO keeps a description of it,
+          and your data stays yours: keep it or delete it whenever you sign out. It is offered
+          as-is.
         </p>
       }
     >
@@ -24,9 +25,12 @@ export function TermsOfService() {
 
       <h2>What the service does</h2>
       <p>
-        AMO reads the metadata of messages in a Gmail account you connect, classifies each one along
-        three axes, and presents the result as browsable, searchable folders. It does not send mail,
-        delete mail, or reply to anyone.
+        AMO reads the metadata of messages in a Gmail account you connect — sender, recipients,
+        subject, date, labels and Gmail&rsquo;s preview line, never the body or attachments —
+        classifies each one automatically along three axes, and organizes the result into browsable,
+        searchable folders. On the free plan it covers the two years of mail before you first
+        connected, plus everything that arrives after. It does not send mail, delete mail, or reply
+        to anyone.
       </p>
       <p>
         By default AMO holds <strong>read-only</strong> access to your mailbox and changes nothing
@@ -43,10 +47,13 @@ export function TermsOfService() {
 
       <h2>Automated classification</h2>
       <p>
-        Classification is performed by a large language model and is <strong>not reliable</strong>.
-        Messages will be put in the wrong folder. AMO is an aid to finding mail, not a system of
-        record: do not rely on it for anything where being wrong matters, and do not treat the
-        absence of a message from a folder as evidence that the message does not exist.
+        Classification is performed by smart classification on AMO&rsquo;s own server — rules
+        learned from AI-labelled examples, well-known senders and Gmail&rsquo;s own categories. No
+        AI model reads your mail. It is accurate for most mail, but it is automated and{' '}
+        <strong>not infallible</strong>: some messages will land in the wrong folder. AMO is an aid
+        to finding mail, not a system of record: do not rely on it for anything where being wrong
+        matters, and do not treat the absence of a message from a folder as evidence that the
+        message does not exist.
       </p>
 
       <h2>Acceptable use</h2>
@@ -57,16 +64,15 @@ export function TermsOfService() {
 
       <h2>Availability</h2>
       <p>
-        There is no uptime commitment. The service depends on Google&rsquo;s APIs and on a
-        third-party AI provider, and either can be unavailable or can change its terms. Features can
-        change or be withdrawn.
+        There is no uptime commitment. The service depends on Google&rsquo;s APIs, which can be
+        unavailable or can change their terms. Features can change or be withdrawn.
       </p>
 
       <h2>Ending it</h2>
       <p>
         You can disconnect Gmail at any time, or delete your account and everything stored about it
-        from the <Link to="/data-deletion">data deletion page</Link>. We may suspend an account that
-        is being used in breach of these terms.
+        when you sign out or from the <Link to="/data-deletion">data deletion page</Link>. We may
+        suspend an account that is being used in breach of these terms.
       </p>
 
       <h2>No warranty, and the limit of liability</h2>
