@@ -19,11 +19,12 @@ export function PrivacyPolicy() {
       summary={
         <p>
           AMO reads the <strong>headers</strong> of your Gmail — subject, sender, recipients, date,
-          labels and Gmail&rsquo;s own short preview line — to work out what each message is about,
-          and shows you the result as folders. It never reads the body of an email or any
-          attachment, because it never asks Gmail for them. It does not sell anything, does not
-          advertise, and does not share your mail with anyone except the one AI provider named
-          below.
+          labels and Gmail&rsquo;s own short preview line — and classifies and organizes every
+          message into folders for you, automatically. It never reads the body of an email or any
+          attachment, because it never asks Gmail for them, and{' '}
+          <strong>no AI model ever reads your mail</strong>. Your data stays yours: when you sign
+          out you choose whether AMO keeps it for next time or deletes every trace of it. Nothing is
+          sold, advertised against, or shared with anyone to read.
         </p>
       }
     >
@@ -72,25 +73,30 @@ export function PrivacyPolicy() {
 
       <h2>What it is used for</h2>
       <p>
-        Each message is assigned three labels — the sending brand, a subject area, and what the
-        message wants — from a vocabulary you approve. Those become the folders you browse and
-        search. Nothing else is done with your mail, and nothing is used to train any model of ours,
-        because we do not train models.
+        Each message is <strong>classified automatically</strong> along three axes — the sending
+        brand, an area of life such as finance or career, and what the message is for, such as a
+        receipt or a security alert — and organized into the folders you browse and search. When you
+        connect Gmail, AMO classifies the last two years of your mail; after that, every new email
+        is classified within about a minute of arriving. Mail older than two years before you first
+        connected is never synchronized or stored.
+      </p>
+      <p>
+        <strong>How the classification works.</strong> AMO&rsquo;s classifier is smart
+        classification that runs entirely on AMO&rsquo;s own server: routing rules learned from
+        AI-labelled examples, well-known senders, and the category Gmail itself already put the
+        message in. It works only from the header details listed above — the body of your mail is
+        never read — and on a real 11,000-email mailbox it classified 11,244 of 11,245 messages. No
+        part of your mail is sent to an AI model or to any other service to be classified, and
+        nothing about your mail is used to train any model.
       </p>
 
       <h2>Who it is shared with</h2>
       <p>
-        <strong>Google Gemini.</strong> To assign a subject area and an intent, the subject line,
-        the sender address, the sending domain and the truncated snippet of a message are sent to
-        Google&rsquo;s Gemini API. Nothing else is sent — no body, no attachment, no recipient list.
-        The sending brand is derived from the sender&rsquo;s domain in our own code and is never
-        sent to a model.
-      </p>
-      <p>
-        Google&rsquo;s terms for the <em>free</em> Gemini tier permit Google to use submitted
-        content to improve its products. AMO is not operated on the free tier for anyone other than
-        its own author; if you are using a AMO instance you did not deploy yourself and are unsure
-        which tier it uses, ask before connecting a mailbox.
+        <strong>No AI provider.</strong> Your mail is classified on AMO&rsquo;s own server and is
+        not sent to Google Gemini, to any other AI service, or to anyone else to be read. (The
+        operator&rsquo;s own mailbox is the one exception: it is classified with Google Gemini, and
+        the examples it produced are what AMO&rsquo;s rules were learned from. No other user&rsquo;s
+        mail ever reaches it.)
       </p>
       <p>
         <strong>Your browser&rsquo;s push service.</strong> If you turn on notifications for a
@@ -122,10 +128,14 @@ export function PrivacyPolicy() {
 
       <h2>How long it is kept</h2>
       <p>
-        Message metadata is kept while your account exists, because it is what the folders are built
-        from. Deleting your account deletes it. Audit records of security-relevant events —
-        sign-ins, permission changes, deletions — are kept without your identifier attached, which
-        is what lets us show that a deletion happened without holding on to you afterwards.
+        <strong>Your data stays with you, and you decide how long.</strong> Message metadata is kept
+        while your account exists, because it is what the folders are built from, and only for the
+        two years of mail AMO sorts. Every time you sign out, AMO asks whether to keep your data so
+        your folders are waiting when you sign in again with the same Google account, or to delete
+        everything permanently — the same deletion as below. Audit records of security-relevant
+        events — sign-ins, permission changes, deletions — are kept without your identifier
+        attached, which is what lets us show that a deletion happened without holding on to you
+        afterwards.
       </p>
       <p>
         Feedback sent while signed in is deleted with your account. Feedback sent without an account
@@ -136,16 +146,17 @@ export function PrivacyPolicy() {
       <h2>Deleting your data</h2>
       <p>
         You can disconnect Gmail at any time, which revokes AMO&rsquo;s access to your mailbox. You
-        can delete your account and everything stored about it from the{' '}
-        <Link to="/data-deletion">data deletion page</Link>. It is immediate and it is not
-        recoverable.
+        can delete your account and everything stored about it when you sign out, or at any time
+        from the <Link to="/data-deletion">data deletion page</Link>. It revokes AMO&rsquo;s Google
+        access first, then removes every message, folder and decision from AMO&rsquo;s systems. It
+        is immediate and it is not recoverable.
       </p>
 
       <h2>Security</h2>
       <p>
         Google tokens are encrypted at rest with a versioned key and are never sent to the browser.
-        Sessions are opaque HttpOnly cookies. The API is the only thing that talks to Google, to the
-        database, or to Gemini.
+        Sessions are opaque HttpOnly cookies. The API is the only thing that talks to Google or to
+        the database, and your mail never leaves it for an AI service.
       </p>
 
       <h2>Changes</h2>

@@ -19,7 +19,19 @@ describe('MailAtmosphere', () => {
   it('uses a calmer scene on authentication routes', () => {
     const { container } = renderAtmosphere('/login');
     expect(container.querySelector('[data-scene="auth"]')).toBeInTheDocument();
-    expect(container.querySelectorAll('.mail-shape')).toHaveLength(8);
+    expect(container.querySelectorAll('.mail-shape')).toHaveLength(12);
+  });
+
+  // Plenty of them on the landing page, each on its own path: no two share a start and pace.
+  it('scatters a larger field of envelopes, each on its own random path', () => {
+    const { container } = renderAtmosphere('/');
+    const shapes = [...container.querySelectorAll<HTMLElement>('.mail-shape')];
+    expect(shapes).toHaveLength(24);
+    const paths = new Set(
+      shapes.map((shape) => `${shape.style.left}|${shape.style.animationDuration}`),
+    );
+    expect(paths.size).toBe(24);
+    expect(shapes[0]!.style.getPropertyValue('--x1')).toMatch(/vw$/);
   });
 
   it('allows continuous decorative motion to be paused and resumed', async () => {

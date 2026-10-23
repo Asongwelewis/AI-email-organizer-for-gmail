@@ -73,25 +73,34 @@ describe('ThemeProvider', () => {
     expect(stamped()).toBe('light');
   });
 
-  it('removes the stamp under `system`, so the OS decides again', async () => {
+  // Auto is no longer offered, but a preference stored before it went still works.
+  it('removes the stamp under a stored `system`, so the OS decides', () => {
     mockSystemPrefersDark(true);
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
     renderTheme();
-    await userEvent.click(screen.getByRole('button', { name: 'Auto' }));
     expect(probe()).toBe('system/dark');
     expect(stamped()).toBeNull();
   });
 
-  it('resolves `system` to light when the OS asks for light', async () => {
+  it('resolves a stored `system` to light, and shows Light as the one in use', () => {
     mockSystemPrefersDark(false);
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
     renderTheme();
-    await userEvent.click(screen.getByRole('button', { name: 'Auto' }));
     expect(probe()).toBe('system/light');
+    expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('follows an OS theme change while Auto is selected', async () => {
-    const listeners = mockSystemPrefersDark(true);
+  it('offers only Light and Dark', () => {
     renderTheme();
-    await userEvent.click(screen.getByRole('button', { name: 'Auto' }));
+    expect(screen.queryByRole('button', { name: 'Auto' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Light' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dark' })).toBeInTheDocument();
+  });
+
+  it('follows an OS theme change under a stored `system`', async () => {
+    const listeners = mockSystemPrefersDark(true);
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+    renderTheme();
 
     expect(probe()).toBe('system/dark');
     listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));

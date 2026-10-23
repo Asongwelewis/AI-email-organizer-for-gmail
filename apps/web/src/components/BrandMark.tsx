@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
 
+import { AmoLogo } from './AmoLogo';
+
 interface BrandMarkProps {
   compact?: boolean;
   inverted?: boolean;
@@ -20,10 +22,7 @@ export function BrandMark({ compact = false, inverted = false }: BrandMarkProps)
       to="/"
       aria-label="AMO: Automated Mail Organizer — home"
     >
-      <span className="brand-mark__symbol" aria-hidden="true">
-        <span className="brand-mark__layer brand-mark__layer--ring" />
-        <span className="brand-mark__layer brand-mark__layer--letters" />
-      </span>
+      <AmoLogo className="brand-mark__symbol" />
       {!compact && <span className="brand-mark__name">Automated Mail Organizer</span>}
     </Link>
   );

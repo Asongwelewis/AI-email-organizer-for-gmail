@@ -8,7 +8,7 @@
       ThemeProvider rewrites when an explicit choice overrides the OS. Order matters: the unscoped
       tag must come last so it wins once it is set.
     -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ececee" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e2ded5" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
     <meta name="theme-color" content="#1c1c1e" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -37,7 +37,7 @@
             choice === 'dark' ||
             (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
               ? '#1c1c1e'
-              : '#ececee';
+              : '#e2ded5';
           var themeColor = document.querySelector('meta[name="theme-color"]:not([media])');
           if (themeColor) themeColor.setAttribute('content', resolved);
         } catch (error) {

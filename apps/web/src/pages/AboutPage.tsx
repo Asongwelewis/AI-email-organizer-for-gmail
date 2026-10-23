@@ -7,18 +7,18 @@ import { LEGAL_UPDATED } from './legal-contact';
 const promises = [
   {
     Icon: Eye,
-    title: 'See the pattern',
-    copy: 'AMO works from Gmail metadata: the subject, sender, date, labels, and short preview Gmail provides.',
+    title: 'Classified for you',
+    copy: 'Every email is classified automatically from its sender, subject, date and Gmail’s preview line. The body is never read.',
   },
   {
     Icon: FolderKanban,
-    title: 'Shape the view',
-    copy: 'Three independent facets become a folder view you can reorder, search, and filter by recency.',
+    title: 'Organized into folders',
+    copy: 'Sender, area of life and purpose become folders you can reorder, search, and filter by recency — kept up to date every minute.',
   },
   {
     Icon: Hand,
-    title: 'Keep the say',
-    copy: 'Suggestions are reviewable. Connecting Gmail and exporting labels are separate choices, and neither is hidden.',
+    title: 'Your data stays yours',
+    copy: 'Read-only access you can revoke at any time. When you sign out, keep your data for next time or delete all of it.',
   },
 ] as const;
 
@@ -46,9 +46,9 @@ export function AboutPage() {
 
       <h2>Built for useful restraint</h2>
       <p>
-        AMO does not send mail, answer mail, or silently change your Gmail. It separates Google
-        identity from Gmail permission, keeps the session in an HttpOnly cookie, and puts the
-        organization decision in front of you.
+        AMO does not send mail, answer mail, or change your Gmail. It separates Google identity from
+        Gmail permission, keeps the session in an HttpOnly cookie, and classifies and organizes your
+        mail on its own server — no AI model ever reads it.
       </p>
       <p>
         The product is an assistant, not a record of truth. Automated classification can be wrong;

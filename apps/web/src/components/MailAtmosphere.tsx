@@ -1,18 +1,60 @@
+import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
 import { Outlet, useLocation } from 'react-router-dom';
 
-const shapes = [
-  'envelope',
-  'route',
-  'fold',
-  'envelope',
-  'stamp',
-  'route',
-  'fold',
-  'envelope',
-] as const;
+const KINDS = ['envelope', 'route', 'fold', 'stamp'] as const;
+type ShapeKind = (typeof KINDS)[number];
+
+/** How many float behind each kind of page: plenty on the landing page, a few behind forms. */
+const COUNT: Record<ReturnType<typeof sceneForPath>, number> = {
+  landing: 24,
+  auth: 12,
+  legal: 10,
+  app: 8,
+};
+
+interface FloatingShape {
+  kind: ShapeKind;
+  style: React.CSSProperties;
+}
+
+/**
+ * A field of envelopes, each on its own random wander: a start anywhere on the page, three
+ * waypoints up to a fifth of the screen away, its own size, tilt, pace and phase. Generated once
+ * per page load, so nothing jumps while you read; the motion itself is a CSS transform, which the
+ * compositor runs without touching layout, and the pause button and the reduced-motion setting
+ * both stop it.
+ */
+function scatter(count: number): FloatingShape[] {
+  const random = (min: number, max: number) => min + Math.random() * (max - min);
+  return Array.from({ length: count }, (_, index) => {
+    const kind = KINDS[index % KINDS.length]!;
+    const wander = () => `${random(-18, 18).toFixed(1)}vw`;
+    const drift = () => `${random(-16, 16).toFixed(1)}vh`;
+    const duration = random(38, 70);
+    return {
+      kind,
+      style: {
+        left: `${random(-6, 94).toFixed(1)}%`,
+        top: `${random(-6, 92).toFixed(1)}%`,
+        width: `clamp(${random(3.5, 6).toFixed(1)}rem, ${random(6, 13).toFixed(1)}vw, ${random(7, 15).toFixed(1)}rem)`,
+        animationDuration: `${duration.toFixed(1)}s`,
+        // A negative delay starts each one part way through its path, so the field is already
+        // in motion on the first frame rather than all setting off together.
+        animationDelay: `-${random(0, duration).toFixed(1)}s`,
+        '--tilt': `${random(-18, 18).toFixed(1)}deg`,
+        '--x1': wander(),
+        '--y1': drift(),
+        '--x2': wander(),
+        '--y2': drift(),
+        '--x3': wander(),
+        '--y3': drift(),
+      } as React.CSSProperties,
+    };
+  });
+}
 
 function sceneForPath(pathname: string): 'landing' | 'auth' | 'app' | 'legal' {
   if (pathname === '/') return 'landing';
@@ -33,6 +75,9 @@ export function VisualRoot() {
 export function MailAtmosphere() {
   const { pathname } = useLocation();
   const scene = useMemo(() => sceneForPath(pathname), [pathname]);
+  // One field per kind of page, kept for the life of the tab: moving between legal pages does not
+  // reshuffle the sky.
+  const field = useMemo(() => scatter(COUNT[scene]), [scene]);
   const reduceMotion = useReducedMotion();
   const [paused, setPaused] = useState(false);
   const pointerX = useMotionValue(0);
@@ -66,9 +111,13 @@ export function MailAtmosphere() {
         aria-hidden="true"
         style={{ x, y }}
       >
-        {shapes.map((shape, index) => (
-          <span className={`mail-shape mail-shape--${shape}`} key={`${shape}-${index}`}>
-            <MailShape kind={shape} />
+        {field.map((shape, index) => (
+          <span
+            className={`mail-shape mail-shape--${shape.kind}`}
+            key={`${shape.kind}-${index}`}
+            style={shape.style}
+          >
+            <MailShape kind={shape.kind} />
           </span>
         ))}
       </motion.div>
@@ -89,7 +138,7 @@ export function MailAtmosphere() {
   );
 }
 
-function MailShape({ kind }: { kind: (typeof shapes)[number] }) {
+function MailShape({ kind }: { kind: ShapeKind }) {
   if (kind === 'route') {
     return (
       <svg viewBox="0 0 180 120" fill="none">
