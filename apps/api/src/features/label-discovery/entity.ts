@@ -144,10 +144,19 @@ const SLUG_UNSAFE = /[^a-z0-9]+/g;
  * and Phase 3 has to be able to pivot it without inventing a brand for it.
  */
 export function entityFor(senderEmail: string | null): string | null {
-  const registrable = emailIdentity(senderEmail).registrableDomain;
+  const identity = emailIdentity(senderEmail);
+  const registrable = identity.registrableDomain;
   if (!registrable) return null;
 
-  if (PERSONAL_MAIL_DOMAINS.has(registrable)) return PERSONAL_ENTITY;
+  // A person writes from the provider's own domain. news.proton.me and notify.proton.me are
+  // Proton the company, and an automated address on the bare domain is the provider too.
+  if (
+    PERSONAL_MAIL_DOMAINS.has(registrable) &&
+    identity.senderDomain === registrable &&
+    !identity.automated
+  ) {
+    return PERSONAL_ENTITY;
+  }
 
   if (PLATFORM_SENDER_DOMAINS.has(registrable)) {
     const publication = publicationFrom(senderEmail);
