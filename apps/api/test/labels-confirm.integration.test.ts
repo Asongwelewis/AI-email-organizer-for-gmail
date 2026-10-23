@@ -36,6 +36,10 @@ const { mocks, forwardTo } = vi.hoisted(() => {
   return { mocks: holders, forwardTo: forward };
 });
 
+// The owner's mailbox: planning a tree sends a sample to the model, which only it may do.
+vi.mock('../src/features/accounts/account-policy.js', () => ({
+  assertModelAllowed: async () => undefined,
+}));
 vi.mock('../src/audit/audit.service.js', () => ({
   auditService: { record: mocks.auditRecord },
 }));

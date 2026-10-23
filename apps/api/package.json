@@ -26,7 +26,10 @@
     "eval:facets": "tsx scripts/eval-facets.ts",
     "feedback": "tsx scripts/read-feedback.ts",
     "rederive:entities": "tsx scripts/rederive-entities.ts",
-    "test:scale": "tsx test/scale.load.ts"
+    "test:scale": "tsx test/scale.load.ts",
+    "reference:build": "tsx scripts/build-reference-rules.ts",
+    "mailbox:resync": "tsx scripts/resync-mailbox.ts",
+    "test:beta": "tsx test/beta.load.ts"
   },
   "dependencies": {
     "@mailmind/shared": "0.1.0",

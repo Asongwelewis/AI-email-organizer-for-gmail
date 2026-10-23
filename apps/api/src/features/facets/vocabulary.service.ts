@@ -1,5 +1,6 @@
 import { auditService } from '@api/audit/audit.service.js';
 import { prisma } from '@api/database/prisma.js';
+import { assertModelAllowed } from '@api/features/accounts/account-policy.js';
 import {
   activityRepository,
   type ActivityRepository,
@@ -68,6 +69,8 @@ export class VocabularyService {
    */
   async propose(userId: string): Promise<VocabularyProposal> {
     const account = await this.accounts.activeAccountForUser(userId);
+    // Grounding sends a sample of the mailbox to Gemini; only the owner's may go there.
+    await assertModelAllowed(account.id);
     const approved = await this.vocabularies.approved(account.id);
     const candidate =
       approved.domain.length > 0 && approved.intent.length > 0

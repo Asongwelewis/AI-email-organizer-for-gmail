@@ -63,6 +63,7 @@ describe('security primitives', () => {
       'gmail_permission_incomplete',
       'gmail_reauth_required',
       'gmail_connection_failed',
+      'beta_full',
     ]);
   });
 });

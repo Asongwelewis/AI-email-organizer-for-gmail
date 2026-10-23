@@ -8,6 +8,7 @@ export const CALLBACK_STATUSES = [
   'gmail_permission_incomplete',
   'gmail_reauth_required',
   'gmail_connection_failed',
+  'beta_full',
 ] as const;
 
 export type CallbackStatus = (typeof CALLBACK_STATUSES)[number];

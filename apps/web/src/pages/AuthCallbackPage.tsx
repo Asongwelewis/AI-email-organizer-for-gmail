@@ -51,6 +51,15 @@ const statuses = {
     copy: 'Gmail could not be connected. Your AMO account is unchanged.',
     destination: '/inbox',
   },
+  // The beta is capped at what the free plan can carry; Google was never asked for anything.
+  beta_full: {
+    kind: 'error',
+    title: 'The AMO beta is full.',
+    copy: 'You are signed in, but every beta place is taken right now, so Gmail was not connected and nothing was read. Try again later — places open up.',
+    destination: '/menu',
+    // Too much to read in two seconds, and nothing waits on the far side: they leave when ready.
+    stay: true,
+  },
 } as const;
 
 export function AuthCallbackPage() {
@@ -78,13 +87,14 @@ export function AuthCallbackPage() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.gmailConnection });
       void queryClient.invalidateQueries({ queryKey: queryKeys.authMe });
     }
+    if ('stay' in status && status.stay) return;
     const tick = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
     const redirect = window.setTimeout(() => navigate(status.destination, { replace: true }), 1900);
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(redirect);
     };
-  }, [navigate, queryClient, status.destination, statusKey]);
+  }, [navigate, queryClient, status, statusKey]);
 
   const Icon = status.kind === 'success' ? CheckCircle2 : CircleAlert;
 

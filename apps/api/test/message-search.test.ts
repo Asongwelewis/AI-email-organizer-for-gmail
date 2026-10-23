@@ -9,12 +9,40 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
-    $queryRaw: mocks.queryRaw,
+    // The folder join is answered from the facet rows; every other raw query is the search.
+    $queryRaw: (strings: string[], ...values: unknown[]) =>
+      strings.join('').includes('f.gmail_message_id as id')
+        ? facetRowsAsJoin()
+        : mocks.queryRaw(strings, ...values),
     message_facets: { findMany: mocks.facetFindMany, groupBy: mocks.facetGroupBy },
     facet_pivot_settings: { upsert: mocks.pivotSettingsUpsert },
   },
 }));
 
+/**
+ * The folder rows come from one SQL join now, not Prisma's nested select. The suites still describe
+ * them as message_facets rows, so the join's mock reads those and flattens them as the join would.
+ */
+async function facetRowsAsJoin(): Promise<unknown[]> {
+  const rows = ((await mocks.facetFindMany({})) ?? []) as Array<{
+    gmail_message_id: string;
+    entity: string | null;
+    domain: string | null;
+    intent: string | null;
+    message?: { internal_date?: Date | null; is_unread?: boolean; sender_email?: string | null };
+  }>;
+  return rows.map((row) => ({
+    id: row.gmail_message_id,
+    entity: row.entity,
+    domain: row.domain,
+    intent: row.intent,
+    received_at: row.message?.internal_date ?? null,
+    unread: row.message?.is_unread === true,
+    sender_email: row.message?.sender_email ?? null,
+  }));
+}
+
+const { forgetPivotViews } = await import('../src/features/labels/pivot-cache.js');
 const { MessageSearchService } = await import('../src/features/facets/message-search.service.js');
 const { PivotService } = await import('../src/features/labels/pivot.service.js');
 const { APPROVED_FACET_VOCABULARY } = await import('../src/features/label-discovery/facets.js');
@@ -78,6 +106,7 @@ function service() {
 }
 
 beforeEach(() => {
+  forgetPivotViews();
   vi.clearAllMocks();
   mocks.pivotSettingsUpsert.mockResolvedValue({
     canonical_pivot: ['entity', 'intent'],

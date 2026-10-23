@@ -17,24 +17,27 @@ favicons, the two theme-aware wordmark masks in `apps/web/public/brand/`, and
 
 Run from the repository root. Node 22+ / npm 10+.
 
-| Purpose                    | Command                                                                          |
-| -------------------------- | -------------------------------------------------------------------------------- |
-| Dev (web + api)            | `npm run dev` (or `npm run dev:web` / `npm run dev:api`)                         |
-| All tests                  | `npm test`                                                                       |
-| API tests only             | `npm test --workspace @mailmind/api`                                             |
-| Web tests only             | `npm test --workspace @mailmind/web`                                             |
-| Single test file           | `npm exec --workspace @mailmind/api -- vitest run test/security.test.ts`         |
-| Single test by name        | add `-t "partial name"` to the vitest command                                    |
-| Watch a file               | same as above with `vitest watch` instead of `vitest run`                        |
-| Database lifecycle tests   | `npm run test:database --workspace @mailmind/api`                                |
-| Database invariant audit   | `npm run audit:database --workspace @mailmind/api`                               |
-| Scale test (local DB only) | `RUN_SCALE_TEST=true NODE_ENV=test npm run test:scale --workspace @mailmind/api` |
-| E2E (Playwright)           | `npm run test:e2e`                                                               |
-| Typecheck (all workspaces) | `npm run typecheck` (root `tsc -b --force` over project references)              |
-| Lint / format              | `npm run lint`, `npm run format`, `npm run format:check`                         |
-| Build all                  | `npm run build`                                                                  |
-| Prisma client / validate   | `npm run prisma:generate` / `prisma:validate --workspace @mailmind/api`          |
-| Apply migrations           | `npm exec --workspace @mailmind/api -- prisma migrate deploy`                    |
+| Purpose                    | Command                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| Dev (web + api)            | `npm run dev` (or `npm run dev:web` / `npm run dev:api`)                             |
+| All tests                  | `npm test`                                                                           |
+| API tests only             | `npm test --workspace @mailmind/api`                                                 |
+| Web tests only             | `npm test --workspace @mailmind/web`                                                 |
+| Single test file           | `npm exec --workspace @mailmind/api -- vitest run test/security.test.ts`             |
+| Single test by name        | add `-t "partial name"` to the vitest command                                        |
+| Watch a file               | same as above with `vitest watch` instead of `vitest run`                            |
+| Database lifecycle tests   | `npm run test:database --workspace @mailmind/api`                                    |
+| Database invariant audit   | `npm run audit:database --workspace @mailmind/api`                                   |
+| Scale test (local DB only) | `RUN_SCALE_TEST=true NODE_ENV=test npm run test:scale --workspace @mailmind/api`     |
+| Beta simulation (local DB) | `RUN_SCALE_TEST=true NODE_ENV=test npm run test:beta --workspace @mailmind/api`      |
+| Rebuild reference rules    | `npm run reference:build --workspace @mailmind/api -- <reference email> [--dry-run]` |
+| Re-run one mailbox's setup | `npm run mailbox:resync --workspace @mailmind/api -- <email>`                        |
+| E2E (Playwright)           | `npm run test:e2e`                                                                   |
+| Typecheck (all workspaces) | `npm run typecheck` (root `tsc -b --force` over project references)                  |
+| Lint / format              | `npm run lint`, `npm run format`, `npm run format:check`                             |
+| Build all                  | `npm run build`                                                                      |
+| Prisma client / validate   | `npm run prisma:generate` / `prisma:validate --workspace @mailmind/api`              |
+| Apply migrations           | `npm exec --workspace @mailmind/api -- prisma migrate deploy`                        |
 
 Notes:
 
@@ -218,6 +221,17 @@ string, since ours carry facet values, search phrases and message ids — and no
 collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
 authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
 The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
+**Gemini sorts the owner's mail only.** `features/accounts/account-policy.ts` decides per
+mailbox: `OWNER_ACCOUNT_EMAILS` are sorted by Gemini over their whole history; everyone else
+by rules (own rules → reference rules derived from the owner's consistent decisions, stored
+only in `reference_classification_rules` because the repo is public → keyword heuristics →
+Gmail's category tab), inside a window of `MAIL_HISTORY_DAYS` (730) back from their first
+connection, and none of their mail ever reaches a model. The window is enforced by the first
+sync's query, by sync refusing to store older mail, by the classifier's queries, and by
+housekeeping deleting anything older. `BETA_MAX_MAILBOXES` (10) caps connected non-owner
+mailboxes before Google consent. Rules-only sorting writes every message in the window, a page
+per statement; mail from personal providers has the entity `personal`.
 
 **First setup runs itself.** Connecting Gmail starts `features/onboarding` from the Gmail callback:
 an `ONBOARDING` activity run through `SYNCING` (a first sync bounded by

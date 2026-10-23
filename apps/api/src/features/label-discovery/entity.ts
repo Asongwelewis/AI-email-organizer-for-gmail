@@ -20,8 +20,6 @@ import { emailIdentity } from './label-normalization.js';
 const ENTITY_ALIASES: Record<string, string> = {
   'redditmail.com': 'reddit',
   'facebookmail.com': 'facebook',
-  'googlemail.com': 'google',
-  'gmail.com': 'google',
   'linkedin-ei.com': 'linkedin',
   'youtube.com': 'youtube',
   'awsapps.com': 'aws',
@@ -32,14 +30,42 @@ const ENTITY_ALIASES: Record<string, string> = {
   'githubusercontent.com': 'github',
   'microsoftonline.com': 'microsoft',
   'office365.com': 'microsoft',
-  'live.com': 'microsoft',
-  'outlook.com': 'microsoft',
-  'hotmail.com': 'microsoft',
-  'icloud.com': 'apple',
-  'me.com': 'apple',
-  'yahoo.com': 'yahoo',
-  'ymail.com': 'yahoo',
 };
+
+/**
+ * Mail providers whose addresses are people, not organisations.
+ *
+ * Mail from someone@gmail.com is from a person, and used to be filed under a "Google" folder beside
+ * Google's own security alerts — the same for Outlook and Microsoft, iCloud and Apple. A person is
+ * not a brand, so all of it is the one `personal` entity: a folder of mail from people. The same
+ * list keeps a person's address from ever becoming a reference routing rule.
+ */
+export const PERSONAL_MAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'yahoo.fr',
+  'ymail.com',
+  'outlook.com',
+  'hotmail.com',
+  'hotmail.fr',
+  'live.com',
+  'msn.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'proton.me',
+  'protonmail.com',
+  'gmx.com',
+  'gmx.net',
+  'mail.com',
+  'zoho.com',
+  'yandex.com',
+  'yandex.ru',
+]);
+
+export const PERSONAL_ENTITY = 'personal';
 
 /**
  * Domains that host other people's brands rather than being one.
@@ -120,6 +146,8 @@ const SLUG_UNSAFE = /[^a-z0-9]+/g;
 export function entityFor(senderEmail: string | null): string | null {
   const registrable = emailIdentity(senderEmail).registrableDomain;
   if (!registrable) return null;
+
+  if (PERSONAL_MAIL_DOMAINS.has(registrable)) return PERSONAL_ENTITY;
 
   if (PLATFORM_SENDER_DOMAINS.has(registrable)) {
     const publication = publicationFrom(senderEmail);

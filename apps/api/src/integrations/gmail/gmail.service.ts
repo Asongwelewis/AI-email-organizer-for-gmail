@@ -7,6 +7,7 @@ import {
   type ProgressReporter,
   type StartedRun,
 } from '@api/features/activity/activity.service.js';
+import { policyFor } from '@api/features/accounts/account-policy.js';
 import { hasGmailWriteScope } from '@api/integrations/google/google-scopes.js';
 import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
@@ -14,7 +15,12 @@ import { createGmailClient, withGmailRetry } from './gmail.client.js';
 import { classifyGmailError, isHistoryExpired } from './gmail.errors.js';
 import { mapGmailMessage } from './gmail.mapper.js';
 import { gmailRepository, type SyncLease } from './gmail.repository.js';
-import { emptySyncCounts, type GmailClient, type SyncCounts } from './gmail.types.js';
+import {
+  emptySyncCounts,
+  type GmailClient,
+  type GmailMessageRecord,
+  type SyncCounts,
+} from './gmail.types.js';
 
 // Only the parent label is managed here. Leaf labels are created by the labels
 // feature on confirm, as `MailMind/<leaf>`, and need this parent to exist.
@@ -22,15 +28,21 @@ const MANAGED_LABELS = [{ name: 'MailMind', purpose: 'ROOT' }] as const;
 const METADATA_HEADERS = ['Subject', 'From', 'To', 'Cc', 'Date'];
 
 /**
- * What a first sync reads: the last GMAIL_INITIAL_SYNC_LOOKBACK_DAYS, at most
- * GMAIL_INITIAL_SYNC_MAX_MESSAGES of them, newest first — Gmail lists newest first, so a ceiling
- * keeps the most recent mail. Zero for both reads the whole mailbox, which is how it used to work.
+ * What a first sync reads: the mailbox's own history window (see account-policy), clamped by
+ * GMAIL_INITIAL_SYNC_LOOKBACK_DAYS when that is set, at most GMAIL_INITIAL_SYNC_MAX_MESSAGES of it,
+ * newest first — Gmail lists newest first, so a ceiling keeps the most recent mail. The owner's
+ * mailbox has no window, and with no lookback either it is read whole, as it always was.
  */
-export function initialSyncBounds(startedAt: Date) {
-  const since =
+export function initialSyncBounds(startedAt: Date, windowStart: Date | null = null) {
+  const lookback =
     env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS > 0
       ? new Date(startedAt.getTime() - env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS * 86_400_000)
       : null;
+  // The later of the two: each is a promise about how far back mail is read.
+  const since =
+    lookback && windowStart
+      ? new Date(Math.max(lookback.getTime(), windowStart.getTime()))
+      : (lookback ?? windowStart);
   return {
     since,
     query: since ? `after:${Math.floor(since.getTime() / 1000)}` : null,
@@ -138,7 +150,10 @@ export class GmailSyncService {
       }
       // Derived from the backfill's own start, so a resumed backfill asks Gmail the same question
       // its page token was issued for.
-      const bounds = initialSyncBounds(backfill.backfill_started_at);
+      const bounds = initialSyncBounds(
+        backfill.backfill_started_at,
+        policyFor(account).windowStart,
+      );
       const total = bounds.maxMessages
         ? Math.min(bounds.maxMessages, profile.messagesTotal ?? bounds.maxMessages)
         : (profile.messagesTotal ?? 0);
@@ -167,7 +182,7 @@ export class GmailSyncService {
             .filter((id): id is string => Boolean(id));
           counts.messagesExamined += ids.length;
           processed += ids.length;
-          await this.fetchAndPersistMessages(gmail, account.id, ids, counts);
+          await this.fetchAndPersistMessages(gmail, account.id, ids, counts, bounds.since);
           const reachedCeiling = Boolean(bounds.maxMessages) && processed >= bounds.maxMessages;
           pageToken = reachedCeiling ? undefined : (response.data.nextPageToken ?? undefined);
           await gmailRepository.checkpointBackfillPage(lease, pageToken ?? null, ids.length);
@@ -288,7 +303,15 @@ export class GmailSyncService {
       for (const id of deleted) changed.delete(id);
       const changedIds = [...changed];
       counts.messagesExamined = changedIds.length + deleted.size;
-      await this.fetchAndPersistMessages(gmail, account.id, changedIds, counts);
+      // History reports changes to old mail too — a label added to a message from 2019. The window
+      // is enforced on what is stored, not only on what a first sync asked for.
+      await this.fetchAndPersistMessages(
+        gmail,
+        account.id,
+        changedIds,
+        counts,
+        policyFor(account).windowStart,
+      );
       const deletion = await gmailRepository.markDeleted(account.id, [...deleted]);
       counts.messagesDeleted = deletion.count;
       await gmailRepository.complete(lease, counts, checkpoint, false);
@@ -419,6 +442,7 @@ export class GmailSyncService {
     accountId: string,
     ids: string[],
     counts: SyncCounts,
+    windowStart: Date | null = null,
   ): Promise<void> {
     for (const batch of chunks(ids, env.GMAIL_SYNC_BATCH_SIZE)) {
       const records = await Promise.all(
@@ -443,7 +467,13 @@ export class GmailSyncService {
           }
         }),
       );
-      const present = records.filter((record) => record !== null);
+      // Outside the window is never stored: no mail older than a mailbox's history reaches the
+      // database, so nothing downstream has to remember to leave it out.
+      const present = records.filter(
+        (record): record is GmailMessageRecord =>
+          record !== null &&
+          (!windowStart || !record.internal_date || record.internal_date >= windowStart),
+      );
       await gmailRepository.upsertMessages(accountId, present);
       counts.messagesUpserted += present.length;
     }

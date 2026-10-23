@@ -14,6 +14,7 @@ function renderCallback(entry: string) {
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/inbox" element={<div>Inbox destination</div>} />
           <Route path="/login" element={<div>Login destination</div>} />
+          <Route path="/menu" element={<div>Menu destination</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -55,6 +56,17 @@ describe('AuthCallbackPage', () => {
     expect(screen.getByRole('heading', { name: 'Gmail stayed private.' })).toBeInTheDocument();
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     expect(screen.getByText('Inbox destination')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  // Past the beta cap nothing was asked of Google; the person is told why and leaves when ready.
+  it('explains a full beta and waits for the person to continue', async () => {
+    vi.useFakeTimers();
+    renderCallback('/auth/callback?status=beta_full');
+    expect(screen.getByRole('heading', { name: 'The AMO beta is full.' })).toBeInTheDocument();
+    expect(screen.getByText(/nothing was read/)).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(screen.queryByText('Menu destination')).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 });
