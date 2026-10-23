@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { automation_action_status } from '@prisma/client';
+import type { automation_action_status, facet_source } from '@prisma/client';
 
 import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
@@ -92,7 +92,7 @@ interface RecordedDecision {
   labelName: string;
   labelPath: string | null;
   confidence: number;
-  source: 'RULE' | 'MODEL';
+  source: facet_source;
   explanation: string;
   gmailLabelId?: string;
   appliedAt?: Date;
@@ -195,7 +195,7 @@ export class FacetFilingService {
       for (const [index, row] of rows.entries()) {
         if (index % 25 === 0) await this.renewLease(accountId, token);
         counters.seen += 1;
-        if (row.source === 'RULE') counters.fromRules += 1;
+        if (row.source !== 'MODEL') counters.fromRules += 1;
         else counters.fromModel += 1;
 
         const leaf = pivotLeafFor(
@@ -366,7 +366,7 @@ export class FacetFilingService {
       label_name: decision.labelName,
       label_path: decision.labelPath,
       confidence: decision.confidence,
-      source: decision.source === 'RULE' ? ('LEARNED_PATTERN' as const) : ('AI' as const),
+      source: decision.source === 'MODEL' ? ('AI' as const) : ('LEARNED_PATTERN' as const),
       explanation: decision.explanation,
       reason_codes: ['FACET_PIVOT', decision.source],
       // A hash of what the decision actually rests on, which is the column's whole purpose: the

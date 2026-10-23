@@ -152,16 +152,22 @@ describe('checking a mailbox for new mail', () => {
     expect(gmail.hasNewHistory).not.toHaveBeenCalled();
   });
 
-  it('still syncs without a Gemini key, and sends nothing to a model', async () => {
+  // Whether a model is used is the classifier's decision, made per mailbox. The watcher sorts
+  // new mail either way; without a key that means by rules.
+  it('still sorts new mail without a Gemini key', async () => {
     env.GEMINI_API_KEY = undefined;
     const { gmail, classification, service } = setup();
     gmail.hasNewHistory.mockResolvedValue(true);
     gmail.incrementalSync.mockResolvedValue({ messagesUpserted: 1 });
+    classification.classifyAccount.mockResolvedValue(counters({ ruleDecided: 1 }));
 
     const result = await service.check('account-1', 'user-1', NOW);
 
-    expect(result).toEqual({ outcome: 'CHECKED', synced: 1 });
-    expect(classification.classifyAccount).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('CHECKED');
+    expect(classification.classifyAccount).toHaveBeenCalledWith(
+      'account-1',
+      expect.objectContaining({ scope: 'new' }),
+    );
   });
 
   it.each([

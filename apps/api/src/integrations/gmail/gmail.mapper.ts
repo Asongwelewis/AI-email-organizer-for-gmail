@@ -7,24 +7,36 @@ const truncate = (value: string | null | undefined, length: number): string | nu
   return normalized ? normalized.slice(0, length) : null;
 };
 
+/**
+ * Decodes the bytes of one RFC 2047 encoded word in the charset it names.
+ *
+ * This used to know two charsets — `latin1`, and everything else as UTF-8 — so a subject sent as
+ * `windows-1252`, which is how a lot of mail software encodes curly quotes, was stored as
+ * "�Software Engineer�". `TextDecoder` knows every charset mail actually uses; one it does not
+ * know falls back to UTF-8, which is what happened to everything before.
+ */
+function decodeBytes(bytes: Buffer, charset: string): string {
+  try {
+    return new TextDecoder(charset.trim().toLowerCase()).decode(bytes);
+  } catch {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+}
+
 function decodeEncodedWord(value: string): string {
   return value.replace(
     /=\?([^?]+)\?([bq])\?([^?]*)\?=/gi,
     (_match, charset: string, encoding: string, encoded: string) => {
       try {
         if (encoding.toLowerCase() === 'b') {
-          return Buffer.from(encoded, 'base64').toString(
-            charset.toLowerCase() === 'latin1' ? 'latin1' : 'utf8',
-          );
+          return decodeBytes(Buffer.from(encoded, 'base64'), charset);
         }
         const bytes = encoded
           .replace(/_/g, ' ')
           .replace(/=([0-9a-f]{2})/gi, (_: string, hex: string) =>
             String.fromCharCode(Number.parseInt(hex, 16)),
           );
-        return Buffer.from(bytes, 'latin1').toString(
-          charset.toLowerCase() === 'latin1' ? 'latin1' : 'utf8',
-        );
+        return decodeBytes(Buffer.from(bytes, 'latin1'), charset);
       } catch {
         return encoded;
       }

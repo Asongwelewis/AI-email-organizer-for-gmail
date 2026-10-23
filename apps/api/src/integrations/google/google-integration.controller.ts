@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 import { env } from '@api/config/env.js';
 import { logger, safeErrorDetails } from '@api/config/logger.js';
+import { mayConnectMailbox } from '@api/features/accounts/beta-capacity.js';
 import { onboardingService } from '@api/features/onboarding/onboarding.service.js';
 import { frontendUrl } from '@api/security/safe-redirect.js';
 import { googleGmailService } from './google-login.service.js';
@@ -9,6 +10,11 @@ import { sessionService } from '@api/sessions/session.service.js';
 
 export class GoogleIntegrationController {
   async connect(request: Request, response: Response): Promise<void> {
+    const user = request.auth!.user;
+    if (!(await mayConnectMailbox(user.id, user.email))) {
+      response.redirect(frontendUrl(env.WEB_APP_URL, '/auth/callback', 'beta_full'));
+      return;
+    }
     response.redirect(await googleGmailService.beginConnection(request, request.query['redirect']));
   }
 

@@ -229,9 +229,6 @@ export class AutomationService {
     if (!env.AUTOMATION_ENABLED) {
       throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
     }
-    if (!env.GEMINI_API_KEY) {
-      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
-    }
     const vocabulary = await facetVocabularyRepository.approved(accountId);
     if (vocabulary.domain.length === 0 || vocabulary.intent.length === 0) {
       throw new AppError(
@@ -330,19 +327,19 @@ export class AutomationService {
     return {
       gmailConnected: account.gmail_connected && account.connection_status === 'CONNECTED',
       requiresReauthentication: account.connection_status === 'REAUTH_REQUIRED',
-      enabled: env.AUTOMATION_ENABLED && (settings?.enabled ?? true) && Boolean(env.GEMINI_API_KEY),
+      enabled: env.AUTOMATION_ENABLED && (settings?.enabled ?? true),
       /*
        * WHY it is off, not just that it is. Three different things switch automation off — the
        * deployment flag, this account's own setting, and a missing Gemini key — and a screen that
        * names only the first sends someone to change a variable that was already correct.
        */
+      // A missing Gemini key no longer switches anything off: without it, mail is sorted by
+      // rules, which is how every mailbox but the owner's is sorted anyway.
       disabledReason: !env.AUTOMATION_ENABLED
         ? ('AUTOMATION_DISABLED' as const)
-        : !env.GEMINI_API_KEY
-          ? ('AUTOMATION_NOT_CONFIGURED' as const)
-          : settings?.enabled === false
-            ? ('ACCOUNT_PAUSED' as const)
-            : null,
+        : settings?.enabled === false
+          ? ('ACCOUNT_PAUSED' as const)
+          : null,
       running: Boolean(state?.lease_expires_at && state.lease_expires_at > new Date()),
       nextRunAt: state?.next_run_at?.toISOString() ?? null,
       retryAt: state?.retry_at?.toISOString() ?? null,
@@ -623,9 +620,6 @@ export class AutomationService {
   ): Promise<RunOutcomeSummary> {
     if (!env.AUTOMATION_ENABLED) {
       throw new AppError('AUTOMATION_DISABLED', 'Daily automation is disabled.', 503);
-    }
-    if (!env.GEMINI_API_KEY) {
-      throw new AppError('AUTOMATION_NOT_CONFIGURED', 'Gemini is not configured.', 503);
     }
     await auditService.record({
       action: 'automation.run.started',

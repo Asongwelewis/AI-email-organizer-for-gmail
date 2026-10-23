@@ -25,6 +25,7 @@ vi.mock('../src/config/logger.js', () => ({
 
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
+    $queryRaw: () => facetRowsAsJoin(),
     automation_states: { upsert: mocks.stateUpsert, updateMany: mocks.stateUpdateMany },
     facet_pivot_settings: { upsert: mocks.pivotSettingsUpsert },
     message_facets: { findMany: mocks.facetFindMany },
@@ -36,6 +37,30 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 
+/**
+ * The folder rows come from one SQL join now, not Prisma's nested select. The suites still describe
+ * them as message_facets rows, so the join's mock reads those and flattens them as the join would.
+ */
+async function facetRowsAsJoin(): Promise<unknown[]> {
+  const rows = ((await mocks.facetFindMany({})) ?? []) as Array<{
+    gmail_message_id: string;
+    entity: string | null;
+    domain: string | null;
+    intent: string | null;
+    message?: { internal_date?: Date | null; is_unread?: boolean; sender_email?: string | null };
+  }>;
+  return rows.map((row) => ({
+    id: row.gmail_message_id,
+    entity: row.entity,
+    domain: row.domain,
+    intent: row.intent,
+    received_at: row.message?.internal_date ?? null,
+    unread: row.message?.is_unread === true,
+    sender_email: row.message?.sender_email ?? null,
+  }));
+}
+
+const { forgetPivotViews } = await import('../src/features/labels/pivot-cache.js');
 const { env } = await import('../src/config/env.js');
 const filing = await import('../src/features/automation/facet-filing.service.js');
 const { FacetFilingService, filingConfidence } = filing;
@@ -92,6 +117,7 @@ function service() {
 }
 
 beforeEach(() => {
+  forgetPivotViews();
   vi.clearAllMocks();
   // Filing is the export path, and off by default. This suite is about what it does when someone
   // has asked for it; the refusal when they have not is its own test below.

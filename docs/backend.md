@@ -83,12 +83,24 @@ Session lifetime and rate-limit controls:
 - `GMAIL_SYNC_PAGE_SIZE`
 - `GMAIL_SYNC_BATCH_SIZE` — messages fetched from Gmail at once (default 25). A page is written
   in one `INSERT … ON CONFLICT` statement, not one upsert per message.
-- `GMAIL_INITIAL_SYNC_LOOKBACK_DAYS` / `GMAIL_INITIAL_SYNC_MAX_MESSAGES` — what a first sync
-  reads: the last 90 days, at most 1,000 messages, newest first, without spam or trash (0 for
-  both reads the whole mailbox, as it used to). A stored message costs about 1 KB with its
-  facets and indexes (`npm run test:scale`), so 1,000 per mailbox is roughly 440 mailboxes in
-  Supabase's free 500 MB. A sync that stopped at its ceiling marks nothing missing; one bounded
+- `GMAIL_INITIAL_SYNC_LOOKBACK_DAYS` (0) / `GMAIL_INITIAL_SYNC_MAX_MESSAGES` (20,000) — an extra
+  clamp on how far back any first sync reads, and a safety ceiling on how many messages it
+  stores, newest first, without spam or trash. Each mailbox's own window is the real bound
+  (below). A stored message costs about 1 KB with its facets and indexes
+  (`npm run test:scale`). A sync that stopped at its ceiling marks nothing missing; one bounded
   by date marks only inside its window.
+- `OWNER_ACCOUNT_EMAILS` — Gmail addresses sorted by Gemini over their whole history. Everyone
+  else is sorted by rules and Gmail's categories and **none of their mail ever reaches a
+  model**; the AI planning endpoints answer `403 AI_FEATURE_UNAVAILABLE` for them.
+- `MAIL_HISTORY_DAYS` (730) — a non-owner mailbox's window, back from its FIRST connection
+  (`connected_google_accounts.created_at`, so reconnecting never slides it). A mailbox's own
+  `mail_history_days` overrides it — what a paid plan will set. Enforced three times: the first
+  sync asks Gmail for nothing older, sync never stores anything older (history reports changes
+  to old mail too), the classifier never reads anything older, and housekeeping deletes what is
+  older anyway.
+- `BETA_MAX_MAILBOXES` (10) — connected mailboxes besides the owner's. Past it, `GET
+/api/integrations/google/connect` redirects to `/auth/callback?status=beta_full` before
+  Google is asked for anything; a mailbox already connected is never refused.
 - `GMAIL_SYNC_MAX_RETRIES`
 - `GMAIL_SYNC_RETRY_BASE_MS`
 - `GMAIL_SYNC_LEASE_SECONDS`
@@ -587,3 +599,28 @@ Limiters that run after `requireSession` count per user (`user:<id>`); the ones 
 sign-in, the OAuth callbacks, `/auth/me`, feedback — count per address, because a made-up cookie
 must not buy a fresh budget. People behind one network therefore no longer share one budget
 once signed in.
+
+## Sorting without a model
+
+Every mailbox but `OWNER_ACCOUNT_EMAILS` is sorted by `classifyByRules` in
+`facet-classification.service.ts`, each facet independently, first answer wins:
+
+1. the mailbox's own learned routing rules;
+2. **reference rules** (`reference_classification_rules`): sender domains and generic subject
+   phrases whose facets were consistent in a reference mailbox — a sender needs 3+ messages and
+   80% agreement, a phrase 5+ messages from 3+ different senders and 85% agreement. Free-mail
+   providers never become rules (a person is not a sender domain), and the reference owner's own
+   names never appear in a phrase. Built by
+   `npm run reference:build --workspace @mailmind/api -- <reference email> [--dry-run]`, stored
+   only in the database because the repository is public;
+3. `features/label-discovery/heuristics.ts`: generic keyword patterns and well-known brands;
+4. the Gmail tab the message is in (`CATEGORY_PROMOTIONS` → promotional, and so on).
+
+Every message in the window gets a `message_facets` row in the same pass, written a page per
+statement, with `source` `RULE` or `HEURISTIC`. A facet no layer could name stays null and the
+message sits in its sender's folder. The owner's model decisions are filled the same way where
+Gemini left a facet blank. Mail from personal providers (gmail.com, outlook.com, …) has the
+entity `personal`.
+
+`npm run mailbox:resync --workspace @mailmind/api -- <email>` sends one mailbox back through
+first setup, for a mailbox set up under an older, narrower window.

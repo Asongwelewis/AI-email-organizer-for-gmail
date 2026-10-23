@@ -16,6 +16,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   GMAIL_ACCOUNT_NOT_CONNECTED: 'Connect Gmail before working with labels.',
   GMAIL_WRITE_SCOPE_MISSING:
     'This mailbox was connected for reading only, so AMO cannot write labels into it. Your folders are unaffected — they are built here, not in Gmail.',
+  AI_FEATURE_UNAVAILABLE:
+    'This feature is not part of your plan. Your mail is still sorted automatically.',
   GMAIL_WRITE_DISABLED:
     'This AMO server is not set up to write labels into Gmail. Your folders are here either way — nothing in the app depends on them existing in Gmail.',
   LABEL_NAME_INVALID:

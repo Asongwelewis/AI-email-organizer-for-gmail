@@ -74,7 +74,16 @@ const empty = { domain: [], intent: [] };
  * Drives one onboarding the way the activity service would, and hands back how it ended. The work
  * runs detached in production; here it is awaited so each stage can be asserted.
  */
-function harness(options: { account?: ReturnType<typeof account> } = {}) {
+const OWNER = { owner: true, mode: 'MODEL' as const, windowStart: null };
+const BETA_WINDOW = new Date('2024-10-21T00:00:00.000Z');
+const BETA = { owner: false, mode: 'RULES' as const, windowStart: BETA_WINDOW };
+
+function harness(
+  options: {
+    account?: ReturnType<typeof account>;
+    policy?: typeof OWNER | typeof BETA;
+  } = {},
+) {
   const outcomes: Array<Promise<unknown>> = [];
   const progress: unknown[] = [];
   const activity = {
@@ -108,6 +117,7 @@ function harness(options: { account?: ReturnType<typeof account> } = {}) {
     classification as never,
     vocabularies as never,
     gmail as never,
+    { forAccount: async () => options.policy ?? OWNER },
   );
   return { service, activity, accounts, classification, vocabularies, gmail, outcomes, progress };
 }
@@ -184,18 +194,42 @@ describe('onboarding a new mailbox', () => {
     expect(run.vocabularies.approve).not.toHaveBeenCalled();
   });
 
-  it('waits for a key the operator has not set, without failing and without marking it done', async () => {
-    const run = harness();
-    env.GEMINI_API_KEY = undefined;
+  // Rules cost nothing but database time, so a beta mailbox is sorted to the end of its window
+  // before setup says done: nothing it holds is left unsorted, and nothing older is counted.
+  it('sorts every message in a beta mailbox`s window, and only inside it', async () => {
+    const run = harness({ policy: BETA });
+    mocks.messageCount.mockResolvedValue(2500);
+    run.classification.classifyAccount
+      .mockResolvedValueOnce(counters({ ruleDecided: 2000 }))
+      .mockResolvedValueOnce(counters({ ruleDecided: 500 }));
 
     await run.service.begin(USER_ID);
     const outcome = await run.outcomes[0];
 
-    expect(outcome).toMatchObject({ state: 'STOPPED', stopReason: 'SORTING_NOT_CONFIGURED' });
-    expect(run.classification.classifyAccount).not.toHaveBeenCalled();
-    expect(mocks.accountUpdate).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ onboarding_stage: 'DONE' }) }),
+    expect(mocks.messageCount.mock.calls[0]![0].where.internal_date).toEqual({ gte: BETA_WINDOW });
+    expect(run.classification.classifyAccount).toHaveBeenNthCalledWith(
+      1,
+      ACCOUNT_ID,
+      expect.objectContaining({ limit: 2000 }),
     );
+    expect(run.classification.classifyAccount).toHaveBeenNthCalledWith(
+      2,
+      ACCOUNT_ID,
+      expect.objectContaining({ limit: 500 }),
+    );
+    expect(outcome).toMatchObject({ state: 'SUCCEEDED', processed: 2500, total: 2500 });
+  });
+
+  // No key no longer means waiting: without one, every mailbox is sorted by rules.
+  it('finishes without a Gemini key', async () => {
+    const run = harness({ policy: { ...OWNER, mode: 'RULES' as const } as never });
+    env.GEMINI_API_KEY = undefined;
+    mocks.messageCount.mockResolvedValue(40);
+    run.classification.classifyAccount.mockResolvedValue(counters({ ruleDecided: 40 }));
+
+    await run.service.begin(USER_ID);
+
+    await expect(run.outcomes[0]).resolves.toMatchObject({ state: 'SUCCEEDED', processed: 40 });
   });
 
   it('stays pending when the shared budget stopped it before anything was sorted', async () => {

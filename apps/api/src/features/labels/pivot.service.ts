@@ -3,6 +3,7 @@ import { env } from '@api/config/env.js';
 import { prisma } from '@api/database/prisma.js';
 import { AppError } from '@api/errors/AppError.js';
 import { entityIconDomains } from '@api/features/label-discovery/entity.js';
+import { cachedView, invalidatePivotViews, rememberView } from './pivot-cache.js';
 import { normalizeLabelForComparison } from '@api/features/label-discovery/label-normalization.js';
 import {
   ALTERNATE_PIVOT,
@@ -133,32 +134,42 @@ export class PivotService {
     range: EmailTimeRange = 'all',
   ): Promise<FacetedMessage[]> {
     const since = emailTimeRangeSince(range);
-    const rows = await prisma.message_facets.findMany({
-      where: {
-        connected_google_account_id: accountId,
-        message: {
-          deleted_at: null,
-          ...(since ? { internal_date: { gte: since } } : {}),
-        },
-      },
-      select: {
-        gmail_message_id: true,
-        entity: true,
-        domain: true,
-        intent: true,
-        // Read straight from the mailbox mirror, so a folder's unread badge tracks Gmail rather
-        // than anything MailMind decided. Reading a message in Gmail clears it on the next sync.
-        message: { select: { internal_date: true, is_unread: true, sender_email: true } },
-      },
-    });
+    /*
+     * One join, seven columns. Prisma's nested select ran this as two queries and built an object
+     * per row per relation: measured at 270 ms of CPU for 6,000 messages against 16-30 ms for
+     * this, which on Render's free tenth of a CPU was the difference between a folder view in
+     * about a quarter of a second and one in nearly three.
+     *
+     * The unread flag is read straight from the mailbox mirror, so a folder's badge tracks Gmail
+     * rather than anything AMO decided. Reading a message in Gmail clears it on the next sync.
+     */
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        entity: string | null;
+        domain: string | null;
+        intent: string | null;
+        received_at: Date | null;
+        unread: boolean;
+        sender_email: string | null;
+      }>
+    >`
+      select f.gmail_message_id as id, f.entity, f.domain, f.intent,
+        m.internal_date as received_at, m.is_unread as unread, m.sender_email
+      from public.message_facets f
+      join public.gmail_message_metadata m on m.id = f.gmail_message_id
+      where f.connected_google_account_id = ${accountId}::uuid
+        and m.deleted_at is null
+        and (${since}::timestamptz is null or m.internal_date >= ${since}::timestamptz)
+    `;
     return rows.map((row) => ({
-      id: row.gmail_message_id,
+      id: row.id,
       entity: row.entity,
       domain: row.domain,
       intent: row.intent,
-      receivedAt: row.message?.internal_date ?? null,
-      unread: row.message?.is_unread === true,
-      senderEmail: row.message?.sender_email ?? null,
+      receivedAt: row.received_at,
+      unread: row.unread === true,
+      senderEmail: row.sender_email,
     }));
   }
 
@@ -257,9 +268,13 @@ export class PivotService {
     range: EmailTimeRange = DEFAULT_EMAIL_TIME_RANGE,
   ): Promise<PivotResult> {
     const settings = await this.settings(accountId);
+    const floor = minMessages ?? settings.minMessages;
+    const key = `${order.join(',')}|${floor}|${range}`;
+    const cached = cachedView(accountId, key);
+    if (cached) return cached;
     const messages = await this.facetedMessages(accountId);
     const pivot = buildPivot(messages, order, {
-      minMessages: minMessages ?? settings.minMessages,
+      minMessages: floor,
       since: emailTimeRangeSince(range),
     });
     // A brand folder shows the brand's logo, so it needs a domain to fetch one for. Computed from
@@ -268,6 +283,7 @@ export class PivotService {
     for (const node of pivot.nodes) {
       if (node.facet === 'entity') node.iconDomain = iconDomains.get(node.value) ?? null;
     }
+    rememberView(accountId, key, pivot);
     return pivot;
   }
 
@@ -492,6 +508,7 @@ export class PivotService {
     if (order.length === 0 || new Set(order).size !== order.length) {
       throw new AppError('LABEL_VALIDATION_FAILED', 'A pivot must be distinct facet names.', 422);
     }
+    invalidatePivotViews(accountId);
     await prisma.facet_pivot_settings.upsert({
       where: { connected_google_account_id: accountId },
       create: {

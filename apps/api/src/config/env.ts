@@ -101,18 +101,44 @@ const environmentSchema = z
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     /**
-     * How far back a first sync reaches, in days; 0 reads the whole mailbox. A first sync used to
-     * read everything, which for one mailbox of 9,550 messages was fine and for several hundred is
-     * the free database's 500 MB several times over. Older mail stays in Gmail and in search there;
-     * what MailMind sorts is the mail people are actually reading.
+     * A ceiling on how far back any first sync reaches, in days; 0 adds none. Each mailbox already
+     * has its own window (MAIL_HISTORY_DAYS, below) and the operator's has none, so this exists
+     * only to clamp everything at once.
      */
-    GMAIL_INITIAL_SYNC_LOOKBACK_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
+    GMAIL_INITIAL_SYNC_LOOKBACK_DAYS: z.coerce.number().int().min(0).max(36500).default(0),
     /**
-     * The most messages a first sync stores, newest first; 0 for no ceiling. A stored message costs
-     * about 1 KB with its facets and indexes (measured by `npm run test:scale`), so a thousand per
-     * mailbox is roughly 440 mailboxes in the free tier's 500 MB, before new mail adds to it.
+     * The most messages a first sync stores, newest first; 0 for no ceiling. A safety valve, not a
+     * product limit: a stored message costs about 1 KB with its facets and indexes (measured by
+     * `npm run test:scale`), so ten beta mailboxes at the ceiling are about 200 MB. Mail past it is
+     * the oldest in the window, and the sync says so in its run record.
      */
-    GMAIL_INITIAL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(0).max(200_000).default(1000),
+    GMAIL_INITIAL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(0).max(200_000).default(20_000),
+    /**
+     * Accounts sorted with Gemini and over their whole mailbox, by Gmail address, comma-separated.
+     * Everyone else is sorted by rules and Gmail's own categories, inside their history window, and
+     * none of their mail is ever sent to a model. Empty means nobody uses the model.
+     */
+    OWNER_ACCOUNT_EMAILS: z
+      .string()
+      .optional()
+      .transform((value) =>
+        (value ?? '')
+          .split(',')
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    /**
+     * Days of mail a non-owner mailbox is sorted over, counted back from when it was first
+     * connected; mail older than that is never synced, stored or sorted. A mailbox's own
+     * `mail_history_days` overrides it, which is what a paid plan will set.
+     */
+    MAIL_HISTORY_DAYS: z.coerce.number().int().min(1).max(36500).default(730),
+    /**
+     * Mailboxes other than the owner's that may be connected at once. The free Render instance and
+     * database are sized for a small beta; a person past the cap can still sign in, and is told the
+     * beta is full instead of being sent to Google.
+     */
+    BETA_MAX_MAILBOXES: z.coerce.number().int().min(0).max(10_000).default(10),
     /**
      * Whether MailMind may write labels into the mailbox at all.
      *

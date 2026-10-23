@@ -62,12 +62,16 @@ const account = {
   id: 'account-id',
   user_id: 'user-id',
   email: 'owner@gmail.com',
+  created_at: new Date('2026-07-01T00:00:00.000Z'),
+  mail_history_days: null,
 };
 const lease = { accountId: account.id, token: 'lease-token', runId: 'run-id' };
 
 describe('GmailSyncService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // The operator's mailbox: no history window, which is what these suites were written against.
+    env.OWNER_ACCOUNT_EMAILS = [account.email];
     mocks.activeAccountForUser.mockResolvedValue(account);
     mocks.acquireLease.mockResolvedValue(lease);
     mocks.renewLease.mockResolvedValue(undefined);
@@ -581,6 +585,50 @@ describe('GmailSyncService', () => {
       expect(mocks.checkpointBackfillPage).toHaveBeenCalledWith(lease, null, 2);
       expect(mocks.markMissingFromBackfill).not.toHaveBeenCalled();
       expect(result.messagesUpserted).toBe(2);
+    });
+
+    // A beta mailbox reads two years back from its first connection and not a day more, however
+    // far its own lookback setting would reach.
+    it('reads a beta mailbox only back to the start of its window', async () => {
+      env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS = 0;
+      env.OWNER_ACCOUNT_EMAILS = [];
+      const gmail = gmailWith([{ ids: ['a'] }]);
+
+      await new GmailSyncService().initialSync('user-id');
+
+      const windowStart = new Date(
+        account.created_at.getTime() - env.MAIL_HISTORY_DAYS * 86_400_000,
+      );
+      expect(gmail.users.messages.list).toHaveBeenCalledWith(
+        expect.objectContaining({ q: `after:${Math.floor(windowStart.getTime() / 1000)}` }),
+      );
+    });
+
+    it('never stores mail older than a beta mailbox`s window, even when Gmail sends it', async () => {
+      env.GMAIL_INITIAL_SYNC_LOOKBACK_DAYS = 0;
+      env.OWNER_ACCOUNT_EMAILS = [];
+      const gmail = gmailWith([{ ids: ['recent', 'ancient'] }]);
+      gmail.users.messages.get.mockImplementation(({ id }: { id: string }) =>
+        Promise.resolve({
+          data: {
+            id,
+            labelIds: ['INBOX'],
+            internalDate: String(
+              id === 'ancient'
+                ? Date.parse('2019-01-01T00:00:00.000Z')
+                : Date.parse('2026-06-01T00:00:00.000Z'),
+            ),
+            payload: { headers: [] },
+          },
+        }),
+      );
+
+      await new GmailSyncService().initialSync('user-id');
+
+      const stored = mocks.upsertMessages.mock.calls.flatMap(
+        ([, records]) => records as Array<{ gmail_message_id: string }>,
+      );
+      expect(stored.map((record) => record.gmail_message_id)).toEqual(['recent']);
     });
 
     it('reads the whole mailbox, as it used to, when both bounds are zero', async () => {

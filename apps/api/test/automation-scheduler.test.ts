@@ -155,6 +155,7 @@ describe('automation scheduler tick', () => {
     vi.clearAllMocks();
     process.env['AUTOMATION_ENABLED'] = 'true';
     process.env['GEMINI_API_KEY'] = 'test-gemini-key';
+    process.env['OWNER_ACCOUNT_EMAILS'] = 'owner@example.com';
     // Blank rather than deleted: a local .env would put a deleted one straight back.
     process.env['AUTOMATION_SCHEDULE_HOUR_UTC'] = '';
     mocks.eligibleScheduledAccounts.mockResolvedValue([]);
@@ -271,21 +272,22 @@ describe('automation scheduler tick', () => {
     expect(mocks.eligibleScheduledAccounts).not.toHaveBeenCalled();
   });
 
-  it('does not run unattended without a Gemini key, which no run could use anyway', async () => {
-    delete process.env['GEMINI_API_KEY'];
+  // Without a key every mailbox is sorted by rules, which need nothing from Gemini. Skipping the
+  // run would leave mail unsorted for no reason; production once went a month like that.
+  it('still runs unattended without a Gemini key, sorting by rules', async () => {
+    process.env['GEMINI_API_KEY'] = '';
     vi.useFakeTimers();
     const { startAutomationScheduler } = await loadScheduler();
 
     startAutomationScheduler();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mocks.eligibleScheduledAccounts).not.toHaveBeenCalled();
+    expect(mocks.eligibleScheduledAccounts).toHaveBeenCalled();
   });
 
-  // Skipping is right; skipping silently is how production went a month without a run. The warning
-  // is the only trace an idle scheduler leaves, and it has to be there once per boot, not per tick.
-  it('says at boot that it is idle when there is no Gemini key', async () => {
-    delete process.env['GEMINI_API_KEY'];
+  // Once per boot, not per tick: the owner's mail is sorted by rules instead of the model.
+  it('says at boot that there is no Gemini key', async () => {
+    process.env['GEMINI_API_KEY'] = '';
     vi.useFakeTimers();
     const { startAutomationScheduler, pollIntervalMs } = await loadScheduler();
 

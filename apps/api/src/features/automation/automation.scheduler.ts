@@ -27,7 +27,7 @@ let ticking = false;
 let watching = false;
 
 async function tick(): Promise<void> {
-  if (ticking || !env.AUTOMATION_ENABLED || !env.GEMINI_API_KEY) return;
+  if (ticking || !env.AUTOMATION_ENABLED) return;
   ticking = true;
   try {
     const accounts = await automationService.eligibleScheduledAccounts();
@@ -111,14 +111,13 @@ export function startAutomationScheduler(): void {
     },
     'automation scheduler started',
   );
-  // Every tick returns early without a key, so the timer runs and nothing happens. From 29 Aug to
-  // 27 Sep 2026 that was the whole story of production: a month of due runs skipped with nothing
-  // in the logs to say so. Said once per boot rather than per tick, because the tick is every 15
-  // minutes and the fix is an operator setting, not something a retry will change.
+  // Without a key nothing stops: every mailbox is sorted by rules, the owner's included. Said once
+  // per boot, because the owner's mail then gets the rules rather than the model.
   if (!env.GEMINI_API_KEY) {
-    logger.warn(
-      'automation scheduler is idle: GEMINI_API_KEY is not set, so no scheduled run will start',
-    );
+    logger.warn('GEMINI_API_KEY is not set: every mailbox, the owner included, is sorted by rules');
+  }
+  if (env.GEMINI_API_KEY && env.OWNER_ACCOUNT_EMAILS.length === 0) {
+    logger.warn('GEMINI_API_KEY is set but OWNER_ACCOUNT_EMAILS is empty, so no mailbox uses it');
   }
   if (env.AUTOMATION_SCHEDULE_HOUR_UTC !== undefined) {
     logger.warn(
