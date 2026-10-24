@@ -130,4 +130,10 @@ describe('the document security policy', () => {
     expect(headerValue('/sw.js', 'Cache-Control')).toContain('must-revalidate');
     expect(headerValue('/assets/(.*)', 'Cache-Control')).toContain('immutable');
   });
+
+  // The opening clip and its poster carry a version in their names, so a returning visitor never
+  // downloads them twice. The script that plays them sits outside /intro/ and is not cached this way.
+  it('caches the versioned intro media for a year', () => {
+    expect(headerValue('/intro/(.*)', 'Cache-Control')).toBe('public, max-age=31536000, immutable');
+  });
 });

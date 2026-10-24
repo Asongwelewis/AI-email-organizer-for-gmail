@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { useReducedMotion, type MotionProps } from 'motion/react';
 
 /**
@@ -78,12 +79,15 @@ export function useReveal(): (index?: number) => MotionProps {
  */
 export function useEntrance(): (index?: number) => MotionProps {
   const reduceMotion = useReducedMotion();
+  const introDone = useIntroDone();
 
   return (index = 0) => {
     if (reduceMotion) return {};
     return {
       initial: { opacity: 0, y: TRAVEL },
-      animate: { opacity: 1, y: 0 },
+      // Held back while the opening video plays, so the hero arrives as it fades rather than
+      // finishing unseen behind it.
+      animate: introDone ? { opacity: 1, y: 0 } : { opacity: 0, y: TRAVEL },
       transition: {
         duration: MOTION.duration.slow,
         ease: MOTION.ease.out,
@@ -91,4 +95,27 @@ export function useEntrance(): (index?: number) => MotionProps {
       },
     };
   };
+}
+
+/**
+ * Whether the opening video (`public/intro.js`, outside the bundle) is out of the way.
+ *
+ * True at once wherever it never plays — another page, reduced motion, a second visit, or tests,
+ * where the element does not exist.
+ */
+function introFinished(): boolean {
+  if (typeof window === 'undefined') return true;
+  return (
+    (window as { __amoIntroDone?: boolean }).__amoIntroDone === true ||
+    !document.getElementById('amo-intro')
+  );
+}
+
+function subscribeIntro(listener: () => void): () => void {
+  window.addEventListener('amo:intro-done', listener);
+  return () => window.removeEventListener('amo:intro-done', listener);
+}
+
+export function useIntroDone(): boolean {
+  return useSyncExternalStore(subscribeIntro, introFinished, () => true);
 }
