@@ -46,6 +46,20 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   INTERNAL_SERVER_ERROR: 'Something went wrong on our side. Please try again.',
 };
 
+/**
+ * No answer from AMO at all: the request never got a response, or Render answered for a server
+ * that was not ready (its own 502/503/504 page, which carries none of our error payload).
+ */
+export function isServerUnreachable(error: unknown): boolean {
+  if (!axios.isAxiosError<ApiErrorPayload>(error)) return false;
+  const response = error.response;
+  if (!response) return error.code !== 'ERR_CANCELED';
+  return [502, 503, 504].includes(response.status) && !response.data?.error?.code;
+}
+
+const UNREACHABLE_MESSAGE =
+  'AMO could not be reached. Check your connection — it is trying again on its own.';
+
 export function getApiErrorCode(error: unknown): string | null {
   if (!axios.isAxiosError<ApiErrorPayload>(error)) return null;
   return error.response?.data?.error?.code ?? null;
@@ -71,5 +85,6 @@ export function getSafeErrorMessage(
   if (code && detail) return `${code}: ${detail}`;
   if (code) return code;
   if (detail) return detail;
+  if (isServerUnreachable(error)) return UNREACHABLE_MESSAGE;
   return fallback;
 }

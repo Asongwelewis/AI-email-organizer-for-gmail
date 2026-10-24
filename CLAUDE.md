@@ -272,8 +272,9 @@ and stagger, and `useReveal`/`useEntrance` return **nothing at all** under
 animation added outside these hooks runs regardless of the system setting. Transform and opacity
 only.
 
-**Frontend state.** TanStack Query owns server state with retries and refetch-on-focus disabled by
-default; feature hooks poll every 2s only while a run is active. `AuthProvider` treats
+**Frontend state.** TanStack Query owns server state with refetch-on-focus disabled, and a read is
+retried (three times, 1/2/4 s apart) only when the server never answered — a dropped connection or
+Render's own 502/503/504 — never an answer from the API (`lib/queryRetry.ts`); feature hooks poll every 2s only while a run is active. `AuthProvider` treats
 `GET /api/auth/me` as source of truth, but the PWA opens on the session and folder tree it
 remembers (`lib/sessionSnapshot.ts`: profile, folder names and counts — never mail; forgotten on
 logout, on any 401, and once `sessionExpiresAt` passes) and confirms them in the background, because

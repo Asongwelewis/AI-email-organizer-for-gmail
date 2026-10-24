@@ -118,8 +118,10 @@ HttpOnly session cookie, and redirects back to the frontend.
 3. React Router.
 4. The service-worker update prompt and toast region.
 
-The query client disables automatic retries and refetch-on-window-focus by default. Individual
-feature hooks add polling only while a Gmail sync or automation run is active.
+The query client disables refetch-on-window-focus. A read is retried only when the server never
+answered — no response at all, or Render's own 502/503/504 page — three times, 1, 2 and 4 seconds
+apart (`lib/queryRetry.ts`); an answer from the API, including an error, is shown as it came.
+Individual feature hooks add polling only while a Gmail sync or automation run is active.
 
 ### Directory guide
 

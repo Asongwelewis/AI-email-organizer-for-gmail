@@ -2,7 +2,11 @@ import { AppError, type ErrorCode } from '@api/errors/AppError.js';
 
 interface GoogleErrorShape {
   code?: number | string;
-  response?: { status?: number; data?: { error?: { errors?: Array<{ reason?: string }> } } };
+  response?: {
+    status?: number;
+    headers?: unknown;
+    data?: { error?: { errors?: Array<{ reason?: string }> } };
+  };
 }
 
 export class GmailRequestError extends AppError {
@@ -11,9 +15,30 @@ export class GmailRequestError extends AppError {
     message: string,
     statusCode: number,
     public readonly retryable: boolean,
+    /** How long Gmail asked us to wait, when it said. */
+    public readonly retryAfterMs: number | null = null,
   ) {
     super(code, message, statusCode);
   }
+}
+
+/** `Retry-After` is either a number of seconds or an HTTP date. */
+export function parseRetryAfter(value: unknown, now = Date.now()): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const text = String(value).trim();
+  if (/^\d+(\.\d+)?$/.test(text)) return Math.round(Number(text) * 1000);
+  const date = Date.parse(text);
+  return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+/** Gaxios hands back a `Headers` object; older paths, a plain record. */
+function retryAfterOf(candidate: GoogleErrorShape): number | null {
+  const headers = candidate.response?.headers as
+    { get?: (name: string) => unknown; [name: string]: unknown } | undefined;
+  if (!headers) return null;
+  const value =
+    typeof headers.get === 'function' ? headers.get('retry-after') : headers['retry-after'];
+  return parseRetryAfter(value);
 }
 
 export function classifyGmailError(error: unknown): GmailRequestError {
@@ -38,6 +63,7 @@ export function classifyGmailError(error: unknown): GmailRequestError {
       'Gmail is busy. Please try again shortly.',
       503,
       true,
+      retryAfterOf(candidate),
     );
   }
   if (status === 403) {

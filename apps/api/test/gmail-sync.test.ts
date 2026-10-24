@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { withGmailRetry } from '../src/integrations/gmail/gmail.client.js';
-import { classifyGmailError } from '../src/integrations/gmail/gmail.errors.js';
+import { env } from '../src/config/env.js';
+import { paceGmailUnits, withGmailRetry } from '../src/integrations/gmail/gmail.client.js';
+import { classifyGmailError, parseRetryAfter } from '../src/integrations/gmail/gmail.errors.js';
 import { mapGmailMessage } from '../src/integrations/gmail/gmail.mapper.js';
 
 describe('Gmail metadata boundary', () => {
@@ -66,6 +67,67 @@ describe('Gmail error and retry policy', () => {
     await expect(withGmailRetry(operation, sleep)).resolves.toBe('ok');
     expect(operation).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  /*
+   * A first sync was throttled six times in a row: three retries inside two seconds spent every
+   * attempt before Gmail's per-user window had cleared. A rate limit now waits seconds, doubling.
+   */
+  it('backs off from a rate limit for seconds, not milliseconds, and keeps trying', async () => {
+    const operation = vi.fn<() => Promise<string>>();
+    for (let index = 0; index < 5; index += 1) {
+      operation.mockRejectedValueOnce({ response: { status: 429 } });
+    }
+    operation.mockResolvedValue('ok');
+    const waits: number[] = [];
+    const sleep = vi.fn(async (milliseconds: number) => {
+      waits.push(milliseconds);
+    });
+
+    await expect(withGmailRetry(operation, sleep)).resolves.toBe('ok');
+
+    expect(operation).toHaveBeenCalledTimes(6);
+    expect(waits[0]).toBeGreaterThanOrEqual(env.GMAIL_RATE_LIMIT_RETRY_BASE_MS);
+    expect(waits[4]).toBeGreaterThanOrEqual(env.GMAIL_RATE_LIMIT_RETRY_BASE_MS * 16);
+  });
+
+  it('waits as long as Gmail asks when it says how long', async () => {
+    const operation = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce({ response: { status: 429, headers: { 'retry-after': '20' } } })
+      .mockResolvedValue('ok');
+    const sleep = vi.fn(async () => undefined);
+
+    await withGmailRetry(operation, sleep);
+
+    expect(sleep).toHaveBeenCalledWith(20_000);
+  });
+
+  it('reads Retry-After as seconds or as a date', () => {
+    const now = Date.parse('2026-10-24T10:00:00Z');
+    expect(parseRetryAfter('7', now)).toBe(7_000);
+    expect(parseRetryAfter('Sat, 24 Oct 2026 10:00:30 GMT', now)).toBe(30_000);
+    expect(parseRetryAfter(undefined, now)).toBeNull();
+  });
+
+  // Gmail allows 250 units per user per second; a batch of 25 gets is 125 of them.
+  it('holds a batch to the per-mailbox quota budget', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const startedAt = Date.now();
+
+    await paceGmailUnits(125, startedAt, sleep);
+
+    const budget = (125 / env.GMAIL_SYNC_UNITS_PER_SECOND) * 1000;
+    expect(sleep).toHaveBeenCalledOnce();
+    const [waited] = sleep.mock.calls[0] as unknown as [number];
+    expect(waited).toBeGreaterThan(budget - 100);
+    expect(waited).toBeLessThanOrEqual(budget);
+  });
+
+  it('does not hold a batch that already took longer than its budget', async () => {
+    const sleep = vi.fn(async () => undefined);
+    await paceGmailUnits(125, Date.now() - 10_000, sleep);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it('does not retry missing permission', async () => {
