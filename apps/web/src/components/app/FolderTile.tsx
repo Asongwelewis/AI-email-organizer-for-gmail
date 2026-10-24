@@ -62,35 +62,38 @@ export function FolderTile({
         className={`folder-tile${onToggleFavorite ? ' folder-tile--starrable' : ''}`}
         onClick={onOpen}
       >
-        <span className="folder-tile__top">
+        {/* The corner says what is waiting inside, before anything is opened. */}
+        {unreadCount > 0 ? (
+          <span className="folder-tile__corner folder-tile__unread">
+            {formatCount(unreadCount)} new
+          </span>
+        ) : childCount > 0 ? (
+          <span className="folder-tile__corner folder-tile__children">
+            {childCount} {childCount === 1 ? 'folder' : 'folders'}
+          </span>
+        ) : null}
+        <span className="folder-tile__glyph">
           {showLogo ? (
             // Decorative: the folder's name, right below, already says whose mail this is.
             <span className="folder-tile__logo" aria-hidden="true">
               <img
                 src={iconUrl!}
                 alt=""
-                width={32}
-                height={32}
+                width={48}
+                height={48}
                 loading="lazy"
                 decoding="async"
                 onError={() => setLogoFailed(true)}
               />
             </span>
           ) : (
-            <Icon className="folder-tile__icon" aria-hidden="true" strokeWidth={1.5} />
+            <Icon className="folder-tile__icon" aria-hidden="true" strokeWidth={1.25} />
           )}
-          {unreadCount > 0 ? (
-            <span className="folder-tile__unread">{formatCount(unreadCount)} new</span>
-          ) : childCount > 0 ? (
-            <span className="folder-tile__children">
-              {childCount} {childCount === 1 ? 'folder' : 'folders'}
-            </span>
-          ) : null}
         </span>
+        <span className="folder-tile__name">{name}</span>
         <span className="folder-tile__count" aria-hidden={count === null}>
           {formatCount(count)}
         </span>
-        <span className="folder-tile__name">{name}</span>
         <span className="sr-only">
           {count === null ? 'Message count unavailable' : `${count} messages`}
           {unreadCount > 0 ? `, ${unreadCount} unread` : ''}

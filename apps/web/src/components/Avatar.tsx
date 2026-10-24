@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react';
+
+import { sharpAvatarUrl } from '@web/lib/avatarUrl';
+
 interface AvatarProps {
   name: string | null;
   email: string;
   src: string | null;
-  size?: 'small' | 'large';
+  size?: 'small' | 'medium' | 'large';
 }
 
 function initials(name: string | null, email: string): string {
@@ -16,12 +20,17 @@ function initials(name: string | null, email: string): string {
 
 export function Avatar({ name, email, src, size = 'small' }: AvatarProps) {
   const className = `avatar avatar--${size}`;
-  return src ? (
+  // A photo that will not load becomes the initials, never a broken-image icon.
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+
+  return src && !failed ? (
     <img
       className={className}
-      src={src}
+      src={sharpAvatarUrl(src)}
       alt={`${name ?? email} profile`}
       referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
     />
   ) : (
     <span className={className} role="img" aria-label={`${name ?? email} initials`}>

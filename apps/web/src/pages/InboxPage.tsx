@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
+import { ChoiceMenu } from '@web/components/app/ChoiceMenu';
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { FolderTile } from '@web/components/app/FolderTile';
 import { MailList } from '@web/components/app/MailList';
@@ -49,6 +50,11 @@ import {
 function folderIconUrl(node: PivotNode): string | null {
   return node.facet === 'entity' ? brandIconUrl(node.iconDomain) : null;
 }
+
+const TIME_RANGE_OPTIONS = EMAIL_TIME_RANGES.map((range) => ({
+  value: range,
+  label: EMAIL_TIME_RANGE_LABELS[range],
+}));
 
 /** How often an open screen picks up mail the watcher has sorted since it loaded. */
 const LIVE_REFRESH_MS = 60_000;
@@ -263,30 +269,6 @@ export function InboxPage() {
         />
       ) : null}
 
-      <div className="sorted__filters">
-        <label className="time-range">
-          <span>Show mail from</span>
-          <select
-            aria-label="Show mail from"
-            value={timeRange}
-            onChange={(event) => {
-              if (isEmailTimeRange(event.target.value)) switchTimeRange(event.target.value);
-            }}
-          >
-            {EMAIL_TIME_RANGES.map((candidate) => (
-              <option key={candidate} value={candidate}>
-                {EMAIL_TIME_RANGE_LABELS[candidate]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="sorted__scope">
-          {timeRange === 'all'
-            ? 'Every folder in your mailbox'
-            : 'Folders with mail in this window, newest first'}
-        </span>
-      </div>
-
       {/* Every arrangement of the same mail, side by side. None of them is the real one. */}
       <nav className="ordering" aria-label="Folder arrangement">
         {orderings.map((candidate) => {
@@ -348,6 +330,24 @@ export function InboxPage() {
             </span>
           ))}
         </nav>
+      ) : null}
+
+      {/* Which mail the folders count, and the three dots that change it, right above them. It
+          stays when a window is empty, because changing the window is the way out of that. */}
+      {!term ? (
+        <div className="sorted__bar">
+          <span className="sorted__scope">
+            {timeRange === 'all'
+              ? 'All mail'
+              : `${EMAIL_TIME_RANGE_LABELS[timeRange]}, newest first`}
+          </span>
+          <ChoiceMenu
+            label="Show mail from"
+            value={timeRange}
+            options={TIME_RANGE_OPTIONS}
+            onChange={switchTimeRange}
+          />
+        </div>
       ) : null}
 
       {loading ? <LoadingState label="Loading folders" /> : null}

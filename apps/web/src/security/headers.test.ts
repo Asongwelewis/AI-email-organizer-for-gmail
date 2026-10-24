@@ -96,13 +96,15 @@ describe('the document security policy', () => {
 
   /*
    * Brand logos come through our own API so the browser never asks a logo service directly —
-   * which only works if the policy lets images load from the API, and from nowhere else remote.
+   * which only works if the policy lets images load from the API. The one other remote host is
+   * Google's photo server, for the signed-in person's own profile picture: Google already knows
+   * who they are, so loading it tells nobody anything new. Without it the picture was blocked.
    */
-  it('lets folder logos load from our API and from no other remote host', () => {
+  it('lets images load from our API and Google profile photos, and no other remote host', () => {
     const imgSrc = csp.split(';').find((directive) => directive.trim().startsWith('img-src')) ?? '';
     expect(imgSrc).toContain('https://api.mailmindai.tech');
     const remote = imgSrc.split(/\s+/).filter((source) => source.startsWith('http'));
-    expect(remote).toEqual(['https://api.mailmindai.tech']);
+    expect(remote).toEqual(['https://api.mailmindai.tech', 'https://*.googleusercontent.com']);
   });
 
   // Clickjacking is the one attack a SPA's own code cannot defend against.
