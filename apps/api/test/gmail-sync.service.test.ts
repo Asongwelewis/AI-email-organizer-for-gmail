@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/integrations/gmail/gmail.client.js', () => ({
   createGmailClient: mocks.createGmailClient,
   withGmailRetry: (operation: () => Promise<unknown>) => operation(),
+  paceGmailUnits: async () => undefined,
 }));
 vi.mock('../src/integrations/gmail/gmail.repository.js', () => ({
   gmailRepository: {
