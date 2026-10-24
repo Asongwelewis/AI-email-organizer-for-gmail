@@ -17,8 +17,9 @@ import { useNotificationFeed } from '@web/queries/notifications';
  * across a desktop is the failure this avoids.
  *
  * The five tabs are what is opened every day. Everything else — notifications first — sits behind
- * the menu icon on the left of every screen, which carries the unread count so new mail is visible
- * from anywhere without spending a sixth tab on it.
+ * the menu icon, which carries the unread count so new mail is visible from anywhere without
+ * spending a sixth tab on it. On a desktop it sits in the side panel under the person's photo; on
+ * a phone, at the top left of every screen.
  *
  * Setup is deliberately not in here. It is a path you walk once, linked to from wherever an
  * account turns out not to be ready; a permanent tab for it would be clutter forever after.
@@ -72,7 +73,15 @@ export function AppShell() {
       <NotificationCenter />
       {signOutDialog}
       <nav className="shell__rail" aria-label="Primary">
-        <span className="shell__brand">AMO</span>
+        {/* Whose mail this is, first and large enough to recognise at a glance. */}
+        <div className="shell__profile">
+          <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} size="medium" />
+          <div className="shell__identity">
+            {user.displayName ? <span className="shell__name">{user.displayName}</span> : null}
+            <span className="shell__email">{user.email}</span>
+          </div>
+        </div>
+        <MenuButton />
         <ul className="shell__nav">
           {NAV.map(({ to, label, Icon }) => (
             <li key={to}>
@@ -88,36 +97,36 @@ export function AppShell() {
         </ul>
         <div className="shell__account">
           <ThemeToggle variant="compact" className="shell__theme" />
-          <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} />
-          <span className="shell__email">{user.email}</span>
-          <NavLink
-            to="/account"
-            className={({ isActive }) =>
-              `button button--icon${isActive ? ' button--icon-active' : ''}`
-            }
-            aria-label="Account and privacy"
-            title="Account and privacy"
-          >
-            <Shield aria-hidden="true" strokeWidth={1.5} />
-          </NavLink>
-          <button
-            className="button button--icon"
-            type="button"
-            onClick={requestSignOut}
-            aria-label="Log out"
-          >
-            <LogOut aria-hidden="true" strokeWidth={1.5} />
-          </button>
+          <div className="shell__account-actions">
+            <NavLink
+              to="/account"
+              className={({ isActive }) =>
+                `button button--icon${isActive ? ' button--icon-active' : ''}`
+              }
+              aria-label="Account and privacy"
+              title="Account and privacy"
+            >
+              <Shield aria-hidden="true" strokeWidth={1.5} />
+            </NavLink>
+            <button
+              className="button button--icon"
+              type="button"
+              onClick={requestSignOut}
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut aria-hidden="true" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
       </nav>
 
       <main className="shell__main">
         <div className="shell__column">
-          {/* The menu sits on the left at every width. Below the rail's breakpoint the account
-              row is hidden, so the theme control needs a home here as well. */}
+          {/* Below the rail's breakpoint there is no side panel, so the menu sits here instead.
+              The theme lives in the side panel and, on a phone, on the menu screen. */}
           <div className="shell__toolbar">
             <MenuButton />
-            <ThemeToggle variant="compact" className="shell__toolbar-theme" />
           </div>
           <ServerWakeNotice />
           {/* Every mailbox screen asks the API for a mailbox; without one, each request can

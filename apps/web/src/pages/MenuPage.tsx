@@ -28,8 +28,8 @@ export function MenuPage() {
 
       {user ? (
         <div className="menu-profile">
-          <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} />
-          <div>
+          <Avatar name={user.displayName} email={user.email} src={user.avatarUrl} size="medium" />
+          <div className="menu-profile__text">
             <p className="menu-profile__name">{user.displayName ?? user.email}</p>
             {user.displayName ? <p className="menu-profile__email">{user.email}</p> : null}
           </div>
