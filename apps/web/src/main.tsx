@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { App } from './App';
 import { captureInstallPrompt } from '@web/lib/installPrompt';
+import { retryWhenUnreachable, unreachableRetryDelay } from '@web/lib/queryRetry';
 // theme.css first: it defines every colour token the other two consume.
 import '@web/styles/theme.css';
 import '@web/styles/index.css';
@@ -18,7 +19,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: false,
+      // Only a server that never answered is asked again; see lib/queryRetry.ts.
+      retry: retryWhenUnreachable,
+      retryDelay: unreachableRetryDelay,
     },
   },
 });

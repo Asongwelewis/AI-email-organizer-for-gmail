@@ -37,6 +37,11 @@ export async function createGmailClient(accountId: string): Promise<GmailClient>
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+/** Rate limits get more attempts than other transient failures, and much longer waits. */
+const RATE_LIMIT_MAX_RETRIES = 5;
+/** Never wait longer than this for one attempt, whatever Retry-After says. */
+const MAX_WAIT_MS = 60_000;
+
 export async function withGmailRetry<T>(
   operation: () => Promise<T>,
   sleep: (milliseconds: number) => Promise<void> = delay,
@@ -47,10 +52,30 @@ export async function withGmailRetry<T>(
       return await operation();
     } catch (error) {
       const classified = classifyGmailError(error);
-      if (!classified.retryable || attempt >= env.GMAIL_SYNC_MAX_RETRIES) throw classified;
-      const jitter = Math.floor(Math.random() * env.GMAIL_SYNC_RETRY_BASE_MS);
-      await sleep(env.GMAIL_SYNC_RETRY_BASE_MS * 2 ** attempt + jitter);
+      const rateLimited = classified.code === 'GMAIL_RATE_LIMITED';
+      const maxRetries = rateLimited
+        ? Math.max(env.GMAIL_SYNC_MAX_RETRIES, RATE_LIMIT_MAX_RETRIES)
+        : env.GMAIL_SYNC_MAX_RETRIES;
+      if (!classified.retryable || attempt >= maxRetries) throw classified;
+      const base = rateLimited ? env.GMAIL_RATE_LIMIT_RETRY_BASE_MS : env.GMAIL_SYNC_RETRY_BASE_MS;
+      const backoff = base * 2 ** attempt + Math.floor(Math.random() * base);
+      await sleep(Math.min(MAX_WAIT_MS, Math.max(backoff, classified.retryAfterMs ?? 0)));
       attempt += 1;
     }
   }
+}
+
+/**
+ * Holds a batch of Gmail calls to the per-mailbox budget: a batch that spent `units` finishes no
+ * sooner than `units / GMAIL_SYNC_UNITS_PER_SECOND` seconds after it started.
+ */
+export async function paceGmailUnits(
+  units: number,
+  startedAt: number,
+  sleep: (milliseconds: number) => Promise<void> = delay,
+): Promise<void> {
+  if (env.GMAIL_SYNC_UNITS_PER_SECOND <= 0) return;
+  const minimum = (units / env.GMAIL_SYNC_UNITS_PER_SECOND) * 1000;
+  const remaining = minimum - (Date.now() - startedAt);
+  if (remaining > 0) await sleep(remaining);
 }

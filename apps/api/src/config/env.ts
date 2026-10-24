@@ -94,11 +94,25 @@ const environmentSchema = z
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(10),
     AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
     GMAIL_SYNC_PAGE_SIZE: z.coerce.number().int().min(1).max(500).default(100),
-    // Messages fetched from Gmail at once. 25 parallel `messages.get` calls are 125 quota units,
-    // half of the 250 per user per second Gmail allows, and a page then costs one database trip.
+    // Messages fetched from Gmail at once: 25 parallel `messages.get` calls are 125 quota units,
+    // and a batch then costs one database trip.
     GMAIL_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(25),
+    /**
+     * The quota units per second a sync may spend on one mailbox; 0 lets it run unpaced.
+     *
+     * Gmail allows 250 per user per second. Batches used to run back to back, several a second,
+     * so a mailbox of a few thousand messages was throttled every ~300 and its first setup failed
+     * six times in a row. 150 leaves the rest for the watcher and for Gmail's own accounting.
+     */
+    GMAIL_SYNC_UNITS_PER_SECOND: z.coerce.number().int().min(0).max(250).default(150),
     GMAIL_SYNC_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
     GMAIL_SYNC_RETRY_BASE_MS: z.coerce.number().int().min(10).max(30_000).default(250),
+    /**
+     * Throttling is not a blip: Gmail's per-user window takes seconds to clear, and three retries
+     * inside two seconds only spent the attempts. A rate limit backs off from this, doubling, for
+     * up to five attempts (about a minute in all), or for as long as Gmail's Retry-After asks.
+     */
+    GMAIL_RATE_LIMIT_RETRY_BASE_MS: z.coerce.number().int().min(10).max(60_000).default(2_000),
     GMAIL_SYNC_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     /**
      * A ceiling on how far back any first sync reaches, in days; 0 adds none. Each mailbox already

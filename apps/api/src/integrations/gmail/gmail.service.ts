@@ -11,7 +11,7 @@ import { policyFor } from '@api/features/accounts/account-policy.js';
 import { hasGmailWriteScope } from '@api/integrations/google/google-scopes.js';
 import { googleTokenService } from '@api/integrations/google/google-token.service.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
-import { createGmailClient, withGmailRetry } from './gmail.client.js';
+import { createGmailClient, paceGmailUnits, withGmailRetry } from './gmail.client.js';
 import { classifyGmailError, isHistoryExpired } from './gmail.errors.js';
 import { mapGmailMessage } from './gmail.mapper.js';
 import { gmailRepository, type SyncLease } from './gmail.repository.js';
@@ -26,6 +26,8 @@ import {
 // feature on confirm, as `MailMind/<leaf>`, and need this parent to exist.
 const MANAGED_LABELS = [{ name: 'MailMind', purpose: 'ROOT' }] as const;
 const METADATA_HEADERS = ['Subject', 'From', 'To', 'Cc', 'Date'];
+/** What one `messages.get` costs against Gmail's per-user quota. */
+const GMAIL_GET_UNITS = 5;
 
 /**
  * What a first sync reads: the mailbox's own history window (see account-policy), clamped by
@@ -445,6 +447,7 @@ export class GmailSyncService {
     windowStart: Date | null = null,
   ): Promise<void> {
     for (const batch of chunks(ids, env.GMAIL_SYNC_BATCH_SIZE)) {
+      const startedAt = Date.now();
       const records = await Promise.all(
         batch.map(async (id) => {
           try {
@@ -476,6 +479,9 @@ export class GmailSyncService {
       );
       await gmailRepository.upsertMessages(accountId, present);
       counts.messagesUpserted += present.length;
+      // Five quota units per `messages.get`. Unpaced, batches ran several a second and Gmail
+      // throttled a first sync every few hundred messages.
+      await paceGmailUnits(batch.length * GMAIL_GET_UNITS, startedAt);
     }
   }
 
