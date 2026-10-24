@@ -387,7 +387,10 @@ describe('InboxPage', () => {
     renderScreen(<InboxPage />, '/inbox');
     await screen.findByText('Career');
 
-    await userEvent.selectOptions(screen.getByLabelText('Show mail from'), '7d');
+    // The window sits behind the three dots above the folders now, not in a box of its own.
+    await userEvent.click(screen.getByRole('button', { name: 'Show mail from' }));
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Last 7 days' }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 
     await waitFor(() =>
       expect(mocks.getPivotView).toHaveBeenCalledWith(['domain', 'intent'], 5, '7d'),

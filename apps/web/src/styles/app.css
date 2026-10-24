@@ -23,7 +23,7 @@
   --app-line-strong: var(--line-strong);
   --app-focus: var(--accent);
   --app-danger: var(--status-danger-ink);
-  --app-rail: 15rem;
+  --app-rail: 16rem;
   --app-tabs: 4.25rem;
 
   min-height: 100dvh;
@@ -169,9 +169,13 @@
 
 .menu-profile {
   display: flex;
-  gap: 0.75rem;
+  gap: 1rem;
   align-items: center;
   margin-bottom: 1.25rem;
+}
+
+.menu-profile__text {
+  min-width: 0;
 }
 
 .menu-profile__name {
@@ -181,6 +185,7 @@
 
 .menu-profile__email {
   margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
   font-size: 0.875rem;
   color: var(--app-ink-soft);
 }
@@ -370,9 +375,9 @@
   line-height: 1.4;
 }
 
+/* Just the two segments, not stretched across the panel. */
 .shell__theme {
-  order: -1;
-  width: 100%;
+  align-self: flex-start;
 }
 
 /* ---------------------------------------------------------------- screens */
@@ -456,22 +461,67 @@
   outline: none;
 }
 
-.sorted__filters {
+/* The line right above the folders: which mail they count, and the three dots that change it. */
+.sorted__bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  align-items: end;
-  padding: 0.75rem 0.9rem;
-  background: var(--surface-chrome);
-  border: 1px solid var(--app-line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--highlight-inset);
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: -0.5rem;
 }
 
-.time-range {
+.sorted__scope {
+  font-size: 0.8125rem;
+  color: var(--app-ink-soft);
+}
+
+.choice-menu {
+  position: relative;
+}
+
+.choice-menu__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  color: var(--app-ink);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  transition: background 140ms ease-out;
+}
+
+.choice-menu__button:hover,
+.choice-menu__button--open {
+  background: var(--accent-soft);
+}
+
+.choice-menu__button svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.choice-menu__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.35rem);
+  right: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  min-width: 13rem;
+  padding: 0.35rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--highlight-inset), var(--shadow-md);
+}
+
+.choice-menu__heading {
+  margin: 0;
+  padding: 0.45rem 0.65rem 0.35rem;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -479,30 +529,36 @@
   color: var(--app-ink-soft);
 }
 
-.time-range select {
+.choice-menu__item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
   min-height: 2.5rem;
-  padding: 0.4rem 2rem 0.4rem 0.65rem;
+  padding: 0.4rem 0.65rem;
   font: inherit;
-  font-size: 0.875rem;
-  font-weight: 400;
-  letter-spacing: normal;
-  color: inherit;
+  font-size: 0.9375rem;
+  color: var(--app-ink);
+  text-align: left;
   cursor: pointer;
-  background: var(--surface-inset);
-  border: 1px solid var(--app-line);
-  border-radius: var(--radius-md);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
 }
 
-.time-range select:focus-visible {
-  border-color: var(--accent);
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.choice-menu__item:hover,
+.choice-menu__item:focus-visible {
+  background: var(--accent-soft);
 }
 
-.sorted__scope {
-  padding-bottom: 0.55rem;
-  font-size: 0.8125rem;
-  color: var(--app-ink-soft);
+.choice-menu__item--checked {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.choice-menu__item svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 /**
@@ -632,29 +688,52 @@
   --tile-ink: hsl(var(--tile-hue, 218) var(--tile-sl-ink));
   --tile-line: hsl(var(--tile-hue, 218) var(--tile-sl-line));
 
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  align-items: flex-start;
-  min-height: 8.5rem;
-  padding: 0.9rem;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 10rem;
+  padding: 1.5rem 0.9rem 0.9rem;
   color: var(--tile-ink);
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   background: var(--tile-surface);
   border: 1px solid var(--tile-line);
-  border-radius: var(--radius-lg);
+  /* The corner under the tab is square, as a folder's is; the other three are rounded. */
+  border-radius: 0 var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--highlight-inset);
   transition: transform 140ms ease-out;
+}
+
+/*
+ * The tab that makes it a folder rather than a card. It overlaps the tile's top edge by a pixel and
+ * has no bottom border, so the tab and the body read as one piece of card stock.
+ */
+.folder-tile::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% - 1px);
+  left: -1px;
+  width: 44%;
+  height: 0.8rem;
+  background: var(--tile-surface);
+  border: 1px solid var(--tile-line);
+  border-bottom: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
 .folder-tile:active {
   transform: scale(0.98);
 }
 
-/* The star is a sibling of the tile, pinned to its bottom-left corner over room the tile leaves. */
+/* The star is a sibling of the tile, pinned to its bottom-left corner over room the tile leaves.
+   The top padding is the room the tab stands up into. */
 .folder-tile-wrap {
   position: relative;
   display: flex;
+  padding-top: 0.8rem;
 }
 
 .folder-tile-wrap > .folder-tile {
@@ -662,7 +741,7 @@
 }
 
 .folder-tile--starrable {
-  padding-bottom: 2.75rem;
+  padding-bottom: 2.4rem;
 }
 
 .folder-tile__star {
@@ -706,31 +785,38 @@
   opacity: 1;
 }
 
-.folder-tile__top {
+/* What is waiting inside, in the top-right corner. */
+.folder-tile__corner {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+}
+
+/* The folder's picture: big, and in the middle of it. */
+.folder-tile__glyph {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  justify-content: center;
+  margin-bottom: 0.35rem;
 }
 
 .folder-tile__icon {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 3.25rem;
+  height: 3.25rem;
 }
 
 /*
- * Logos are drawn for white backgrounds, so each sits on its own small white plate. On a tinted
- * tile, and on graphite in the dark theme, a bare logo with a dark mark would all but disappear.
+ * Logos are drawn for white backgrounds, so each sits on its own white plate. On a tinted tile,
+ * and on graphite in the dark theme, a bare logo with a dark mark would all but disappear.
  */
 .folder-tile__logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0.2rem;
-  border-radius: var(--radius-sm);
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0.45rem;
+  border-radius: var(--radius-md);
   background: #ffffff;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
 }
@@ -760,20 +846,21 @@
   border-radius: 999px;
 }
 
-.folder-tile__count {
-  margin-top: auto;
-  font-family: var(--font-display);
-  font-size: 2rem;
+.folder-tile__name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.9375rem;
   font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.022em;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.folder-tile__name {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  line-height: 1.3;
+.folder-tile__count {
+  font-size: 0.8125rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 
 /* ---------------------------------------------------------------- mail list */
@@ -1175,17 +1262,25 @@
     display: none;
   }
 
-  /* The sidebar. Vibrancy here is what a Finder or Mail window looks like. */
+  /*
+   * The sidebar, floating: inset from the window edge with rounded corners, so it reads as a panel
+   * laid on the window rather than a strip cut out of it. Vibrancy is what a Finder or Mail window
+   * looks like.
+   */
   .shell__rail {
     position: sticky;
-    top: 0;
+    top: 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
-    height: 100dvh;
-    padding: 1.5rem 1rem;
+    gap: 1rem;
+    height: calc(100dvh - 1.5rem);
+    margin: 0.75rem 0 0.75rem 0.75rem;
+    padding: 1.25rem 0.85rem 1rem;
+    overflow-y: auto;
     background: var(--surface-chrome-opaque);
-    border-right: 1px solid var(--app-line);
+    border: 1px solid var(--app-line);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--highlight-inset), var(--shadow-sm);
   }
 
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
@@ -1196,12 +1291,35 @@
     }
   }
 
-  /* The wordmark — the one place Fraunces survives, because it is the brand and not the interface. */
-  .shell__brand {
-    font-family: var(--font-wordmark);
-    font-size: 1.25rem;
-    font-weight: 500;
-    letter-spacing: -0.01em;
+  /* Whose mailbox this is: the photo first, the name and address under it. */
+  .shell__profile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.25rem 0.25rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .shell__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    max-width: 100%;
+  }
+
+  .shell__name {
+    overflow: hidden;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The menu button sits on its own row under the profile, lined up with the rows below it. */
+  .shell__rail > .menu-button {
+    margin-left: 0.15rem;
   }
 
   .shell__nav {
@@ -1244,16 +1362,24 @@
 
   .shell__account {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: flex-start;
     margin-top: auto;
-    font-size: 0.8125rem;
-    color: var(--app-ink-soft);
+    padding-top: 1rem;
+    border-top: 1px solid var(--app-line);
+  }
+
+  .shell__account-actions {
+    display: flex;
+    gap: 0.25rem;
   }
 
   .shell__email {
+    max-width: 100%;
     overflow: hidden;
+    font-size: 0.8125rem;
+    color: var(--app-ink-soft);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1262,13 +1388,23 @@
     padding: 2.5rem 2rem 3rem;
   }
 
+  /* The menu has moved into the side panel, so the bar that held it on a phone is not needed. */
+  .shell__toolbar {
+    display: none;
+  }
+
   .tile-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
   }
 
   .folder-tile {
-    min-height: 9.5rem;
+    min-height: 11rem;
+  }
+
+  .folder-tile__icon {
+    width: 3.75rem;
+    height: 3.75rem;
   }
 
   .mail-row {
@@ -1289,10 +1425,6 @@
     bottom: 1.5rem;
     left: auto;
     max-width: 26rem;
-  }
-
-  .shell__toolbar-theme {
-    display: none;
   }
 }
 

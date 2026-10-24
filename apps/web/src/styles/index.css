@@ -1190,7 +1190,8 @@ img {
   display: inline-grid;
   flex: none;
   overflow: hidden;
-  color: var(--paper-light);
+  /* White on the accent in both themes; the paper tone turned to graphite on blue in dark. */
+  color: var(--accent-ink);
   font-family: var(--font-mono);
   object-fit: cover;
   background: var(--cobalt);
@@ -1202,6 +1203,16 @@ img {
   width: 2.3rem;
   height: 2.3rem;
   font-size: 0.65rem;
+}
+
+/* The side panel and the menu: big enough to recognise the face. */
+.avatar--medium {
+  width: 4.5rem;
+  height: 4.5rem;
+  font-size: 1.25rem;
+  box-shadow:
+    0 0 0 3px var(--surface-content),
+    0 0 0 4px var(--line);
 }
 
 .avatar--large {
