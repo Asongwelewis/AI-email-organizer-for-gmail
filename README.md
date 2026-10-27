@@ -1,42 +1,55 @@
 <div align="center">
 
-# MailMind AI
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4F46E5,100:06B6D4&height=220&section=header&text=MailMind%20AI&fontSize=70&fontColor=ffffff&animation=fadeIn&fontAlignY=36&desc=Your%20Gmail%2C%20organised%20into%20folders%20you%20approve&descAlignY=58&descSize=18" width="100%" />
 
-**AI that organises your Gmail into folders you approve, without ever reading or storing your email bodies.**
+<a href="#"><img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=20&pause=1000&color=4F46E5&center=true&vCenter=true&width=720&lines=AI+proposes.+You+approve.+It+files.;Metadata+only+%E2%80%94+never+your+email+bodies;850%2B+tests+%E2%80%A2+forced+RLS+%E2%80%A2+strict+CSP" alt="Typing intro" /></a>
 
-[Live app](https://mailmindai.tech) · [Architecture](#architecture) · [Security and privacy](#security-and-privacy) · [Getting started](#getting-started) · [API reference](docs/api.md)
+<p>
+  <a href="https://mailmindai.tech"><img src="https://img.shields.io/badge/%F0%9F%9A%80_Live_App-4F46E5?style=for-the-badge" alt="Live app" /></a>
+  <a href="#-architecture"><img src="https://img.shields.io/badge/%F0%9F%8F%97_Architecture-0891B2?style=for-the-badge" alt="Architecture" /></a>
+  <a href="#-security-and-privacy"><img src="https://img.shields.io/badge/%F0%9F%94%92_Security-16A34A?style=for-the-badge" alt="Security" /></a>
+  <a href="docs/api.md"><img src="https://img.shields.io/badge/%F0%9F%93%96_API_Docs-222222?style=for-the-badge" alt="API docs" /></a>
+</p>
 
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
-![Express](https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=white)
-![Prisma](https://img.shields.io/badge/Prisma-PostgreSQL-2D3748?logo=prisma&logoColor=white)
-![Gemini](https://img.shields.io/badge/Gemini-structured_output-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-850%2B-success)
-![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=githubactions&logoColor=white)
+<p>
+  <img src="https://img.shields.io/badge/tests-850%2B_passing-22C55E?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white" alt="CI" />
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/PWA-installable-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA" />
+</p>
+
+<img src="https://skillicons.dev/icons?i=typescript,react,vite,tailwindcss,nodejs,expressjs,prisma,postgresql,supabase,gcp,githubactions,vercel,sentry,docker&perline=7" alt="Tech stack" />
 
 </div>
 
----
+<br/>
 
-## Table of contents
-
-1. [Problem](#problem)
-2. [Solution](#solution)
-3. [Features](#features)
-4. [How it works](#how-it-works)
-5. [Architecture](#architecture)
-6. [Security and privacy](#security-and-privacy)
-7. [Reliability and cost control](#reliability-and-cost-control)
-8. [Tech stack](#tech-stack)
-9. [Testing and CI](#testing-and-ci)
-10. [Getting started](#getting-started)
-11. [Project structure](#project-structure)
-12. [Documentation](#documentation)
-13. [Limitations and roadmap](#limitations-and-roadmap)
+> **TL;DR:** MailMind looks at your Gmail's _metadata_ (never bodies or attachments), proposes a folder tree, waits for your approval, then files new mail every day: cheap rules first, Gemini only for the rest. Uncertain mail goes to a review queue, and anything that fits no folder stays in your inbox.
 
 ---
 
-## Problem
+<details>
+<summary><b>📑 Table of contents</b></summary>
+
+1. [🎯 Problem](#-problem)
+2. [💡 Solution](#-solution)
+3. [✨ Features](#-features)
+4. [⚙️ How it works](#️-how-it-works)
+5. [🏗 Architecture](#-architecture)
+6. [🔒 Security and privacy](#-security-and-privacy)
+7. [🛡 Reliability and cost control](#-reliability-and-cost-control)
+8. [🧰 Tech stack](#-tech-stack)
+9. [🧪 Testing and CI](#-testing-and-ci)
+10. [🚀 Getting started](#-getting-started)
+11. [📁 Project structure](#-project-structure)
+12. [📚 Documentation](#-documentation)
+13. [🗺 Roadmap](#-limitations-and-roadmap)
+
+</details>
+
+---
+
+## 🎯 Problem
 
 Inboxes grow faster than anyone can sort them. The tools people turn to fail in one of three ways:
 
@@ -44,7 +57,7 @@ Inboxes grow faster than anyone can sort them. The tools people turn to fail in 
 - **"AI inbox" tools ask for too much.** Most read and store the full content of every email on their own servers, which is a lot of trust to hand over for tidier folders.
 - **Automatic sorting is a black box.** When a tool invents its own categories and moves mail without asking, you stop trusting it the first time something important disappears.
 
-## Solution
+## 💡 Solution
 
 MailMind is a **human-in-the-loop** organiser that is private by design:
 
@@ -54,7 +67,7 @@ MailMind is a **human-in-the-loop** organiser that is private by design:
 
 And throughout: **no email body, raw message or attachment is ever downloaded or stored.**
 
-## Features
+## ✨ Features
 
 | Feature                               | What it does                                                                             | How it works                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,7 +83,7 @@ And throughout: **no email body, raw message or attachment is ever downloaded or
 | **Installable PWA**                   | Works like a native app                                                                  | Manifest, icons, a service worker that never caches API responses, and an instant start that shows cached folder names while a sleeping server wakes up (no subjects or senders are cached).                                                                                                                                                                               |
 | **Account control**                   | Disconnect or delete at any time                                                         | Disconnecting revokes Google credentials and wipes the token material. Account deletion cascades through all of the account's data.                                                                                                                                                                                                                                        |
 
-## How it works
+## ⚙️ How it works
 
 ```mermaid
 flowchart LR
@@ -85,7 +98,7 @@ flowchart LR
     G -->|fits nothing| J[Stays in inbox]
 ```
 
-## Architecture
+## 🏗 Architecture
 
 A **TypeScript monorepo** with a static React frontend and one stateless Express API backed by PostgreSQL. Only the API crosses the trust boundaries to Postgres, Google and Gemini. The browser never sees an OAuth token or a service credential.
 
@@ -107,7 +120,8 @@ flowchart LR
     W & A -.->|errors + releases| S
 ```
 
-### API layering
+<details>
+<summary><b>🧱 API layering</b></summary>
 
 ```mermaid
 flowchart LR
@@ -118,7 +132,10 @@ flowchart LR
     SV --> EX[Google / Gemini adapters]
 ```
 
-### Sign-in vs Gmail connection
+</details>
+
+<details>
+<summary><b>🔑 Sign-in vs Gmail connection (sequence)</b></summary>
 
 ```mermaid
 sequenceDiagram
@@ -143,6 +160,8 @@ sequenceDiagram
     API->>DB: Encrypt + store tokens (AES-GCM, key version)
 ```
 
+</details>
+
 ### Data model (28 Prisma models, 27 migrations)
 
 | Group                 | Tables                                                                                                                         |
@@ -154,7 +173,7 @@ sequenceDiagram
 | Automation            | `automation_settings`, `automation_states`, `automation_runs`, `automation_message_actions`, `learned_classification_patterns` |
 | Facets                | `message_facets`, `facet_pivot_settings`                                                                                       |
 
-## Security and privacy
+## 🔒 Security and privacy
 
 | Control                    | Implementation                                                                                                                                            |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -169,7 +188,7 @@ sequenceDiagram
 | Logging                    | Structured Pino logs with secrets redacted, and generic 500 responses                                                                                     |
 | AI safety                  | Model output is never trusted. Every structural rule is re-checked in code after parsing                                                                  |
 
-## Reliability and cost control
+## 🛡 Reliability and cost control
 
 - **No overlapping work.** Sync, planning and automation each take an expiring database **lease** per account, so several API instances can share one database safely.
 - **Idempotent by construction.** Scheduled runs are keyed by account and date, and message actions are unique, so a retried run never files a message twice.
@@ -180,7 +199,7 @@ sequenceDiagram
 - **Health probes.** `/health` (liveness, no database) and `/ready` (a database query with a 5-second timeout). The API connects Prisma before listening and shuts down gracefully.
 - **Fast on a free plan.** The SPA renders cached folder names immediately and retries while the sleeping API wakes up.
 
-## Tech stack
+## 🧰 Tech stack
 
 | Layer         | Technology                                                                                      |
 | ------------- | ----------------------------------------------------------------------------------------------- |
@@ -193,7 +212,7 @@ sequenceDiagram
 | CI/CD         | GitHub Actions · Vercel (web) · Render (API)                                                    |
 | Tooling       | npm workspaces, ESLint, Prettier, shared TS configs                                             |
 
-## Testing and CI
+## 🧪 Testing and CI
 
 - **850+ test cases across 92 test files**: unit, API (Supertest), database integration, and frontend component tests, plus **Playwright** end-to-end tests.
 - Every push and pull request runs in **GitHub Actions**:
@@ -211,7 +230,7 @@ npm run lint
 npm run build
 ```
 
-## Getting started
+## 🚀 Getting started
 
 **Prerequisites:** Node.js 22+, npm 10+, Docker Desktop, Supabase CLI 2.x, a Google Cloud OAuth client, a Gemini API key.
 
@@ -230,7 +249,7 @@ For Supabase roles and pooler setup, Prisma migrations, Google OAuth configurati
 
 > `supabase db reset` is destructive and is only for the disposable local stack, never a remote project.
 
-## Project structure
+## 📁 Project structure
 
 ```
 apps/
@@ -245,7 +264,7 @@ e2e/          Playwright end-to-end tests
 docs/         architecture, API, backend, frontend, stage guides
 ```
 
-## Documentation
+## 📚 Documentation
 
 | Document                                                        | Covers                                                                 |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -256,13 +275,23 @@ docs/         architecture, API, backend, frontend, stage guides
 | [Daily automation](docs/stage-5-daily-automation.md)            | Scheduling, budgets, Gemini and Gmail boundaries                       |
 | [Deployment](docs/mvp-deployment.md) · [Sentry](docs/sentry.md) | Release and monitoring                                                 |
 
-## Limitations and roadmap
+## 🗺 Limitations and roadmap
 
 - **In-process scheduler.** Daily automation runs on a poller inside the API. Next: move the same lease-protected service behind a durable queue. Message idempotency already makes that a drop-in change.
 - **Free-tier hosting.** The API sleeps when idle. The SPA hides most of the wake time, but the first action after idle is slower.
 - **Gmail verification.** Wider release needs Google's OAuth verification for the Gmail scope.
 - **Single frontend origin.** CORS and CSRF use one shared allowlist, so a new frontend means updating configuration.
 
-## Author
+## 👤 Author
 
 Built by **Asongwe Lewis Fon** ([@Asongwelewis](https://github.com/Asongwelewis)), full-stack engineer, Yaoundé, Cameroon. Open to remote and relocation roles.
+
+---
+
+<div align="center">
+
+**If you find MailMind useful, consider leaving a ⭐**
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:06B6D4,100:4F46E5&height=120&section=footer" width="100%" />
+
+</div>
