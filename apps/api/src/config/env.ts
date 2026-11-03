@@ -234,10 +234,11 @@ const environmentSchema = z
     AUTOMATION_CLASSIFY_BATCH_THRESHOLD: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES: z.coerce.number().int().min(0).max(120).default(5),
     /**
-     * How often the API requests its own public /health, in minutes; 0 turns it off. The free
-     * plan sleeps after 15 minutes without INBOUND traffic, and a timer inside the process is not
-     * inbound — a request to API_BASE_URL goes out through Render's edge and comes back in, which
-     * is. Production only.
+     * How often the API requests its own public /health while a job is running, in minutes; 0
+     * turns it off. The free plan sleeps after 15 minutes without INBOUND traffic, and a timer
+     * inside the process is not inbound — a request to API_BASE_URL goes out through Render's edge
+     * and comes back in, which is. Deployments only, and never while idle: pinging around the clock
+     * spent the workspace's free hours and got every service in it suspended.
      */
     KEEP_AWAKE_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(14).default(10),
     /**

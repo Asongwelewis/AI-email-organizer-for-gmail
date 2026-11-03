@@ -178,11 +178,15 @@ It only touches mail from the last 48 hours that was never classified; the backl
 **full runs** at `AUTOMATION_FULL_RUN_HOURS_UTC` (default `2,14`). A watcher check writes no row
 unless it sorted something, and then adds to one `automation_runs` row per account per day, so the
 daily caps still see its usage. It stands aside while a full run is in flight, and a full run waits
-out a check that holds the lease. None of this runs while the free Render instance sleeps, and work
-inside the process does not count as traffic, so `services/keepAwake.ts` requests the API's own
-public `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` on a deployment, with
-`.github/workflows/wake-api.yml` pinging every ten minutes as the backstop that can wake a sleeping
-instance. Around the clock that is ~744 of the 750 free hours a Render workspace shares a month.
+out a check that holds the lease. None of this runs while the free Render instance sleeps, and
+**it sleeps between wake-ups on purpose**: only an inbound request wakes it — a visitor, or
+`.github/workflows/wake-api.yml` every three hours — and 15 idle minutes later it sleeps again.
+Staying up around the clock spent 720–744 of the 750 free hours the Render workspace shares with
+other free services, and on 25 October 2026 they ran out and Render suspended all of them until
+the 1st. A full run slept through is caught up on waking, because `next_run_at` lives in the
+database. `services/keepAwake.ts` pings the API's own public `/health` every
+`KEEP_AWAKE_INTERVAL_MINUTES` only while `holdAwake` work is in flight — a full run or any
+`runDetached` activity run — so a job is not cut off mid-way; never while idle.
 
 **Inbox, favourites and notifications are the everyday screens.** Sorted is called **Inbox**
 (`/inbox`; `/sorted` redirects with its query string). The **Review** and **Approve** pages are

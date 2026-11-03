@@ -88,8 +88,8 @@ export function OnboardingProgress({
       <section className="onboarding onboarding--done" aria-label="Setup">
         <p className="onboarding__title">Your folders are ready</p>
         <p className="onboarding__lede">
-          New mail is sorted within a minute or two of arriving. Older mail is sorted in the
-          background over the next day.
+          New mail is sorted within a minute or two while AMO is open, and within a few hours when
+          it is not. Older mail is sorted in the background over the next day.
         </p>
         <Link className="button button--primary" to="/inbox">
           Open my inbox

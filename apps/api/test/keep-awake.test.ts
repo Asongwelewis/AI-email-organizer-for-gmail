@@ -7,15 +7,18 @@ vi.mock('../src/config/logger.js', () => ({
 
 import { env } from '../src/config/env.js';
 import {
+  holdAwake,
   keepAwakeUrl,
   pingSelf,
   startKeepAwake,
   stopKeepAwake,
+  workInFlight,
 } from '../src/services/keepAwake.js';
 
 /**
- * On the free plan only inbound requests keep the instance up, and asleep, new mail sits unsorted.
- * The ping has to go out to the public address — the one Render's edge sees — and it must never
+ * On the free plan only inbound requests keep the instance up. The ping has to go out to the
+ * public address — the one Render's edge sees — and only while a job is running: pinging around
+ * the clock spent the workspace's free hours and got every service in it suspended. It must never
  * fire from a developer's machine, where API_BASE_URL may well be production.
  */
 describe('keeping the free instance awake', () => {
@@ -32,13 +35,13 @@ describe('keeping the free instance awake', () => {
     expect(keepAwakeUrl()).toBe(new URL('/health', env.API_BASE_URL).toString());
   });
 
-  it('pings on its interval in a deployment', async () => {
+  it('pings on its interval in a deployment while work is running', async () => {
     env.IS_DEPLOYED = true;
     vi.useFakeTimers();
     const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200 });
 
-    startKeepAwake(10, fetcher as never);
-    startKeepAwake(10, fetcher as never); // a second start must not double the pings
+    startKeepAwake(10, fetcher as never, () => true);
+    startKeepAwake(10, fetcher as never, () => true); // a second start must not double the pings
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe(keepAwakeUrl());
@@ -47,12 +50,39 @@ describe('keeping the free instance awake', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it('lets an idle instance sleep', async () => {
+    env.IS_DEPLOYED = true;
+    vi.useFakeTimers();
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    let busy = false;
+
+    startKeepAwake(10, fetcher as never, () => busy);
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(fetcher).not.toHaveBeenCalled();
+
+    busy = true;
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('holds the instance awake until the work settles, even when it throws', async () => {
+    let finish: () => void = () => undefined;
+    const running = holdAwake(() => new Promise<void>((resolve) => (finish = resolve)));
+    expect(workInFlight()).toBe(true);
+    finish();
+    await running;
+    expect(workInFlight()).toBe(false);
+
+    await expect(holdAwake(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+    expect(workInFlight()).toBe(false);
+  });
+
   it('never pings outside a deployment', async () => {
     env.IS_DEPLOYED = false;
     vi.useFakeTimers();
     const fetcher = vi.fn();
 
-    startKeepAwake(10, fetcher as never);
+    startKeepAwake(10, fetcher as never, () => true);
     await vi.advanceTimersByTimeAsync(60 * 60_000);
 
     expect(fetcher).not.toHaveBeenCalled();

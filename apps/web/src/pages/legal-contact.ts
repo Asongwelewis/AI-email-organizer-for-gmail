@@ -14,4 +14,4 @@ export const LEGAL_ENTITY = 'Asongwe Lewis Fon';
 export const LEGAL_CONTACT = 'fonasongwelewis@gmail.com';
 
 /** The date on the documents. Bump it when their substance changes, not when a typo is fixed. */
-export const LEGAL_UPDATED = '24 October 2026';
+export const LEGAL_UPDATED = '3 November 2026';

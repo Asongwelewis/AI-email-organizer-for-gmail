@@ -5,6 +5,7 @@ import { captureApiException } from '@api/observability/sentry.js';
 // through the canonical pivot — it no longer reaches the retired taxonomy classifier.
 import { automationService } from './automation.service.js';
 import { onboardingService } from '@api/features/onboarding/onboarding.service.js';
+import { holdAwake } from '@api/services/keepAwake.js';
 import { forEachWithConcurrency } from '@api/utils/concurrency.js';
 import { mailWatchService } from './mail-watch.service.js';
 
@@ -17,8 +18,11 @@ import { mailWatchService } from './mail-watch.service.js';
  * arrived and sorts only that, so mail lands in its folder within a minute or two instead of at
  * the next full run.
  *
- * Neither keeps the process awake. On the free plan only inbound requests do that; see
- * `services/keepAwake.ts` and `.github/workflows/wake-api.yml`.
+ * Neither runs while the free instance sleeps; only an inbound request wakes it — a visitor, or
+ * `.github/workflows/wake-api.yml` every three hours. A full run is due once its `next_run_at` has
+ * passed, and that lives in the database, so an hour slept through is caught up at the first tick
+ * after waking (one runs at boot). See `services/keepAwake.ts` for why a run in flight is held
+ * awake and nothing else is.
  */
 
 let timer: NodeJS.Timeout | null = null;
@@ -31,19 +35,23 @@ async function tick(): Promise<void> {
   ticking = true;
   try {
     const accounts = await automationService.eligibleScheduledAccounts();
+    if (accounts.length === 0) return;
     // A few at a time: each full run holds the shared Gemini queue for minutes, and one slow
-    // mailbox used to hold up every mailbox behind it in a strictly sequential loop.
-    await forEachWithConcurrency(accounts, env.AUTOMATION_FULL_RUN_CONCURRENCY, async (account) => {
-      try {
-        await automationService.runScheduledAccount(account.id, account.user_id);
-      } catch (error) {
-        captureApiException(error, { operation: 'scheduled_automation_account' });
-        logger.error(
-          { ...safeErrorDetails(error), accountId: account.id },
-          'scheduled automation account failed',
-        );
-      }
-    });
+    // mailbox used to hold up every mailbox behind it in a strictly sequential loop. Held awake,
+    // because a full run can outlast the free plan's 15 idle minutes.
+    await holdAwake(() =>
+      forEachWithConcurrency(accounts, env.AUTOMATION_FULL_RUN_CONCURRENCY, async (account) => {
+        try {
+          await automationService.runScheduledAccount(account.id, account.user_id);
+        } catch (error) {
+          captureApiException(error, { operation: 'scheduled_automation_account' });
+          logger.error(
+            { ...safeErrorDetails(error), accountId: account.id },
+            'scheduled automation account failed',
+          );
+        }
+      }),
+    );
   } catch (error) {
     captureApiException(error, { operation: 'scheduled_automation_tick' });
     logger.error(safeErrorDetails(error), 'scheduled automation tick failed');

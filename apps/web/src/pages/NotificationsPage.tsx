@@ -202,7 +202,7 @@ export function NotificationsPage() {
       {feed.isSuccess && items.length === 0 ? (
         <EmptyState
           title="Nothing new yet"
-          description="When new mail arrives, it is listed here within a minute or two."
+          description="When new mail arrives, it is listed here — within a minute or two while AMO is open, and within a few hours when it is not."
         />
       ) : null}
 
