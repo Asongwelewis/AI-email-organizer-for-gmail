@@ -56,7 +56,7 @@ credentials.
 | `SESSION_MAX_LIFETIME_DAYS`         | `90` — hard ceiling from sign-in                                                           |
 | `AUTOMATION_FULL_RUN_HOURS_UTC`     | `2,14` — full runs; new mail is sorted by the watcher in between                           |
 | `AUTOMATION_CHECK_INTERVAL_SECONDS` | `60` — how often the watcher asks Gmail for new mail                                       |
-| `KEEP_AWAKE_INTERVAL_MINUTES`       | `10` — production self-ping that keeps the free instance awake                             |
+| `KEEP_AWAKE_INTERVAL_MINUTES`       | `10` — self-ping while a job runs, so the free instance does not sleep mid-job             |
 | `OAUTH_STATE_TTL_MINUTES`           | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES`    | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_MAX_REQUESTS`      | `30`                                                                                       |

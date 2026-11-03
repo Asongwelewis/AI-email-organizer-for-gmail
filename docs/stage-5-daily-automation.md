@@ -13,11 +13,12 @@
 > person to do by hand what was about to happen. The rest of this document describes the full run.
 >
 > On Render's free plan none of this runs while the instance sleeps, and the process's own timers do
-> not count as traffic. `services/keepAwake.ts` requests the API's public `/health` every
-> `KEEP_AWAKE_INTERVAL_MINUTES` (10) in production, and `.github/workflows/wake-api.yml` pings every
-> ten minutes around the clock as the backstop that can wake a sleeping instance. That spends about
-> 744 of the 750 free instance hours a workspace shares each month, so it is only safe while this is
-> the workspace's only free web service.
+> not count as traffic. Since November 2026 it is allowed to sleep: `.github/workflows/wake-api.yml`
+> wakes it every three hours, a visitor wakes it at any time, and a full run whose hour passed while
+> it slept runs at the first tick after waking. `services/keepAwake.ts` pings the API's public
+> `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` (10) only while a job is in flight. Keeping it awake
+> around the clock spent 720–744 of the 750 free hours the workspace shares with other free
+> services, and on 25 October 2026 Render suspended every one of them until the 1st.
 
 MailMind runs account-scoped Gmail organization once per UTC day and on demand from
 `/dashboard/automation`. It refreshes synchronized metadata, files new or unprocessed messages into

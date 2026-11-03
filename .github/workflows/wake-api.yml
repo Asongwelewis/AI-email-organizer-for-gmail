@@ -6,15 +6,15 @@ name: Wake API
 # the API treats an unreachable database as fatal, so a paused project once became a month-long
 # crash loop (September 2026) — see the startup check in apps/api/src/server.ts.
 #
-# The API now keeps itself awake by requesting its own public /health every ten minutes (see
-# apps/api/src/services/keepAwake.ts). That cannot wake a process that is already asleep — after a
-# Render restart, a crash, or any gap — so this runs around the clock as the backstop that does.
-# GitHub can delay scheduled runs by many minutes under load, which is why it is the backstop and
-# not the mechanism, and why it runs off the top of the hour.
+# This is what wakes it when nobody has the app open: every three hours the API comes up, sorts
+# what arrived, catches up a full run it slept through, sends the notifications, and goes back to
+# sleep 15 minutes later. That is roughly 8 wake-ups and 60–80 instance hours a month.
 #
-# Around the clock costs about 744 of the 750 free instance hours a Render workspace shares each
-# month. That is only safe while this API is the workspace's only free web service; with another
-# one, the hours run out near month end and Render suspends them all until the 1st.
+# It used to run every ten minutes while the API also pinged itself around the clock. Together
+# they spent 720–744 of the 750 free instance hours the workspace shares with its other free
+# services, and on 25 October 2026 the hours ran out: Render suspended every one of them, this
+# API included, until 1 November. Do not shorten the interval without counting those hours. The
+# API still pings itself, but only while a job is in flight (apps/api/src/services/keepAwake.ts).
 #
 # `/ready` rather than `/health`: it reads the database, so every ping is database activity too, and
 # it answers 503 when a migration this build ships has not reached the database — so a missing
@@ -25,7 +25,7 @@ name: Wake API
 
 on:
   schedule:
-    - cron: '7-59/10 * * * *'
+    - cron: '7 */3 * * *'
   workflow_dispatch:
 
 permissions: {}
