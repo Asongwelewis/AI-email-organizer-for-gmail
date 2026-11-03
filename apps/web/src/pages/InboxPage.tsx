@@ -154,8 +154,9 @@ export function InboxPage() {
      * once at the server default and again at the account's, and the two can differ.
      */
     enabled: order.length > 0 && !settingsQuery.isPending,
-    // New mail is sorted within a minute or two of arriving, so an open screen follows it. Paused
-    // while the tab is hidden, and a read of stored facets — no Gmail or model call behind it.
+    // While the app is open the API is awake and sorts new mail within a minute or two, so an open
+    // screen follows it. Paused while the tab is hidden, and a read of stored facets — no Gmail or
+    // model call behind it.
     refetchInterval: LIVE_REFRESH_MS,
   });
   const connectionQuery = useQuery({

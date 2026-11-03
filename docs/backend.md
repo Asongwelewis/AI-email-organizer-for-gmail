@@ -409,9 +409,11 @@ New mail is sorted as it arrives by the watcher, between the twice-daily full ru
 - `HOUSEKEEPING_RETENTION_DAYS` (30) — every six hours the API deletes dead sessions (a week
   after expiry or revocation), expired OAuth states and rate-limit rows, and finished runs,
   sync runs and notifications older than this. Audit logs are never deleted.
-- `KEEP_AWAKE_INTERVAL_MINUTES` — production only; the API requests its own public `/health` this
-  often (default 10, max 14, 0 disables) so Render's free plan, which counts only inbound traffic,
-  never puts it to sleep.
+- `KEEP_AWAKE_INTERVAL_MINUTES` — deployments only; while a full run or an activity run is in
+  flight the API requests its own public `/health` this often (default 10, max 14, 0 disables), so
+  Render's free plan, which counts only inbound traffic, does not put it to sleep mid-job. Idle,
+  it does not ping, and the instance sleeps until a visitor or the three-hourly
+  `wake-api.yml` wakes it: pinging around the clock spent the workspace's 750 free hours.
 
 New-mail notifications are recorded by the watcher after every check and pushed to the person's
 subscribed browsers with Web Push:
