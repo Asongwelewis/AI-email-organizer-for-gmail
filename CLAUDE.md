@@ -178,15 +178,11 @@ It only touches mail from the last 48 hours that was never classified; the backl
 **full runs** at `AUTOMATION_FULL_RUN_HOURS_UTC` (default `2,14`). A watcher check writes no row
 unless it sorted something, and then adds to one `automation_runs` row per account per day, so the
 daily caps still see its usage. It stands aside while a full run is in flight, and a full run waits
-out a check that holds the lease. None of this runs while the free Render instance sleeps, and
-**it sleeps between wake-ups on purpose**: only an inbound request wakes it — a visitor, or
-`.github/workflows/wake-api.yml` every three hours — and 15 idle minutes later it sleeps again.
-Staying up around the clock spent 720–744 of the 750 free hours the Render workspace shares with
-other free services, and on 25 October 2026 they ran out and Render suspended all of them until
-the 1st. A full run slept through is caught up on waking, because `next_run_at` lives in the
-database. `services/keepAwake.ts` pings the API's own public `/health` every
-`KEEP_AWAKE_INTERVAL_MINUTES` only while `holdAwake` work is in flight — a full run or any
-`runDetached` activity run — so a job is not cut off mid-way; never while idle.
+out a check that holds the lease. Both need a process that is always running, which is why the
+API is on Railway: the previous free host slept after 15 idle minutes, and every attempt to
+keep it awake ran into a monthly quota — first instance hours (25 Oct 2026), then 5 GB of
+outbound bandwidth (9 Nov 2026). A full run missed while the process restarts is caught up at
+boot, because `next_run_at` lives in the database.
 
 **Inbox, favourites and notifications are the everyday screens.** Sorted is called **Inbox**
 (`/inbox`; `/sorted` redirects with its query string). The **Review** and **Approve** pages are
@@ -278,7 +274,7 @@ only.
 
 **Frontend state.** TanStack Query owns server state with refetch-on-focus disabled, and a read is
 retried (three times, 1/2/4 s apart) only when the server never answered — a dropped connection or
-Render's own 502/503/504 — never an answer from the API (`lib/queryRetry.ts`); feature hooks poll every 2s only while a run is active. `AuthProvider` treats
+the hosting platform's own 502/503/504 — never an answer from the API (`lib/queryRetry.ts`); feature hooks poll every 2s only while a run is active. `AuthProvider` treats
 `GET /api/auth/me` as source of truth, but the PWA opens on the session and folder tree it
 remembers (`lib/sessionSnapshot.ts`: profile, folder names and counts — never mail; forgotten on
 logout, on any 401, and once `sessionExpiresAt` passes) and confirms them in the background, because
@@ -302,9 +298,9 @@ are only for the disposable local `supabase start` stack.
 
 ## Configuration
 
-**A deployment is `NODE_ENV=production` _or_ `RENDER=true`** (`env.IS_DEPLOYED`). The live Render
-service was created by hand and never received `NODE_ENV`, so anything gated on `NODE_ENV` alone —
-boot-time migrations, the keep-awake ping — silently stayed off in production. Gate deployment-only
+**A deployment is `NODE_ENV=production` _or_ Railway's `RAILWAY_ENVIRONMENT_NAME` is set**
+(`env.IS_DEPLOYED`). A previous host's service was created by hand and never received `NODE_ENV`,
+so anything gated on `NODE_ENV` alone — boot-time migrations — silently stayed off in production. Gate deployment-only
 behaviour on `IS_DEPLOYED`, and after any migration check `GET /ready`: `dependencies.schema` must
 be `current`.
 
@@ -313,12 +309,10 @@ parsed by Zod at startup — invalid config aborts the process and reports field
 values. `docs/backend.md` documents every variable; `WEB_APP_URL` + deployed frontend origins form
 the shared CORS and trusted-Origin (CSRF) allowlist.
 
-Deployment: API on Render ([render.yaml](render.yaml), health check `/health`, `prisma migrate
-deploy` as pre-deploy), SPA on Vercel ([vercel.json](vercel.json), history fallback to
-`index.html`). The repository is also ready for the API to move to a Heroku Basic dyno (always on,
-paid by the GitHub Student credit): `Procfile` (release-phase migrations), `heroku-postbuild`,
-`engines.node` and `.slugignore`. It is not live there; [docs/deploy-heroku.md](docs/deploy-heroku.md)
-is the go-live runbook, and nothing may be deployed before the student credit is on the account.
+Deployment: the API on **Railway**, built from the root [Dockerfile](Dockerfile) on every push to
+`main` (migrations run at boot, health check `/ready`); the SPA on Vercel
+([vercel.json](vercel.json), history fallback to `index.html`).
+[docs/deploy-railway.md](docs/deploy-railway.md) is the setup runbook.
 
 ## Conventions
 

@@ -106,7 +106,7 @@ A **TypeScript monorepo** with a static React frontend and one stateless Express
 flowchart LR
     U[User browser]
     W[React + Vite SPA<br/>PWA · Vercel]
-    A[Express API<br/>Render]
+    A[Express API<br/>Railway]
     P[(PostgreSQL<br/>Supabase · RLS forced)]
     G[Google OAuth<br/>+ Gmail API]
     C[Gemini API<br/>structured output]
@@ -209,7 +209,7 @@ sequenceDiagram
 | Integrations  | Google OAuth 2.0 + Gmail API (`googleapis`), Google Gemini (Flash-Lite, structured JSON output) |
 | Observability | Sentry (web + API, release-tagged)                                                              |
 | Testing       | Vitest, Testing Library, Supertest, Playwright (end-to-end)                                     |
-| CI/CD         | GitHub Actions · Vercel (web) · Render (API)                                                    |
+| CI/CD         | GitHub Actions · Vercel (web) · Railway (API)                                                   |
 | Tooling       | npm workspaces, ESLint, Prettier, shared TS configs                                             |
 
 ## 🧪 Testing and CI

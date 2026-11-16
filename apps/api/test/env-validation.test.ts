@@ -131,24 +131,24 @@ describe('environment validation', () => {
   });
 
   /*
-   * The live Render service never received NODE_ENV, so everything gated on it stayed off:
+   * A hand-made service once never received NODE_ENV, so everything gated on it stayed off:
    * migrations did not apply at boot and the favourites and notifications tables did not exist.
-   * Render sets RENDER=true on every service, which is the signal that cannot be forgotten.
+   * Railway sets RAILWAY_ENVIRONMENT_NAME on every service: the signal that cannot be forgotten.
    */
-  it('treats a Render service as a deployment even without NODE_ENV', async () => {
+  it('treats a Railway service as a deployment even without NODE_ENV', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'development',
-      RENDER: 'true',
+      RAILWAY_ENVIRONMENT_NAME: 'production',
       MIGRATE_ON_START: undefined,
     });
     expect(env.IS_DEPLOYED).toBe(true);
     expect(env.MIGRATE_ON_START).toBe(true);
   });
 
-  it('never treats a test run as a deployment, even on Render', async () => {
+  it('never treats a test run as a deployment, even on Railway', async () => {
     const { env } = await loadWith({
       NODE_ENV: 'test',
-      RENDER: 'true',
+      RAILWAY_ENVIRONMENT_NAME: 'production',
       MIGRATE_ON_START: undefined,
     });
     expect(env.IS_DEPLOYED).toBe(false);
@@ -156,7 +156,10 @@ describe('environment validation', () => {
   });
 
   it('is not a deployment on a developer machine', async () => {
-    const { env } = await loadWith({ NODE_ENV: 'development', RENDER: undefined });
+    const { env } = await loadWith({
+      NODE_ENV: 'development',
+      RAILWAY_ENVIRONMENT_NAME: undefined,
+    });
     expect(env.IS_DEPLOYED).toBe(false);
   });
 

@@ -116,8 +116,8 @@ let heartbeat: NodeJS.Timeout | null = null;
  *
  * The pooler closes a connection nobody has used for a while, and the next request then pays for
  * opening a new one — that is the request a person is waiting on. A `select 1` every few minutes
- * costs nothing and keeps that cost out of the request path. It cannot keep a sleeping instance
- * awake and does not try to: the timer is unref'd, and Render only counts inbound traffic.
+ * costs nothing and keeps that cost out of the request path. The timer is unref'd, so it never
+ * holds the process open on shutdown.
  */
 export function startDatabaseHeartbeat(intervalSeconds = env.DATABASE_HEARTBEAT_SECONDS): void {
   if (heartbeat || intervalSeconds <= 0) return;

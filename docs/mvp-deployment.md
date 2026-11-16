@@ -56,7 +56,6 @@ credentials.
 | `SESSION_MAX_LIFETIME_DAYS`         | `90` — hard ceiling from sign-in                                                           |
 | `AUTOMATION_FULL_RUN_HOURS_UTC`     | `2,14` — full runs; new mail is sorted by the watcher in between                           |
 | `AUTOMATION_CHECK_INTERVAL_SECONDS` | `60` — how often the watcher asks Gmail for new mail                                       |
-| `KEEP_AWAKE_INTERVAL_MINUTES`       | `10` — self-ping while a job runs, so the free instance does not sleep mid-job             |
 | `OAUTH_STATE_TTL_MINUTES`           | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_WINDOW_MINUTES`    | `10`                                                                                       |
 | `AUTH_RATE_LIMIT_MAX_REQUESTS`      | `30`                                                                                       |
@@ -71,8 +70,8 @@ credentials.
 | `TAXONOMY_MAX_OUTPUT_TOKENS`        | `16000`                                                                                    |
 | `LOG_LEVEL`                         | `info`                                                                                     |
 | `TRUST_PROXY_HOPS`                  | `0`; set to the backend host's trusted reverse-proxy hop count when applicable.            |
-| `APP_VERSION`                       | Shared immutable release. Render derives `mailmind@<RENDER_GIT_COMMIT>` when omitted.      |
-| `SENTRY_ENVIRONMENT`                | Defaults to `NODE_ENV`. Use `production` on Render.                                        |
+| `APP_VERSION`                       | Shared immutable release. Railway derives `mailmind@<RAILWAY_GIT_COMMIT_SHA>` if omitted.  |
+| `SENTRY_ENVIRONMENT`                | Defaults to `NODE_ENV`. Use `production` on Railway.                                       |
 | `SENTRY_TRACES_SAMPLE_RATE`         | `1` outside production and `0.1` in production when omitted by the preloader.              |
 | `SENTRY_DEBUG`                      | `false`; enable only while diagnosing SDK transport.                                       |
 
@@ -91,8 +90,8 @@ Set all three `SENTRY_*` build values together. When they are present, the produ
 hidden source maps, uploads them to the matching Sentry release, and removes the map files from
 `apps/web/dist` before deployment.
 
-The Vercel and Render production commands set `SENTRY_REQUIRE_CONFIG=true`, so a missing DSN or
-partial upload configuration fails before deployment. Both builds derive `mailmind@<commit-sha>`
+The Vercel production command sets `SENTRY_REQUIRE_CONFIG=true`, and so should the Railway service,
+so a missing DSN or partial upload configuration fails before deployment. Both builds derive `mailmind@<commit-sha>`
 from their host-provided Git commit value. The API build also uploads TypeScript source maps and
 removes them from its deploy artifact. See [Sentry operations](sentry.md) for exact dashboard values,
 commands, privacy controls, and verification.

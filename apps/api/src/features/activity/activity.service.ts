@@ -3,7 +3,6 @@ import type { activity_run_kind, activity_runs, automation_trigger } from '@pris
 import { logger, safeErrorDetails } from '@api/config/logger.js';
 import { AppError } from '@api/errors/AppError.js';
 import { captureApiException } from '@api/observability/sentry.js';
-import { holdAwake } from '@api/services/keepAwake.js';
 import { activityRepository, type ActivityRepository } from './activity.repository.js';
 
 export interface RunProgress {
@@ -90,10 +89,9 @@ export class ActivityService {
   /**
    * Detaches the work from the request. The endpoint has already answered 202, so nothing here may
    * throw into an open response: every ending, including a crash, becomes a row the client polls.
-   * The instance stays awake until it ends, or the free plan would put it to sleep mid-run.
    */
   runDetached(runId: string, work: (report: ProgressReporter) => Promise<RunOutcome>): void {
-    void holdAwake(() => this.runToCompletion(runId, work));
+    void this.runToCompletion(runId, work);
   }
 
   async runToCompletion(

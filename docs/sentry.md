@@ -2,7 +2,7 @@
 
 MailMind uses one immutable release string for the React frontend and Express API. Production
 deployments derive it as `mailmind@<git-commit-sha>` from `VERCEL_GIT_COMMIT_SHA` or
-`RENDER_GIT_COMMIT`. `scripts/with-app-version.mjs` exports that exact value as `APP_VERSION`,
+`RAILWAY_GIT_COMMIT_SHA`. `scripts/with-app-version.mjs` exports that exact value as `APP_VERSION`,
 `VITE_APP_VERSION`, and `SENTRY_RELEASE` before the build command runs. An explicitly configured
 value is also supported, but the three names must match.
 
@@ -35,18 +35,18 @@ silently deploying without the DSN or source-map credentials.
 
 ## Required Sentry values
 
-| Name                        | Scope                | Purpose                                                             |
-| --------------------------- | -------------------- | ------------------------------------------------------------------- |
-| `VITE_SENTRY_DSN`           | Vercel build/browser | Public React SDK DSN.                                               |
-| `SENTRY_DSN`                | Render build/runtime | Express SDK DSN. It may be the same public DSN.                     |
-| `SENTRY_AUTH_TOKEN`         | Build only, secret   | Uploads frontend and API source maps. Never prefix it with `VITE_`. |
-| `SENTRY_ORG`                | Build only           | Sentry organization slug.                                           |
-| `SENTRY_PROJECT`            | Build only           | Sentry project slug receiving the release artifacts.                |
-| `SENTRY_ENVIRONMENT`        | Render runtime       | Normally `production`; defaults to `NODE_ENV`.                      |
-| `SENTRY_TRACES_SAMPLE_RATE` | Render runtime       | `0.1` in the supplied production configuration.                     |
+| Name                        | Scope                 | Purpose                                                             |
+| --------------------------- | --------------------- | ------------------------------------------------------------------- |
+| `VITE_SENTRY_DSN`           | Vercel build/browser  | Public React SDK DSN.                                               |
+| `SENTRY_DSN`                | Railway build/runtime | Express SDK DSN. It may be the same public DSN.                     |
+| `SENTRY_AUTH_TOKEN`         | Build only, secret    | Uploads frontend and API source maps. Never prefix it with `VITE_`. |
+| `SENTRY_ORG`                | Build only            | Sentry organization slug.                                           |
+| `SENTRY_PROJECT`            | Build only            | Sentry project slug receiving the release artifacts.                |
+| `SENTRY_ENVIRONMENT`        | Railway runtime       | Normally `production`; defaults to `NODE_ENV`.                      |
+| `SENTRY_TRACES_SAMPLE_RATE` | Railway runtime       | `0.1` in the supplied production configuration.                     |
 
 Create a Sentry organization/project auth token authorized to upload release artifacts for the
-selected project. Store the token only in Vercel and Render secret storage. Never commit it or put it
+selected project. Store the token only in Vercel and Railway variables. Never commit it or put it
 in any `VITE_` variable.
 
 ## Vercel frontend
@@ -68,7 +68,7 @@ these values to the Vercel project for Production and Preview as appropriate:
 
 Do not statically set `VITE_APP_VERSION` on Vercel unless there is a deliberate external release
 orchestrator. The build wrapper supplies the commit-specific value. If it is set manually, it must
-equal Render's `APP_VERSION`/`SENTRY_RELEASE`.
+equal Railway's `APP_VERSION`/`SENTRY_RELEASE`.
 
 After saving environment variables, redeploy. A successful log contains:
 
@@ -85,26 +85,26 @@ The Vercel project audited on 2026-07-28 (`ai-email-organizer-for-gmail-web`) su
 commit `cf6580a`, but its build log contained no Sentry upload output. Treat that deployment as
 unsymbolicated and redeploy only after the five values above are present.
 
-## Render API
+## Railway API
 
-`render.yaml` is the reproducible Blueprint configuration. Its build command generates Prisma,
-injects the shared release from `RENDER_GIT_COMMIT`, compiles TypeScript with source maps, injects
-Sentry debug IDs, uploads the maps, and removes map files from the deploy artifact. The start command
-preloads `dist/instrument.js` before Express, Prisma, Google clients, or other application modules.
+The root `Dockerfile` is the reproducible build. It generates Prisma, injects the shared release
+from `RAILWAY_GIT_COMMIT_SHA`, compiles TypeScript with source maps, injects Sentry debug IDs,
+uploads the maps, and removes map files from the image. The start command preloads
+`dist/instrument.js` before Express, Prisma, Google clients, or other application modules.
 
-For a new Blueprint, Render prompts for every `sync: false` value. Supply all existing application
-secrets plus:
+Railway passes service variables to the Docker build because the Dockerfile declares them. Set
+these on the Railway service, beside the application secrets:
 
 - `SENTRY_DSN`
 - `SENTRY_AUTH_TOKEN`
 - `SENTRY_ORG`
 - `SENTRY_PROJECT`
 
-For an existing Render service, set the same variables in the dashboard and use the build,
-pre-deploy, and start commands from `render.yaml`. Keep `SENTRY_REQUIRE_CONFIG=true`,
+Then set `SENTRY_REQUIRE_CONFIG=true` (so a build without them fails instead of shipping),
 `SENTRY_ENVIRONMENT=production`, and `SENTRY_TRACES_SAMPLE_RATE=0.1`.
 
-The API derives `APP_VERSION` and `SENTRY_RELEASE` from `RENDER_GIT_COMMIT` at both build and runtime.
+The API derives `APP_VERSION` and `SENTRY_RELEASE` from `RAILWAY_GIT_COMMIT_SHA` at both build and
+runtime.
 If an external release process sets either variable explicitly, set both to the same value and use
 the exact same `VITE_APP_VERSION` for Vercel.
 

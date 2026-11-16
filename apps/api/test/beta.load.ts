@@ -7,7 +7,7 @@
  *
  * Truncates what it fills, so it refuses any database not on this machine.
  *
- * Render's free instance has 0.1 CPU and 512 MB. CPU time is measured here and divided by 0.1 to
+ * A small free instance has 0.1 CPU and 512 MB. CPU time is measured here and divided by 0.1 to
  * estimate wall time there; memory is the process's peak resident set. Gmail is not called: the
  * write path a sync takes is exercised for real, and Gmail's own speed (about 50 messages a second
  * per mailbox under its per-user quota) is reported as an estimate beside it.
@@ -283,7 +283,7 @@ async function sortEveryone(accounts: Array<{ id: string }>) {
     `  ${results.reduce((t, r) => t + r.heuristic, 0).toLocaleString()} by heuristics alone, the rest by a rule`,
   );
   console.log(
-    `  API CPU ${cpuSeconds.toFixed(1)} s -> on Render's 0.1 CPU ≈ ${(cpuSeconds / 0.1 / 60).toFixed(1)} min of CPU for all ten`,
+    `  API CPU ${cpuSeconds.toFixed(1)} s -> on a 0.1 CPU instance ≈ ${(cpuSeconds / 0.1 / 60).toFixed(1)} min of CPU for all ten`,
   );
 }
 
@@ -338,8 +338,8 @@ async function polling(accounts: Array<{ token: string }>) {
     '/api/notifications',
     '/api/facets/pivot/view?order=entity,intent&range=all',
   ];
-  // CPU per kind of request, measured one at a time with nothing else running: what Render's
-  // 0.1 CPU multiplies by ten.
+  // CPU per kind of request, measured one at a time with nothing else running: what a 0.1 CPU
+  // instance multiplies by ten.
   for (const path of paths) {
     const runs = 10;
     const before = process.cpuUsage();

@@ -25,7 +25,9 @@ export function resolveAppVersion(environment = process.env) {
   if (uniqueVersions[0]) return uniqueVersions[0];
 
   const commit = clean(
-    environment.VERCEL_GIT_COMMIT_SHA ?? environment.RENDER_GIT_COMMIT ?? environment.GITHUB_SHA,
+    environment.VERCEL_GIT_COMMIT_SHA ??
+      environment.RAILWAY_GIT_COMMIT_SHA ??
+      environment.GITHUB_SHA,
   );
 
   return commit ? `mailmind@${commit}` : `mailmind@${rootPackage.version}`;

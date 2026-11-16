@@ -183,7 +183,7 @@ async function seed(): Promise<{ tokens: string[]; accountIds: string[] }> {
   );
   console.log(
     `  the per-message upsert this replaced would have taken ${(total * 2).toLocaleString()} round trips; ` +
-      `at Render→Supabase's ~120 ms each, ${((total * 2 * 0.12) / USERS / 60).toFixed(1)} minutes per mailbox ` +
+      `at the API host→Supabase's ~120 ms each, ${((total * 2 * 0.12) / USERS / 60).toFixed(1)} minutes per mailbox ` +
       `against ${((statements / USERS) * 0.12).toFixed(1)} s now`,
   );
 

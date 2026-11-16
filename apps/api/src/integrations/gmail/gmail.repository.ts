@@ -279,7 +279,7 @@ export class GmailRepository {
 
   /**
    * One statement for the whole set. Each upsert used to be its own round trip inside one
-   * transaction — about 150ms apiece between Render and Supabase — so a mailbox with sixty labels
+   * transaction — about 150ms apiece between the API host and Supabase — so a mailbox with sixty labels
    * spent nine seconds here before a single message was read.
    */
   async upsertLabels(
@@ -331,7 +331,7 @@ export class GmailRepository {
    * Writes a page of messages in one statement.
    *
    * This was one `upsert` per message inside a transaction, which Prisma sends as a SELECT and an
-   * INSERT or UPDATE each: twenty round trips for a batch of ten, at 100-150ms apiece from Render
+   * INSERT or UPDATE each: twenty round trips for a batch of ten, at 100-150ms apiece from the API host
    * to Supabase. Sentry flagged it as an N+1, and it was most of the time a first sync took. The
    * rows travel as one JSON array and Postgres unpacks them, so a batch costs one trip whatever
    * its size. A message listed twice in one batch keeps its last copy: `on conflict` refuses to

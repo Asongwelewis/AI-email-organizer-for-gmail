@@ -6,13 +6,14 @@ import { useDelayedFlag } from '@web/lib/useDelayedFlag';
 export const SLOW_SERVER_DELAY_MS = 4_000;
 
 export const SLOW_SERVER_MESSAGE =
-  'Waking up the server. It sleeps when nobody is using it, so the first visit after a quiet spell can take up to a minute.';
+  'Still loading. The server is taking longer than usual to answer, which can happen for a minute while a new version starts.';
 
 /**
- * Says why the screen is still loading when the answer is "the server was asleep".
+ * Says why the screen is still loading when the server is slow to answer — a new version still
+ * starting, or a dropped connection being retried.
  *
- * The app now opens on what it last showed, so a person can be reading folders while the server
- * is still starting — and then tap one and wait. Without a word about why, that reads as broken.
+ * The app opens on what it last showed, so a person can be reading folders while the server is
+ * still starting — and then tap one and wait. Without a word about why, that reads as broken.
  */
 export function ServerWakeNotice() {
   const fetching = useIsFetching() > 0;

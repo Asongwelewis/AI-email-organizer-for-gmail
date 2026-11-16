@@ -121,7 +121,7 @@ The limiters that guard **authentication, a quota, or a mailbox write** are back
 Reads and progress polling stay in memory.
 
 That split is measured rather than assumed. Against the deployed API on 27 Aug 2026 a database
-round trip costs 100–150ms — Render and Supabase are not co-located — while the upsert itself is
+round trip costs 100–150ms — the API host and Supabase were not co-located — while the upsert itself is
 about 2ms, so the whole cost is the trip. Paying it on `activityPollLimiter`, which a client hits
 every two seconds for the length of a run, would add 150ms and one row written per poll to protect
 a budget that exists only to stop a client hammering itself. Paying it on the OAuth limiters buys a
@@ -409,14 +409,8 @@ New mail is sorted as it arrives by the watcher, between the twice-daily full ru
 - `HOUSEKEEPING_RETENTION_DAYS` (30) — every six hours the API deletes dead sessions (a week
   after expiry or revocation), expired OAuth states and rate-limit rows, and finished runs,
   sync runs and notifications older than this. Audit logs are never deleted.
-- `KEEP_AWAKE_INTERVAL_MINUTES` — deployments only; while a full run or an activity run is in
-  flight the API requests its own public `/health` this often (default 10, max 14, 0 disables), so
-  Render's free plan, which counts only inbound traffic, does not put it to sleep mid-job. Idle,
-  it does not ping, and the instance sleeps until a visitor or the three-hourly
-  `wake-api.yml` wakes it: pinging around the clock spent the workspace's 750 free hours.
-
-New-mail notifications are recorded by the watcher after every check and pushed to the person's
-subscribed browsers with Web Push:
+  New-mail notifications are recorded by the watcher after every check and pushed to the person's
+  subscribed browsers with Web Push:
 
 - `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_PRIVATE_KEY` — generate once with
   `npx web-push generate-vapid-keys`; both or neither. Without them the feed works in the app and
@@ -533,7 +527,7 @@ Use `prisma migrate deploy` for non-development migration application. Do not us
 `prisma migrate reset` against a shared or remote Supabase project.
 
 On a deployment the API checks for pending migrations during boot (`MIGRATE_ON_START`, on by
-default when `NODE_ENV=production` or `RENDER=true`): one query against `_prisma_migrations` over the connection it already
+default when `NODE_ENV=production` or `RAILWAY_ENVIRONMENT_NAME` is set): one query against `_prisma_migrations` over the connection it already
 opened, and `prisma migrate deploy` only when a shipped migration is missing or unfinished. A failed
 migration stops the boot. This replaces running the CLI in front of every start, which on the free
 plan meant every wake-up, and it holds whatever start command the live service is configured with.
