@@ -315,7 +315,10 @@ the shared CORS and trusted-Origin (CSRF) allowlist.
 
 Deployment: API on Render ([render.yaml](render.yaml), health check `/health`, `prisma migrate
 deploy` as pre-deploy), SPA on Vercel ([vercel.json](vercel.json), history fallback to
-`index.html`).
+`index.html`). The repository is also ready for the API to move to a Heroku Basic dyno (always on,
+paid by the GitHub Student credit): `Procfile` (release-phase migrations), `heroku-postbuild`,
+`engines.node` and `.slugignore`. It is not live there; [docs/deploy-heroku.md](docs/deploy-heroku.md)
+is the go-live runbook, and nothing may be deployed before the student credit is on the account.
 
 ## Conventions
 
