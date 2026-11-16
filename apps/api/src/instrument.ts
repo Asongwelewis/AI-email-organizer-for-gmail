@@ -24,7 +24,7 @@ function appVersion(): string {
   }
   if (releases[0]) return releases[0];
 
-  const commit = optional(process.env['RENDER_GIT_COMMIT'] ?? process.env['GITHUB_SHA']);
+  const commit = optional(process.env['RAILWAY_GIT_COMMIT_SHA'] ?? process.env['GITHUB_SHA']);
   return commit ? `mailmind@${commit}` : 'mailmind@0.1.0';
 }
 

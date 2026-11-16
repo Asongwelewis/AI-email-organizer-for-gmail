@@ -28,16 +28,16 @@ const optionalUrl = z.preprocess(
 /**
  * Whether this process is a deployment rather than someone's machine or a test run.
  *
- * `NODE_ENV=production` says so, but it is not the only thing that can: the live Render service was
- * created by hand, not from render.yaml, and never received NODE_ENV — so everything gated on it
- * silently stayed off in production. Migrations did not apply at boot (the favourites and
- * notifications tables did not exist for a day; 28 Aug 2026 was the same failure), and the
- * keep-awake ping never started. Render sets RENDER=true on every service it runs, whatever else is
- * configured, which makes it the one signal that cannot be forgotten.
+ * `NODE_ENV=production` says so, and the Dockerfile sets it, but it is not the only thing that
+ * can: a previous host's service was created by hand and never received NODE_ENV, so everything
+ * gated on it silently stayed off in production. Boot-time migrations did not run, so the
+ * favourites and notifications tables did not exist for a day (28 Aug 2026 was the same failure).
+ * Railway sets RAILWAY_ENVIRONMENT_NAME on every service it runs, whatever else is configured,
+ * which makes it the one signal that cannot be forgotten.
  */
 function deployed(nodeEnv: string): boolean {
   if (nodeEnv === 'test') return false;
-  return nodeEnv === 'production' || process.env['RENDER'] === 'true';
+  return nodeEnv === 'production' || Boolean(process.env['RAILWAY_ENVIRONMENT_NAME']);
 }
 
 const environmentSchema = z
@@ -148,8 +148,8 @@ const environmentSchema = z
      */
     MAIL_HISTORY_DAYS: z.coerce.number().int().min(1).max(36500).default(730),
     /**
-     * Mailboxes other than the owner's that may be connected at once. The free Render instance and
-     * database are sized for a small beta; a person past the cap can still sign in, and is told the
+     * Mailboxes other than the owner's that may be connected at once. The API instance and the
+     * free database are sized for a small beta; a person past the cap can still sign in, and is told the
      * beta is full instead of being sent to Google.
      */
     BETA_MAX_MAILBOXES: z.coerce.number().int().min(0).max(10_000).default(10),
@@ -233,14 +233,6 @@ const environmentSchema = z
      */
     AUTOMATION_CLASSIFY_BATCH_THRESHOLD: z.coerce.number().int().min(1).max(25).default(10),
     AUTOMATION_CLASSIFY_MAX_WAIT_MINUTES: z.coerce.number().int().min(0).max(120).default(5),
-    /**
-     * How often the API requests its own public /health while a job is running, in minutes; 0
-     * turns it off. The free plan sleeps after 15 minutes without INBOUND traffic, and a timer
-     * inside the process is not inbound — a request to API_BASE_URL goes out through Render's edge
-     * and comes back in, which is. Deployments only, and never while idle: pinging around the clock
-     * spent the workspace's free hours and got every service in it suspended.
-     */
-    KEEP_AWAKE_INTERVAL_MINUTES: z.coerce.number().int().min(0).max(14).default(10),
     /**
      * Web Push (VAPID) keys, generated once with `npx web-push generate-vapid-keys`. Without both,
      * new-mail notifications still appear inside the app and simply never reach the operating
@@ -350,7 +342,7 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
-    // The SPA (Vercel) and API (Render) are on different sites, so anything but
+    // The SPA (Vercel) and API (Railway) are on different sites, so anything but
     // 'none' means the browser never sends the session cookie and login fails
     // silently. Only a shared parent domain makes a lax or strict cookie viable.
     if (
@@ -393,14 +385,12 @@ const environmentSchema = z
 const testDefaults = isTest
   ? {
       WEB_APP_URL: 'https://mailmindai.tech',
-      API_BASE_URL: 'https://ai-email-organizer-for-gmail.onrender.com',
+      API_BASE_URL: 'https://api.mailmindai.tech',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
       GOOGLE_CLIENT_ID: 'test-google-client-id',
       GOOGLE_CLIENT_SECRET: 'test-google-client-secret',
-      GOOGLE_LOGIN_REDIRECT_URI:
-        'https://ai-email-organizer-for-gmail.onrender.com/api/auth/google/callback',
-      GOOGLE_GMAIL_REDIRECT_URI:
-        'https://ai-email-organizer-for-gmail.onrender.com/api/integrations/google/callback',
+      GOOGLE_LOGIN_REDIRECT_URI: 'https://api.mailmindai.tech/api/auth/google/callback',
+      GOOGLE_GMAIL_REDIRECT_URI: 'https://api.mailmindai.tech/api/integrations/google/callback',
       SESSION_SECRET: 'test-session-secret-long-enough',
       TOKEN_ENCRYPTION_KEY: testKey,
       TOKEN_ENCRYPTION_KEY_VERSION: '1',

@@ -3,8 +3,9 @@ import type { AuthMeResponse } from '@web/types/auth';
 /**
  * What the app remembers between launches, so it can open on something instead of a spinner.
  *
- * The API runs on a free plan that sleeps when nobody uses it, and waking it takes the better part
- * of a minute. Every launch used to sit on "Checking your session" for that whole time, then ask
+ * The API used to run on a free plan that slept when nobody used it, and waking it took the better
+ * part of a minute; a restart or a deploy still costs seconds, and a phone on a slow network more.
+ * Every launch used to sit on "Checking your session" for that whole time, then ask
  * for the folder settings, then — only then — for the folders. Opening on what was last seen and
  * replacing it as answers arrive turns that wait into a refresh you can already read through.
  *

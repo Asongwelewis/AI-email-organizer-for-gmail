@@ -52,7 +52,7 @@ Production source-map upload is enabled only when `SENTRY_AUTH_TOKEN`, `SENTRY_O
 `SENTRY_PROJECT` are present in the build environment. The auth token is a build secret and must
 never use a `VITE_` prefix. Partial upload configuration fails the build. Hosted production builds
 also require the public DSN and release. Uploaded maps are removed from `dist` before deployment.
-See [Sentry operations](sentry.md) for the Vercel/Render release and verification procedure.
+See [Sentry operations](sentry.md) for the Vercel/Railway release and verification procedure.
 
 The client sets `withCredentials: true`. A 401 ends the session locally: the interceptor clears
 authentication state and makes no second request. There is no client-side refresh — the API
@@ -119,7 +119,7 @@ HttpOnly session cookie, and redirects back to the frontend.
 4. The service-worker update prompt and toast region.
 
 The query client disables refetch-on-window-focus. A read is retried only when the server never
-answered — no response at all, or Render's own 502/503/504 page — three times, 1, 2 and 4 seconds
+answered — no response at all, or the hosting platform's own 502/503/504 page — three times, 1, 2 and 4 seconds
 apart (`lib/queryRetry.ts`); an answer from the API, including an error, is shown as it came.
 Individual feature hooks add polling only while a Gmail sync or automation run is active.
 

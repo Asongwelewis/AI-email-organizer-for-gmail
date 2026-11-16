@@ -12,13 +12,13 @@ import { prisma } from './prisma.js';
  *
  * The start command used to run `prisma migrate deploy` in front of the server on every start.
  * That is the right guarantee — on 28 Aug 2026 a migration reached production without running,
- * because the pre-deploy hook never fires on this plan — but on the free plan every wake-up is a
- * start, so a person tapping the app paid for a CLI process, its engine and a second cold database
- * connection before the server even listened. Here the check rides the connection the server
- * already opened, and the CLI only runs when there is something for it to do.
+ * because the previous host's pre-deploy hook never fired on its free plan — but there every
+ * wake-up was a start, so a person tapping the app paid for a CLI process, its engine and a second
+ * cold database connection before the server even listened. Here the check rides the connection
+ * the server already opened, and the CLI only runs when there is something for it to do.
  *
- * It lives in the server rather than in render.yaml so the guarantee holds whatever start command
- * the live service is actually configured with.
+ * It lives in the server rather than in the host's settings, so the guarantee holds whatever start
+ * command the deployment is configured with. The Dockerfile ships `prisma/` beside `dist` for it.
  */
 
 // `src/database` in development and `dist/database` in production are both two levels under the
@@ -96,8 +96,8 @@ export async function schemaStatus(): Promise<SchemaStatus> {
 
 export async function migrateIfPending(): Promise<void> {
   if (!existsSync(migrationsDirectory)) {
-    // The container image ships `dist` alone and migrates as a separate step; Render ships the
-    // whole repository, so there this branch never runs.
+    // A build that ships `dist` without `prisma/` cannot check. The Dockerfile ships both, so in
+    // production this branch never runs.
     logger.warn('no migrations directory beside this build; skipping the boot-time check');
     return;
   }

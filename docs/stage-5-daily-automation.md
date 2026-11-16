@@ -12,13 +12,10 @@
 > mail sorted all day. The "Run now" and "Check for new mail" buttons are gone: both only asked a
 > person to do by hand what was about to happen. The rest of this document describes the full run.
 >
-> On Render's free plan none of this runs while the instance sleeps, and the process's own timers do
-> not count as traffic. Since November 2026 it is allowed to sleep: `.github/workflows/wake-api.yml`
-> wakes it every three hours, a visitor wakes it at any time, and a full run whose hour passed while
-> it slept runs at the first tick after waking. `services/keepAwake.ts` pings the API's public
-> `/health` every `KEEP_AWAKE_INTERVAL_MINUTES` (10) only while a job is in flight. Keeping it awake
-> around the clock spent 720–744 of the 750 free hours the workspace shares with other free
-> services, and on 25 October 2026 Render suspended every one of them until the 1st.
+> All of this needs a process that is always running. The API is on Railway for that reason: the
+> previous free host slept after 15 idle minutes, and keeping it awake exhausted its monthly
+> quotas (instance hours in October 2026, outbound bandwidth in November). A full run whose hour
+> passed during a restart runs at the first tick after boot.
 
 MailMind runs account-scoped Gmail organization once per UTC day and on demand from
 `/dashboard/automation`. It refreshes synchronized metadata, files new or unprocessed messages into

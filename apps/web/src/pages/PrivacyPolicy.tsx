@@ -77,8 +77,8 @@ export function PrivacyPolicy() {
         brand, an area of life such as finance or career, and what the message is for, such as a
         receipt or a security alert — and organized into the folders you browse and search. When you
         connect Gmail, AMO classifies the last two years of your mail; after that, every new email
-        is classified within a few hours of arriving, and within a minute or two while you have AMO
-        open. Mail older than two years before you first connected is never synchronized or stored.
+        is classified within a minute or two of arriving. Mail older than two years before you first
+        connected is never synchronized or stored.
       </p>
       <p>
         <strong>How the classification works.</strong> AMO&rsquo;s classifier is smart
@@ -107,7 +107,7 @@ export function PrivacyPolicy() {
         time under Menu &rarr; Notifications; logging out turns them off for that device.
       </p>
       <p>
-        <strong>Infrastructure.</strong> The application runs on Vercel (the web app) and Render
+        <strong>Infrastructure.</strong> The application runs on Vercel (the web app) and Railway
         (the API), with the database hosted on Supabase. Errors are reported to Sentry with message
         content, tokens and cookies redacted before they leave the server.
       </p>
