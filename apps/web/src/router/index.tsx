@@ -25,6 +25,7 @@ import { SetupPage } from '@web/pages/SetupPage';
 import { PivotPage } from '@web/pages/PivotPage';
 import { AboutPage } from '@web/pages/AboutPage';
 import { AccountPage } from '@web/pages/AccountPage';
+import { ConnectIslandPage } from '@web/pages/ConnectIslandPage';
 import { CookiesPage } from '@web/pages/CookiesPage';
 import { FaqPage } from '@web/pages/FaqPage';
 import { SecurityPage } from '@web/pages/SecurityPage';
@@ -78,6 +79,8 @@ const appRoutes: RouteObject[] = [
   { path: '/menu', element: <MenuPage /> },
   { path: '/notifications', element: <NotificationsPage /> },
   { path: '/account', element: <AccountPage /> },
+  // Where the code shown by the AMO Island desktop program is typed.
+  { path: '/connect-island', element: <ConnectIslandPage /> },
 ];
 
 const sentryCreateBrowserRouter = isSentryEnabled

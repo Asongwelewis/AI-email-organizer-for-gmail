@@ -1,0 +1,81 @@
+name: Desktop island
+
+# Builds AMO Island, the small Windows program that shows the AMO island on the desktop itself
+# (`desktop/`). It is built here rather than on a developer's machine because it needs Rust and
+# Microsoft's C++ build tools, which GitHub's Windows machines already have.
+#
+# A push to develop that touches the program builds it and keeps the installer as a run artifact,
+# so a change is proven to compile before it is promoted. A push to main publishes the installer
+# as a GitHub release, `island-v<version>`, where it can be downloaded without signing in.
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-island.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-island-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Reuse the Rust build cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Install the Tauri CLI
+        run: npm ci --no-audit --no-fund
+
+      - name: Build the installer
+        if: github.ref != 'refs/heads/main'
+        run: npx tauri build
+
+      - name: Keep the installer with the run
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amo-island-installer
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Build and publish the installer
+        if: github.ref == 'refs/heads/main'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: island-v__VERSION__
+          releaseName: AMO Island __VERSION__
+          releaseBody: >-
+            The AMO island on your Windows desktop. Download the setup .exe below and run it.
+            Windows may say it protected your PC, because the program is not code-signed: choose
+            "More info", then "Run anyway". The island starts with Windows from then on; its
+            icon by the clock has "Quit" and "Start with Windows".
+          releaseDraft: false
+          prerelease: false

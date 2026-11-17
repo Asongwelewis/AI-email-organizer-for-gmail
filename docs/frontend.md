@@ -254,6 +254,18 @@ Fraunces is the wordmark alone.
   - The app opens on `/inbox` with the tray closed. Any other screen, including a reload of one or
     a link followed from a notification, opens in the tray.
 
+- **The AMO Island desktop program** (`desktop/`, see CLAUDE.md) shows this site in a see-through
+  window on the Windows desktop itself, and `useAppLayout` answers `island` there. It is the same
+  island with no window around it:
+  - `islandFrame.ts` resizes and moves the program's window, so the island stays put on the
+    screen while its tray opens towards the middle;
+  - a drag is handed to Windows (`startDragging`);
+  - a click elsewhere on the desktop closes the tray;
+  - links that leave AMO open in the person's browser.
+
+  Signed out, `/login` shows the pairing card (`IslandConnect`) instead of Google sign-in. The code
+  it shows is typed at `/connect-island`.
+
 `useAppLayout` (`lib/appLayout.ts`) decides this in script, from `display-mode: standalone` or
 `window-controls-overlay` together with `min-width: 768px`. It is script rather than a media query
 because the markup changes, not only its styling. The end-to-end suite answers that one query as

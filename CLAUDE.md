@@ -216,8 +216,8 @@ approved tree, applied through an _additive_ `messages.modify` — is gone. Two 
 same table and the same labels could always undo each other, and the retired one was the one
 running unattended.
 
-**One public write, and it is the feedback form.** `POST /api/feedback` is the only route in the
-API that does not require a session, because the people best placed to say the app is confusing are
+**Two public writes: the feedback form, and pairing the desktop island.** `POST /api/feedback` is
+the only route in the API that does not require a session and stores what a person typed, because the people best placed to say the app is confusing are
 the ones who never made an account. A session is attributed when one is present and its absence is
 never an error; the guards are the trusted-`Origin` check and a shared five-per-window limit. The
 row holds what was typed, the kind, an optional reply address and a **route** — never a query
@@ -225,6 +225,32 @@ string, since ours carry facet values, search phrases and message ids — and no
 collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
 authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
 The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
+The other two are `POST /api/desktop/pairings` and `.../complete`, which pair the desktop island.
+They come before the island has a session, so they hold no person's data.
+
+**The desktop island is a separate program.** AMO Island (`desktop/`, Tauri) is a see-through,
+borderless, always-on-top window on the Windows desktop itself. It loads this site, and the PWA
+renders its `island` layout there (`lib/islandApp.ts` detects the bridge; `islandFrame.ts` sizes
+and moves the window around the island and its tray). The program starts with Windows and has a
+tray icon.
+
+Google refuses sign-in inside a desktop program, so the island pairs like a television:
+
+- it starts a pairing and shows an eight-letter code;
+- the person types the code at `/connect-island` in their own browser;
+- the island's next poll gets a session cookie of its own.
+
+The code is typed and never carried in a link. A link would hand whoever started a pairing the
+session of anyone who clicked it. `desktop_pairings` stores only hashes, lives ten minutes, and is
+approved and completed once each.
+
+The program is built by `.github/workflows/desktop-island.yml` on GitHub's Windows machines:
+
+- on develop, as a run artifact;
+- on main, as the release `island-v<version>`.
+
+It needs Rust and the MSVC tools, which this repository does not ask a developer to install.
 
 **A private deployment.** `SIGN_IN_ALLOWED_EMAILS`, when set, is the only list of Google
 accounts that may use AMO (`auth/sign-in-policy.ts`): others are refused at the Google callback

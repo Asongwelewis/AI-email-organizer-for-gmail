@@ -18,3 +18,4 @@ apps/web/public/intro
 .env
 .env.*
 !.env.example
+desktop

@@ -23,6 +23,7 @@ import { NavLink, useLocation, useMatch } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
 import { IslandPanel } from '@web/components/app/IslandWindow';
+import { useIslandFrame, type Placement } from '@web/components/app/islandFrame';
 import { MenuButton } from '@web/components/app/MenuButton';
 import {
   ISLAND_PANEL_TITLE_ID,
@@ -32,13 +33,12 @@ import {
   type NavDestination,
 } from '@web/components/app/islandWindowState';
 import { useAuth } from '@web/context/useAuth';
+import { islandApp } from '@web/lib/islandApp';
 import { DOCK, useIslandTransition, usePopIn } from '@web/lib/motion';
 import { SLOW_SERVER_MESSAGE, useServerWaking } from '@web/lib/serverWaking';
 
 /** What the tray shows: the screen the island opened, or one of the menu's views. */
 type Tray = 'screen' | IslandView;
-/** Which side of the island the tray opens on — towards the middle of the window. */
-type Placement = 'below' | 'above';
 
 const POSITION_KEY = 'amo:island-position';
 /** Kept clear between the island or its tray and the window's edges. */
@@ -102,15 +102,21 @@ function titleBarHeight(): number {
  * The tray opens towards the middle of the window — below the island near the top, above it near
  * the bottom — and follows the island while it is dragged. The screens move like the Mac's Dock:
  * they swell and lift as the pointer passes across them.
+ *
+ * `companion` is the AMO Island desktop program, where the window *is* the island and sits on the
+ * Windows desktop: dragging moves the window itself, the window grows around a tray and shrinks
+ * back (`useIslandFrame`), and clicking anywhere else on the desktop puts the tray away.
  */
 export function DesktopIsland({
   destinations,
   screen,
   onSignOut,
+  companion = false,
 }: {
   destinations: readonly NavDestination[];
   screen: ReactNode;
   onSignOut: () => void;
+  companion?: boolean;
 }) {
   const { user } = useAuth();
   const location = useLocation();
@@ -118,12 +124,19 @@ export function DesktopIsland({
   const [tray, setTray] = useState<Tray | null>(() =>
     location.pathname === START_PATH && !location.search ? null : 'screen',
   );
-  const [placement, setPlacement] = useState<Placement>('below');
-  const [start] = useState(readPosition);
+  const islandRef = useRef<HTMLDivElement>(null);
+  const [ownPlacement, setPlacement] = useState<Placement>('below');
+  const [start] = useState(() => (companion ? { x: 0, y: 0 } : readPosition()));
   const x = useMotionValue(start.x);
   const y = useMotionValue(start.y);
+  const islandHeight = useCallback(() => islandRef.current?.offsetHeight ?? 54, []);
+  const onShift = useCallback((shift: number) => x.set(shift), [x]);
+  const framePlacement = useIslandFrame(companion, tray !== null, islandHeight, onShift);
+  const placement = companion ? framePlacement : ownPlacement;
+  const placementRef = useRef(placement);
+  placementRef.current = placement;
+  const press = useRef<{ x: number; y: number } | null>(null);
   const controls = useDragControls();
-  const islandRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -159,8 +172,10 @@ export function DesktopIsland({
     const box = island.getBoundingClientRect();
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const below = (box.top + box.bottom) / 2 < height / 2;
-    setPlacement(below ? 'below' : 'above');
+    const below = companion
+      ? placementRef.current === 'below'
+      : (box.top + box.bottom) / 2 < height / 2;
+    if (!companion) setPlacement(below ? 'below' : 'above');
 
     const panel = trayRef.current;
     if (!panel) return;
@@ -175,12 +190,12 @@ export function DesktopIsland({
       '--tray-max-height',
       `${Math.max(160, below ? height - box.bottom - GAP - EDGE : box.top - GAP - EDGE)}px`,
     );
-  }, []);
+  }, [companion]);
 
   /** A place remembered from a bigger window, or a window that shrank: pull the island back in. */
   const keepInside = useCallback(() => {
     const island = islandRef.current;
-    if (!island) return;
+    if (!island || companion) return;
     const box = island.getBoundingClientRect();
     const top = titleBarHeight() + EDGE;
     let dx = 0;
@@ -194,7 +209,7 @@ export function DesktopIsland({
       y.set(y.get() + dy);
       savePosition(x.get(), y.get());
     }
-  }, [x, y]);
+  }, [companion, x, y]);
 
   useEffect(() => {
     const onResize = () => {
@@ -236,6 +251,15 @@ export function DesktopIsland({
     };
   }, [tray, close]);
 
+  // On the desktop, a click anywhere else lands in another program: the island's window loses
+  // focus, and the tray goes away as it would for a click on the empty window.
+  useEffect(() => {
+    if (!companion || !tray) return;
+    const onBlur = () => close(false);
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, [close, companion, tray]);
+
   // Each tray is announced by name and starts at its top.
   useEffect(() => {
     if (tray) trayRef.current?.focus();
@@ -273,19 +297,22 @@ export function DesktopIsland({
 
   return (
     <>
-      {/* The window behind the island, and the box the island may be dragged within. */}
-      <div ref={stageRef} className="desk-stage">
-        {tray ? null : (
-          <p className="desk-stage__hint">
-            Choose a screen on the island. Drag the island anywhere you like.
-          </p>
-        )}
-      </div>
+      {/* The window behind the island, and the box the island may be dragged within. On the
+          desktop there is no window behind it: the desktop is. */}
+      {companion ? null : (
+        <div ref={stageRef} className="desk-stage">
+          {tray ? null : (
+            <p className="desk-stage__hint">
+              Choose a screen on the island. Drag the island anywhere you like.
+            </p>
+          )}
+        </div>
+      )}
 
       <motion.div
         ref={islandRef}
         className={`desk-island desk-island--${placement}`}
-        drag
+        drag={!companion}
         dragControls={controls}
         dragListener={false}
         dragMomentum={false}
@@ -308,7 +335,26 @@ export function DesktopIsland({
           className="desk-island__bar"
           aria-label="Primary"
           onPointerDown={(event) => {
-            if (event.button === 0) controls.start(event);
+            if (event.button !== 0) return;
+            if (!companion) {
+              controls.start(event);
+              return;
+            }
+            dragged.current = false;
+            press.current = { x: event.clientX, y: event.clientY };
+          }}
+          onPointerMove={(event) => {
+            // On the desktop Windows moves the window: past a few pixels the press becomes a drag
+            // and the pointer is handed over, so a tap still taps.
+            const from = press.current;
+            if (!companion || !from || (event.buttons & 1) === 0) return;
+            if (Math.hypot(event.clientX - from.x, event.clientY - from.y) < 4) return;
+            press.current = null;
+            dragged.current = true;
+            islandApp.startDragging();
+          }}
+          onPointerUp={() => {
+            press.current = null;
           }}
           onClickCapture={(event) => {
             if (!dragged.current) return;
@@ -388,7 +434,7 @@ export function DesktopIsland({
                 onShow={setTray}
                 onClose={close}
                 onSignOut={() => {
-                  close(false);
+                  if (!companion) close(false);
                   onSignOut();
                 }}
               />

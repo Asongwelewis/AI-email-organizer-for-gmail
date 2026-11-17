@@ -16,3 +16,7 @@ apps/*/.vite
 
 # Local database dumps taken before destructive migrations
 backups/
+
+# The desktop island's Rust build output and generated schemas
+desktop/src-tauri/target
+desktop/src-tauri/gen

@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "island",
+  "description": "What AMO's pages may ask of the island's window: move and size it, hand a drag to Windows, hear when it moved, and open links in the person's own browser. Nothing else — no files, no shell.",
+  "windows": ["island"],
+  "remote": {
+    "urls": ["https://www.mailmindai.tech/*", "https://mailmindai.tech/*"]
+  },
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
+    "core:window:allow-scale-factor",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }]
+    }
+  ]
+}

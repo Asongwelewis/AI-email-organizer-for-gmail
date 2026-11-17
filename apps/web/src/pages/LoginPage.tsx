@@ -5,10 +5,12 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 
 import loginImage from '@web/assets/mailmind-secure-sort.png';
 import { BrandMark } from '@web/components/BrandMark';
+import { IslandConnect } from '@web/components/app/IslandConnect';
 import { MagneticButton } from '@web/components/MagneticButton';
 import { RouteLoader } from '@web/components/RouteLoader';
 import { ThemeToggle } from '@web/components/ThemeToggle';
 import { useAuth } from '@web/context/useAuth';
+import { IN_ISLAND_APP } from '@web/lib/islandApp';
 
 const safeLoginErrors: Record<string, string> = {
   login_failed: 'Google sign-in could not be completed. Nothing was connected—please try again.',
@@ -27,6 +29,8 @@ export function LoginPage() {
 
   if (isLoading) return <RouteLoader />;
   if (isAuthenticated) return <Navigate to="/inbox" replace />;
+  // Google refuses sign-in inside a desktop program; the island connects through the browser.
+  if (IN_ISLAND_APP) return <IslandConnect />;
 
   return (
     <main className="login-page">
