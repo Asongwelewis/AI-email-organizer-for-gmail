@@ -1,4 +1,4 @@
-import { SLOW_SERVER_DELAY_MS, SLOW_SERVER_MESSAGE } from '@web/components/app/ServerWakeNotice';
+import { SLOW_SERVER_DELAY_MS, SLOW_SERVER_MESSAGE } from '@web/lib/serverWaking';
 import { useDelayedFlag } from '@web/lib/useDelayedFlag';
 
 export function RouteLoader({ label = 'Checking your session' }: { label?: string }) {

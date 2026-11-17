@@ -190,12 +190,13 @@ test('a signed-in visitor lands in the authenticated shell', async ({ page }) =>
   await page.goto('/inbox');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
   // The folder itself, not its star, whose label names the folder too.
   await expect(page.getByRole('button', { name: /^(?!.*favourites).*Job hunt/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Job hunt to favourites' })).toBeVisible();
-  // The menu sits on the left of every screen.
-  await expect(page.getByRole('link', { name: 'Menu' })).toBeVisible();
+  // The menu is on the island, and signing out is in the window it opens.
+  await page.getByRole('button', { name: /^Menu/ }).click();
+  const menu = page.getByRole('dialog', { name: 'Menu' });
+  await expect(menu.getByRole('button', { name: 'Log out' })).toBeVisible();
 });
 
 test('every screen is reachable from the navigation', async ({ page }) => {
@@ -214,11 +215,33 @@ test('every screen is reachable from the navigation', async ({ page }) => {
   await page.getByRole('link', { name: 'Activity', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
   await expect(page.getByText('Nothing has run yet')).toBeVisible();
-  // Notifications live behind the menu on the left.
-  await page.getByRole('link', { name: 'Menu' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible();
-  await page.getByRole('link', { name: /Notifications/ }).click();
+  // Notifications open in the island's window, over the screen that was open.
+  await page.getByRole('button', { name: /^Menu/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Menu' })
+    .getByRole('button', { name: /Notifications/ })
+    .click();
+  await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
+  // And as a page of their own, for when the window is too small.
+  await page.getByRole('link', { name: 'Open as a full page' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible();
+});
+
+test('on a phone the island is the tab bar, and the menu opens the same window', async ({
+  page,
+}) => {
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/inbox');
+
+  const tabs = page.getByRole('navigation', { name: 'Primary' }).last();
+  await tabs.getByRole('link', { name: 'Favourites', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Favourites' })).toBeVisible();
+  await page.getByRole('button', { name: /^Menu/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toHaveCount(0);
 });
 
 /**

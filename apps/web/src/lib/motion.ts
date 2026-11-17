@@ -98,6 +98,39 @@ export function useEntrance(): (index?: number) => MotionProps {
 }
 
 /**
+ * Chrome that opens in place and closes again — the island's window. It grows out of the island
+ * rather than sliding in from anywhere, so the scale starts close to one and the travel is short.
+ * Nothing at all under reduced motion, for the reason `useReveal` gives.
+ */
+export function usePopIn(): MotionProps {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return {};
+  return {
+    initial: { opacity: 0, scale: 0.94, y: -10 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: {
+      opacity: 0,
+      scale: 0.97,
+      y: -6,
+      transition: { duration: MOTION.duration.fast, ease: MOTION.ease.in },
+    },
+    transition: { duration: MOTION.duration.base, ease: MOTION.ease.out },
+  };
+}
+
+/**
+ * How the island moves when its shape changes: the selection sliding to another screen, or the
+ * island growing to say something. A spring settles the way the hardware island does, held inside
+ * the 400ms ceiling; under reduced motion the change is instant.
+ */
+export function useIslandTransition() {
+  const reduceMotion = useReducedMotion();
+  return reduceMotion
+    ? { duration: 0 }
+    : { type: 'spring' as const, bounce: 0.18, duration: MOTION.duration.slow };
+}
+
+/**
  * Whether the opening video (`public/intro.js`, outside the bundle) is out of the way.
  *
  * True at once wherever it never plays — another page, reduced motion, a second visit, or tests,

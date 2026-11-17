@@ -160,7 +160,11 @@ function PushSwitch() {
   );
 }
 
-export function NotificationsPage() {
+/**
+ * `embedded` is the island's window: the window's own title bar names the screen, so the page
+ * leaves out its heading and keeps everything else.
+ */
+export function NotificationsPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const { gmailConnection } = useAuth();
   const feed = useNotificationFeed();
@@ -174,20 +178,22 @@ export function NotificationsPage() {
   const unread = feed.data?.unreadCount ?? 0;
 
   return (
-    <section className="screen">
-      <header className="screen__head">
-        <h1 className="screen__title">Notifications</h1>
-        {unread > 0 ? (
-          <button
-            type="button"
-            className="button button--quiet"
-            disabled={markRead.isPending}
-            onClick={() => markRead.mutate(undefined)}
-          >
-            Mark all as read
-          </button>
-        ) : null}
-      </header>
+    <section className={`screen${embedded ? ' screen--embedded' : ''}`}>
+      {embedded && unread === 0 ? null : (
+        <header className="screen__head">
+          {embedded ? null : <h1 className="screen__title">Notifications</h1>}
+          {unread > 0 ? (
+            <button
+              type="button"
+              className="button button--quiet"
+              disabled={markRead.isPending}
+              onClick={() => markRead.mutate(undefined)}
+            >
+              Mark all as read
+            </button>
+          ) : null}
+        </header>
+      )}
 
       <PushSwitch />
 
