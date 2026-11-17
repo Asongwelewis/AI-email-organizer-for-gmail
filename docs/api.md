@@ -867,6 +867,36 @@ The same object for one run, or `404 ACTIVITY_RUN_NOT_FOUND` when it belongs to 
 | `ACTIVITY_VALIDATION_FAILED` | 400    | The limit or run id is not valid. |
 | `ACTIVITY_RUN_NOT_FOUND`     | 404    | No such run for this account.     |
 
+## Desktop island pairing
+
+The AMO Island desktop program cannot sign in with Google, so it pairs through the browser. See
+`features/desktop/desktop-pairing.service.ts`.
+
+### `POST /api/desktop/pairings`
+
+Unauthenticated, trusted origin, five per window per address. Starts a pairing that lives ten
+minutes. Responds `201` with `{ pairingId, pollSecret, userCode, expiresAt }`; `userCode` is eight
+letters shown as `BCDF-GHJK`. Only SHA-256 hashes of the code and the secret are stored.
+
+### `POST /api/desktop/pairings/complete`
+
+Unauthenticated, trusted origin. Body `{ pairingId, pollSecret }`.
+
+- `202 { status: "pending" }` while the code waits to be typed.
+- `410 { status: "expired" }` for an unknown, used or lapsed pairing.
+- `200 { status: "connected" }` once the code was typed. This response also sets the
+  `mailmind_session` cookie for a new session belonging to the person who typed it. A pairing
+  connects once.
+
+### `POST /api/desktop/pairings/approve`
+
+Session required, trusted origin. Body `{ code }`, matched however it is typed (case, spaces and
+dashes are ignored).
+
+- `200 { approved: true }` on success.
+- `400 DESKTOP_CODE_INVALID` when the code is not eight letters.
+- `404 DESKTOP_CODE_NOT_FOUND` when no waiting pairing has it.
+
 ## Feedback
 
 ### `POST /api/feedback`

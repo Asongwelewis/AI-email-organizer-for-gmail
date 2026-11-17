@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
+import { IN_ISLAND_APP } from '@web/lib/islandApp';
+
 /**
  * Which shape the signed-in app takes.
  *
@@ -18,7 +20,11 @@ const APP_QUERY = [
   '(display-mode: window-controls-overlay) and (min-width: 768px)',
 ].join(', ');
 
-export type AppLayout = 'app' | 'web';
+/**
+ * `island` is the AMO Island desktop program (`lib/islandApp.ts`): the island alone, in a
+ * see-through window on the Windows desktop itself, whatever its width.
+ */
+export type AppLayout = 'island' | 'app' | 'web';
 
 function read(): AppLayout {
   return window.matchMedia?.(APP_QUERY).matches ? 'app' : 'web';
@@ -31,5 +37,6 @@ function subscribe(onChange: () => void): () => void {
 }
 
 export function useAppLayout(): AppLayout {
-  return useSyncExternalStore(subscribe, read, () => 'web');
+  const layout = useSyncExternalStore(subscribe, read, () => 'web' as AppLayout);
+  return IN_ISLAND_APP ? 'island' : layout;
 }

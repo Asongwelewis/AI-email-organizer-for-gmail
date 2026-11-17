@@ -10,6 +10,7 @@ import { automationRouter } from '@api/features/automation/automation.routes.js'
 import { labelsRouter } from '@api/features/labels/labels.routes.js';
 import { facetsRouter } from '@api/features/facets/facets.routes.js';
 import { feedbackRouter } from '@api/features/feedback/feedback.routes.js';
+import { desktopRouter } from '@api/features/desktop/desktop-pairing.routes.js';
 import { favoritesRouter } from '@api/features/favorites/favorites.routes.js';
 import { notificationsRouter } from '@api/features/notifications/notifications.routes.js';
 import { onboardingRouter } from '@api/features/onboarding/onboarding.routes.js';
@@ -33,3 +34,5 @@ apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/onboarding', onboardingRouter);
 // Public on purpose: someone who was handed the link has no session and is still worth hearing.
 apiRouter.use('/feedback', feedbackRouter);
+// The desktop island pairs here; starting and polling come before it has a session.
+apiRouter.use('/desktop', desktopRouter);

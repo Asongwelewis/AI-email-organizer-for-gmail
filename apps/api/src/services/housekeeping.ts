@@ -27,6 +27,7 @@ let firstRun: NodeJS.Timeout | null = null;
 export interface HousekeepingResult {
   sessions: number;
   oauthStates: number;
+  desktopPairings: number;
   rateLimitHits: number;
   notifications: number;
   activityRuns: number;
@@ -38,29 +39,40 @@ export interface HousekeepingResult {
 export async function runHousekeeping(now = new Date()): Promise<HousekeepingResult> {
   const sessionCutoff = new Date(now.getTime() - SESSION_GRACE_DAYS * DAY_MS);
   const retentionCutoff = new Date(now.getTime() - env.HOUSEKEEPING_RETENTION_DAYS * DAY_MS);
-  const [sessions, oauthStates, rateLimitHits, notifications, activityRuns, syncRuns] =
-    await Promise.all([
-      prisma.sessions.deleteMany({
-        where: {
-          OR: [{ expires_at: { lt: sessionCutoff } }, { revoked_at: { lt: sessionCutoff } }],
-        },
-      }),
-      prisma.oauth_states.deleteMany({
-        where: { expires_at: { lt: new Date(now.getTime() - DAY_MS) } },
-      }),
-      prisma.rate_limit_hits.deleteMany({ where: { expires_at: { lt: now } } }),
-      prisma.notifications.deleteMany({ where: { created_at: { lt: retentionCutoff } } }),
-      prisma.activity_runs.deleteMany({
-        where: { state: { not: 'RUNNING' }, finished_at: { lt: retentionCutoff } },
-      }),
-      prisma.gmail_sync_runs.deleteMany({
-        where: { status: { not: 'RUNNING' }, started_at: { lt: retentionCutoff } },
-      }),
-    ]);
+  const [
+    sessions,
+    oauthStates,
+    desktopPairings,
+    rateLimitHits,
+    notifications,
+    activityRuns,
+    syncRuns,
+  ] = await Promise.all([
+    prisma.sessions.deleteMany({
+      where: {
+        OR: [{ expires_at: { lt: sessionCutoff } }, { revoked_at: { lt: sessionCutoff } }],
+      },
+    }),
+    prisma.oauth_states.deleteMany({
+      where: { expires_at: { lt: new Date(now.getTime() - DAY_MS) } },
+    }),
+    prisma.desktop_pairings.deleteMany({
+      where: { expires_at: { lt: new Date(now.getTime() - DAY_MS) } },
+    }),
+    prisma.rate_limit_hits.deleteMany({ where: { expires_at: { lt: now } } }),
+    prisma.notifications.deleteMany({ where: { created_at: { lt: retentionCutoff } } }),
+    prisma.activity_runs.deleteMany({
+      where: { state: { not: 'RUNNING' }, finished_at: { lt: retentionCutoff } },
+    }),
+    prisma.gmail_sync_runs.deleteMany({
+      where: { status: { not: 'RUNNING' }, started_at: { lt: retentionCutoff } },
+    }),
+  ]);
   const outsideWindow = await purgeOutsideWindows();
   return {
     sessions: sessions.count,
     oauthStates: oauthStates.count,
+    desktopPairings: desktopPairings.count,
     rateLimitHits: rateLimitHits.count,
     notifications: notifications.count,
     activityRuns: activityRuns.count,

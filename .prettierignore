@@ -4,3 +4,5 @@ coverage
 supabase/.temp
 apps/*/dist
 packages/*/dist
+desktop/src-tauri/target
+desktop/src-tauri/gen

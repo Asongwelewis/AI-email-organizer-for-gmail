@@ -165,3 +165,23 @@ export const feedbackLimiter = limiter(
   'feedbackLimiter',
   Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 5),
 );
+
+/**
+ * The desktop island's pairing. Starting one is the second unauthenticated write and costs a row,
+ * so it gets the feedback form's budget. Polling for the answer is a read of that row every few
+ * seconds for up to ten minutes, guarded by a secret only the island holds, so it counts in memory
+ * like the other progress polls. Approving needs a session and is counted per person.
+ */
+export const desktopPairingStartLimiter = limiter(
+  'desktopPairingStartLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 5),
+);
+export const desktopPairingPollLimiter = limiter(
+  'desktopPairingPollLimiter',
+  Math.max(env.AUTH_RATE_LIMIT_MAX_REQUESTS, env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60),
+  'per-instance',
+);
+export const desktopPairingApproveLimiter = limiter(
+  'desktopPairingApproveLimiter',
+  Math.min(env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10),
+);

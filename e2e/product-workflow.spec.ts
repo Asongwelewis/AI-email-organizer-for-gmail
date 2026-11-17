@@ -308,6 +308,140 @@ test('installed on a computer, the island floats, opens screens in a tray, and s
 });
 
 /**
+ * Stands in for the AMO Island desktop program's bridge, recording what the page asks of its
+ * window. The program itself is built and tested on Windows by the desktop-island workflow.
+ */
+async function asIslandProgram(page: Page) {
+  await page.addInitScript(() => {
+    const calls: unknown[] = [];
+    const record = (entry: unknown) => {
+      calls.push(entry);
+      return Promise.resolve();
+    };
+    Object.assign(window, {
+      __islandCalls: calls,
+      __TAURI_INTERNALS__: {},
+      __TAURI__: {
+        core: { invoke: (command: string, args: unknown) => record({ command, args }) },
+        window: {
+          getCurrentWindow: () => ({
+            startDragging: () => record('drag'),
+            setSize: (size: unknown) => record({ size }),
+            setPosition: (position: unknown) => record({ position }),
+            outerPosition: () => Promise.resolve({ toLogical: () => ({ x: 0, y: 0 }) }),
+            scaleFactor: () => Promise.resolve(1),
+            onMoved: () => Promise.resolve(() => undefined),
+          }),
+        },
+        dpi: {
+          LogicalSize: class {
+            constructor(
+              public width: number,
+              public height: number,
+            ) {}
+          },
+          LogicalPosition: class {
+            constructor(
+              public x: number,
+              public y: number,
+            ) {}
+          },
+        },
+      },
+    });
+  });
+}
+
+async function lastSize(page: Page) {
+  return page.evaluate(() => {
+    const calls = (
+      window as unknown as { __islandCalls: Array<{ size?: { width: number; height: number } }> }
+    ).__islandCalls;
+    return [...calls].reverse().find((call) => call.size)?.size ?? null;
+  });
+}
+
+test('inside the desktop program the island is the whole window, and grows around its tray', async ({
+  browser,
+}) => {
+  // The window is the island's size, on a real screen: the tray's height comes from the screen.
+  const context = await browser.newContext({
+    baseURL: 'http://127.0.0.1:4174',
+    viewport: { width: 460, height: 132 },
+    screen: { width: 1920, height: 1080 },
+  });
+  const page = await context.newPage();
+  await asIslandProgram(page);
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.goto('/inbox');
+
+  const island = page.getByRole('navigation', { name: 'Primary' });
+  await expect(island).toBeVisible();
+  // No window around it: no side panel, no hint, nothing behind it.
+  await expect(page.getByText(/Choose a screen on the island/)).toHaveCount(0);
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(background).toBe('rgba(0, 0, 0, 0)');
+  await expect.poll(() => lastSize(page)).toEqual({ width: 460, height: 132 });
+
+  await island.getByRole('link', { name: 'Favourites' }).click();
+  await expect(page.getByRole('dialog', { name: 'Favourites' })).toBeAttached();
+  const open = (await lastSize(page))!;
+  expect(open.width).toBe(664);
+  expect(open.height).toBeGreaterThan(400);
+
+  // A press that moves becomes a drag handed to Windows, not a tap.
+  const box = (await island.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 30, box.y + 20, { steps: 4 });
+  await page.mouse.up();
+  const calls = await page.evaluate(
+    () => (window as unknown as { __islandCalls: unknown[] }).__islandCalls,
+  );
+  expect(calls).toContain('drag');
+  await context.close();
+});
+
+test('signed out, the desktop program pairs through the browser instead of signing in', async ({
+  page,
+}) => {
+  await asIslandProgram(page);
+  await page.route('http://127.0.0.1:4174/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/desktop/pairings') {
+      await route.fulfill({
+        status: 201,
+        json: {
+          pairingId: '00000000-0000-4000-8000-000000000001',
+          pollSecret: 'x'.repeat(43),
+          userCode: 'BCDF-GHJK',
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+      return;
+    }
+    if (path === '/api/desktop/pairings/complete') {
+      await route.fulfill({ status: 202, json: { status: 'pending' } });
+      return;
+    }
+    await route.fulfill({ status: 401, json: { error: { code: 'AUTHENTICATION_REQUIRED' } } });
+  });
+  await page.setViewportSize({ width: 400, height: 290 });
+  await page.goto('/inbox');
+
+  await expect(page.getByRole('heading', { name: 'Connect AMO Island' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continue with Google/i })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Connect' }).click();
+  await expect(page.getByLabel('Code BCDF-GHJK')).toBeVisible();
+  const opened = await page.evaluate(() =>
+    (
+      window as unknown as { __islandCalls: Array<{ command?: string; args?: { url?: string } }> }
+    ).__islandCalls.find((call) => call.command === 'plugin:opener|open_url'),
+  );
+  expect(opened?.args?.url).toBe('https://www.mailmindai.tech/connect-island');
+});
+
+/**
  * Setup is deliberately absent from the navigation — it is a path you walk once. After Gmail is
  * connected it has no buttons: the server sets the mailbox up on its own and this screen shows it
  * happening, because a friend who signed up once saw nothing sorted and an operator's error.

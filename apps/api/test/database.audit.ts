@@ -12,6 +12,7 @@ const applicationTables = [
   'automation_settings',
   'automation_states',
   'connected_google_accounts',
+  'desktop_pairings',
   'facet_pivot_settings',
   'facet_vocabularies',
   'feedback',
@@ -54,6 +55,9 @@ const requiredIndexes = [
   'connected_google_accounts_access_token_expires_at_idx',
   'connected_google_accounts_status_idx',
   'connected_google_accounts_user_id_idx',
+  'desktop_pairings_approved_user_idx',
+  'desktop_pairings_expiry_idx',
+  'desktop_pairings_user_code_idx',
   'facet_vocabularies_account_status_idx',
   'facet_vocabularies_account_value_unique_idx',
   'feedback_created_at_idx',
@@ -131,7 +135,7 @@ try {
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
         'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
         'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
-        'feedback'
+        'feedback', 'desktop_pairings'
       )
     order by c.relname
   `;
@@ -172,7 +176,7 @@ try {
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
       'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
       'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
-      'feedback'
+      'feedback', 'desktop_pairings'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -210,6 +214,9 @@ try {
         'connected_google_accounts_access_token_expires_at_idx',
         'connected_google_accounts_status_idx',
         'connected_google_accounts_user_id_idx',
+        'desktop_pairings_approved_user_idx',
+        'desktop_pairings_expiry_idx',
+        'desktop_pairings_user_code_idx',
         'facet_vocabularies_account_status_idx',
         'facet_vocabularies_account_value_unique_idx',
         'feedback_created_at_idx',

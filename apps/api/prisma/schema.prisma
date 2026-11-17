@@ -298,6 +298,25 @@ model taxonomy_plan_node_rules {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// The desktop island's way in. Google refuses sign-in inside a desktop program, so the island
+/// shows a code, the person types it into AMO in their own browser, and the island's next poll
+/// receives a session of its own. Rows live ten minutes and are used once.
+model desktop_pairings {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  poll_secret_hash String    @unique(map: "desktop_pairings_poll_secret_hash_key")
+  user_code_hash   String
+  approved_user_id String?   @db.Uuid
+  approved_at      DateTime? @db.Timestamptz(6)
+  completed_at     DateTime? @db.Timestamptz(6)
+  expires_at       DateTime  @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  users            users?    @relation(fields: [approved_user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_code_hash], map: "desktop_pairings_user_code_idx")
+  @@index([expires_at], map: "desktop_pairings_expiry_idx")
+  @@index([approved_user_id], map: "desktop_pairings_approved_user_idx")
+}
+
 model oauth_states {
   id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   state_hash               String        @unique(map: "oauth_states_state_hash_unique_idx")
@@ -368,6 +387,7 @@ model users {
   push_subscriptions         push_subscriptions[]
   automation_message_actions automation_message_actions[]
   feedback                   feedback[]
+  desktop_pairings           desktop_pairings[]
 
   @@index([created_at(sort: Desc)])
   @@index([status])

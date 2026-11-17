@@ -2508,6 +2508,145 @@ button.menu-item {
   margin: 1rem 0;
 }
 
+/* ---------------------------------------------------------------- desktop program */
+
+/**
+ * The AMO Island desktop program: the page is a see-through window on the Windows desktop, so
+ * nothing paints a background — not the page, not the shell, not the grain — and the island and
+ * its tray are the only things there. Their shadows are tighter than in a browser window, because
+ * the window is cut close around them and a wide shadow would be cut off at its edge.
+ *
+ * `color-scheme` is lifted off the document, where a dark value would have Chromium fill the page
+ * with its own dark canvas, and set on the shell instead, so scrollbars and fields still follow
+ * the theme.
+ */
+html.island-app,
+html.island-app body,
+html.island-app #root {
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+  color-scheme: normal !important;
+}
+
+html.island-app body::before {
+  display: none;
+}
+
+html.island-app .shell {
+  color-scheme: light;
+}
+
+html.island-app[data-theme='dark'] .shell {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html.island-app:not([data-theme='light']) .shell {
+    color-scheme: dark;
+  }
+}
+
+.shell[data-layout='island'] {
+  display: block;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.shell[data-layout='island'] .desk-island {
+  top: 10px;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.38);
+  cursor: default;
+}
+
+.shell[data-layout='island'] .desk-island--above {
+  top: auto;
+  bottom: 10px;
+}
+
+.shell[data-layout='island'] .desk-tray {
+  box-shadow:
+    var(--highlight-inset),
+    0 8px 22px rgb(0 0 0 / 0.34);
+}
+
+/* The card the program shows until it is connected to an account. */
+.island-connect {
+  position: fixed;
+  inset: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.25rem 1.35rem;
+  color: var(--ink-on-invert);
+  background: var(--surface-invert);
+  border: 1px solid var(--line-on-invert);
+  border-radius: 1.5rem;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.38);
+  user-select: none;
+}
+
+.island-connect__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.island-connect__text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--ink-on-invert-soft);
+}
+
+.island-connect__code {
+  margin: 0.15rem 0;
+  font-family: var(--font-mono);
+  font-size: 1.85rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-align: center;
+  user-select: all;
+}
+
+.island-connect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.island-connect__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--status-danger-ink);
+}
+
+/* The page in the browser where the island's code is typed. */
+.connect-island__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  max-width: 32rem;
+}
+
+.connect-island__input {
+  flex: 1 1 12rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--surface-inset);
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+}
+
 /* ------------------------------------------------------------- arrangements */
 
 /**
