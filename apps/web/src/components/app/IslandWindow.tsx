@@ -14,7 +14,12 @@ import { Link } from 'react-router-dom';
 
 import { Avatar } from '@web/components/Avatar';
 import { ThemeToggle } from '@web/components/ThemeToggle';
-import { ISLAND_WINDOW_ID, type IslandView } from '@web/components/app/islandWindowState';
+import {
+  ISLAND_PANEL_TITLE_ID,
+  ISLAND_WINDOW_ID,
+  modalOpen,
+  type IslandView,
+} from '@web/components/app/islandWindowState';
 import { useAuth } from '@web/context/useAuth';
 import { formatCount } from '@web/lib/format';
 import { usePopIn } from '@web/lib/motion';
@@ -34,22 +39,74 @@ const PAGES: Partial<Record<IslandView, string>> = {
   account: '/account',
 };
 
-/** A confirmation opened from inside the window owns Escape and the clicks around it. */
-function modalOpen(): boolean {
-  return document.querySelector('[aria-modal="true"]') !== null;
-}
-
-interface IslandWindowProps {
-  view: IslandView | null;
+export interface IslandPanelProps {
+  view: IslandView;
   onShow: (view: IslandView) => void;
   onClose: (restoreFocus?: boolean) => void;
   onSignOut: () => void;
 }
 
 /**
- * The small floating window the island opens. It holds what the side panel used to: the
- * notifications, account and privacy, appearance, feedback and signing out — shown in place, over
- * whatever screen is open, rather than by leaving it.
+ * What the island's window holds — the menu, and the notifications and account screens shown in
+ * place — whichever frame it is in: the floating window on a phone, or the desktop app's tray.
+ */
+export function IslandPanel({ view, onShow, onClose, onSignOut }: IslandPanelProps) {
+  const page = PAGES[view];
+  return (
+    <>
+      <div className="island-window__bar">
+        {view === 'home' ? null : (
+          <button
+            type="button"
+            className="island-window__tool"
+            onClick={() => onShow('home')}
+            aria-label="Back to the menu"
+            title="Back"
+          >
+            <ChevronLeft aria-hidden="true" strokeWidth={1.75} />
+          </button>
+        )}
+        <h2 id={ISLAND_PANEL_TITLE_ID} className="island-window__title">
+          {TITLES[view]}
+        </h2>
+        {page ? (
+          <Link
+            className="island-window__tool"
+            to={page}
+            onClick={() => onClose(false)}
+            aria-label="Open as a full page"
+            title="Open as a full page"
+          >
+            <Maximize2 aria-hidden="true" strokeWidth={1.75} />
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          className="island-window__tool"
+          onClick={() => onClose()}
+          aria-label="Close"
+          title="Close"
+        >
+          <X aria-hidden="true" strokeWidth={1.75} />
+        </button>
+      </div>
+      <div className="island-window__body">
+        {view === 'home' ? <WindowMenu onShow={onShow} onSignOut={onSignOut} /> : null}
+        {view === 'notifications' ? <NotificationsPage embedded /> : null}
+        {view === 'account' ? <AccountPage embedded /> : null}
+      </div>
+    </>
+  );
+}
+
+interface IslandWindowProps extends Omit<IslandPanelProps, 'view'> {
+  view: IslandView | null;
+}
+
+/**
+ * The small floating window the phone's menu button opens. It holds what the desktop side panel
+ * does: the notifications, account and privacy, appearance, feedback and signing out — shown in
+ * place, over whatever screen is open, rather than by leaving it.
  *
  * Not modal: the page behind stays usable, and a click outside or Escape puts the window away.
  */
@@ -83,8 +140,6 @@ export function IslandWindow({ view, onShow, onClose, onSignOut }: IslandWindowP
     if (view) ref.current?.focus();
   }, [view]);
 
-  const page = view ? PAGES[view] : undefined;
-
   return (
     <AnimatePresence>
       {view ? (
@@ -94,51 +149,11 @@ export function IslandWindow({ view, onShow, onClose, onSignOut }: IslandWindowP
           id={ISLAND_WINDOW_ID}
           className="island-window"
           role="dialog"
-          aria-labelledby="island-window-title"
+          aria-labelledby={ISLAND_PANEL_TITLE_ID}
           tabIndex={-1}
           {...pop}
         >
-          <div className="island-window__bar">
-            {view === 'home' ? null : (
-              <button
-                type="button"
-                className="island-window__tool"
-                onClick={() => onShow('home')}
-                aria-label="Back to the menu"
-                title="Back"
-              >
-                <ChevronLeft aria-hidden="true" strokeWidth={1.75} />
-              </button>
-            )}
-            <h2 id="island-window-title" className="island-window__title">
-              {TITLES[view]}
-            </h2>
-            {page ? (
-              <Link
-                className="island-window__tool"
-                to={page}
-                onClick={() => onClose(false)}
-                aria-label="Open as a full page"
-                title="Open as a full page"
-              >
-                <Maximize2 aria-hidden="true" strokeWidth={1.75} />
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              className="island-window__tool"
-              onClick={() => onClose()}
-              aria-label="Close"
-              title="Close"
-            >
-              <X aria-hidden="true" strokeWidth={1.75} />
-            </button>
-          </div>
-          <div className="island-window__body">
-            {view === 'home' ? <WindowMenu onShow={onShow} onSignOut={onSignOut} /> : null}
-            {view === 'notifications' ? <NotificationsPage embedded /> : null}
-            {view === 'account' ? <AccountPage embedded /> : null}
-          </div>
+          <IslandPanel view={view} onShow={onShow} onClose={onClose} onSignOut={onSignOut} />
         </motion.div>
       ) : null}
     </AnimatePresence>
