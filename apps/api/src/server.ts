@@ -41,9 +41,13 @@ if (env.MIGRATE_ON_START) {
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, 'AMO API is ready');
-  startAutomationScheduler();
-  startDatabaseHeartbeat();
-  startHousekeeping();
+  // With an external scheduler the job does all three, and an idle web service makes no traffic
+  // of its own, so the platform can put it to sleep.
+  if (env.AUTOMATION_RUN_IN_PROCESS) {
+    startAutomationScheduler();
+    startDatabaseHeartbeat();
+    startHousekeeping();
+  }
 });
 
 let shuttingDown = false;

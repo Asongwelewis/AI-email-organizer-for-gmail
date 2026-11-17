@@ -8,6 +8,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   AUTH_SESSION_REVOKED: 'This session is no longer active. Please sign in again.',
   AUTH_USER_SUSPENDED: 'This account is currently suspended.',
   AUTH_USER_DELETED: 'This account is no longer available.',
+  AUTH_SIGN_IN_RESTRICTED:
+    'This AMO server is private, and this Google account is not on its list.',
   GMAIL_PERMISSION_DENIED: 'Gmail access was not approved. Your AMO login is still active.',
   GMAIL_PERMISSION_INCOMPLETE:
     'AMO did not receive all required Gmail permissions. Please reconnect and approve the requested access.',

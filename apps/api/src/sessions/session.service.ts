@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 
+import { isSignInAllowed, SIGN_IN_RESTRICTED_MESSAGE } from '@api/auth/sign-in-policy.js';
 import { env } from '@api/config/env.js';
 import { AppError, authenticationRequired } from '@api/errors/AppError.js';
 import { sessionRepository } from '@api/repositories/session.repository.js';
@@ -174,6 +175,10 @@ export class SessionService {
     }
     if (session.users.status === 'DELETED') {
       throw new AppError('AUTH_USER_DELETED', 'This account is unavailable.', 403);
+    }
+    // 401, not 403: the app treats it as signed out and returns to the sign-in screen.
+    if (!isSignInAllowed(session.users.email)) {
+      throw new AppError('AUTH_SIGN_IN_RESTRICTED', SIGN_IN_RESTRICTED_MESSAGE, 401);
     }
     return { rawToken, record: session };
   }

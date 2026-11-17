@@ -89,6 +89,14 @@ Session lifetime and rate-limit controls:
   (below). A stored message costs about 1 KB with its facets and indexes
   (`npm run test:scale`). A sync that stopped at its ceiling marks nothing missing; one bounded
   by date marks only inside its window.
+- `SIGN_IN_ALLOWED_EMAILS` — the only Google accounts that may sign in, comma-separated. Empty
+  lets anyone in; set, the deployment is private: other addresses are refused at the Google
+  callback (`403 AUTH_SIGN_IN_RESTRICTED`) and on every request of a session they already hold
+  (`401`, so the app signs them out).
+- `AUTOMATION_RUN_IN_PROCESS` (true) — whether the web service runs the scheduler, the database
+  heartbeat and housekeeping itself. Off when a cron service runs the automation job instead
+  (`AMO_PROCESS=automation-job`, one pass then exit), so the web service can sleep between
+  visits. See [deploy-railway.md](deploy-railway.md).
 - `OWNER_ACCOUNT_EMAILS` — Gmail addresses sorted by Gemini over their whole history. Everyone
   else is sorted by rules and Gmail's categories and **none of their mail ever reaches a
   model**; the AI planning endpoints answer `403 AI_FEATURE_UNAVAILABLE` for them.
