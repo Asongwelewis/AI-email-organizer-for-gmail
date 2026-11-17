@@ -42,6 +42,10 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   RUN_ABANDONED:
     'The server restarted while this run was in progress. No work was lost; run it again to continue.',
   CSRF_ORIGIN_INVALID: 'This request came from an origin AMO does not trust.',
+  DESKTOP_CODE_INVALID: 'The code has eight letters, as the island shows it.',
+  DESKTOP_CODE_NOT_FOUND:
+    'No island is waiting for that code, or it has expired. Check the code on the island.',
+  DESKTOP_PAIRING_INVALID: 'That pairing is no longer valid. Start again on the island.',
   FEEDBACK_VALIDATION_FAILED:
     'Add a little more detail — at least a sentence, and under 4000 characters.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please try again shortly.',

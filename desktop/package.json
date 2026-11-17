@@ -1,0 +1,14 @@
+{
+  "name": "amo-island",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AMO Island: the AMO island on the Windows desktop itself.",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build",
+    "icon": "tauri icon ../apps/web/public/icons/icon-512.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

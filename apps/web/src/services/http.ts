@@ -314,7 +314,42 @@ export const api = {
   async sendFeedback(input: FeedbackInput): Promise<void> {
     await http.post('/feedback', input, { skipAuthFailure: true });
   },
+
+  /**
+   * The desktop island's pairing. Starting and polling come before it has a session, so a 401
+   * from either is not the end of one. Polling answers 202 while the code waits and 410 once it
+   * can no longer be used — both are answers, not failures.
+   */
+  async startDesktopPairing(): Promise<DesktopPairing> {
+    const response = await http.post<DesktopPairing>('/desktop/pairings', undefined, {
+      skipAuthFailure: true,
+    });
+    return response.data;
+  },
+
+  async completeDesktopPairing(
+    pairingId: string,
+    pollSecret: string,
+  ): Promise<'pending' | 'expired' | 'connected'> {
+    const response = await http.post<{ status: 'pending' | 'expired' | 'connected' }>(
+      '/desktop/pairings/complete',
+      { pairingId, pollSecret },
+      { skipAuthFailure: true, validateStatus: (status) => [200, 202, 410].includes(status) },
+    );
+    return response.data.status;
+  },
+
+  async approveDesktopPairing(code: string): Promise<void> {
+    await http.post('/desktop/pairings/approve', { code });
+  },
 };
+
+export interface DesktopPairing {
+  pairingId: string;
+  pollSecret: string;
+  userCode: string;
+  expiresAt: string;
+}
 
 export function getBackendRedirectUrl(path: '/auth/google' | '/integrations/google/connect') {
   const url = new URL(`${apiBaseUrl}${path}`);

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   sessions: vi.fn(),
   oauthStates: vi.fn(),
+  desktopPairings: vi.fn(),
   rateLimitHits: vi.fn(),
   notifications: vi.fn(),
   activityRuns: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('../src/database/prisma.js', () => ({
   prisma: {
     sessions: { deleteMany: mocks.sessions },
     oauth_states: { deleteMany: mocks.oauthStates },
+    desktop_pairings: { deleteMany: mocks.desktopPairings },
     rate_limit_hits: { deleteMany: mocks.rateLimitHits },
     notifications: { deleteMany: mocks.notifications },
     activity_runs: { deleteMany: mocks.activityRuns },
@@ -47,6 +49,10 @@ describe('housekeeping', () => {
       where: { OR: [{ expires_at: { lt: week } }, { revoked_at: { lt: week } }] },
     });
     expect(mocks.rateLimitHits).toHaveBeenCalledWith({ where: { expires_at: { lt: NOW } } });
+    // A pairing is dead ten minutes after it starts; a day later nothing can want it.
+    expect(mocks.desktopPairings).toHaveBeenCalledWith({
+      where: { expires_at: { lt: new Date(NOW.getTime() - DAY) } },
+    });
     expect(mocks.notifications).toHaveBeenCalledWith({
       where: { created_at: { lt: retention } },
     });
@@ -60,6 +66,7 @@ describe('housekeeping', () => {
     expect(result).toEqual({
       sessions: 2,
       oauthStates: 2,
+      desktopPairings: 2,
       rateLimitHits: 2,
       notifications: 2,
       activityRuns: 2,

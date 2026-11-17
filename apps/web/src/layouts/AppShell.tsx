@@ -27,6 +27,8 @@ import { useNotificationFeed } from '@web/queries/notifications';
  *
  * - **The installed desktop app** (`useAppLayout() === 'app'`): an empty window with the island
  *   floating on it — draggable, Dock-style — and each screen opening in a tray from the island.
+ * - **The AMO Island desktop program** (`'island'`): the same island with no window around it,
+ *   on the Windows desktop itself.
  * - **A browser tab on a computer**: the side panel on the left beside a max-width column.
  * - **A phone**: the same pill as the island, floating at the bottom as the tab bar, with the menu
  *   at the top opening a small window. The stylesheet switches between these two at 768px.
@@ -46,8 +48,8 @@ const NAV: readonly NavDestination[] = [
   { to: '/activity', label: 'Activity', Icon: History },
 ];
 
-/** Screens that work without a mailbox: setting one up, the menu, and the account itself. */
-const NO_MAILBOX_NEEDED = new Set(['/setup', '/menu', '/account']);
+/** Screens that work without a mailbox: setting one up, the menu, the account, and pairing. */
+const NO_MAILBOX_NEEDED = new Set(['/setup', '/menu', '/account', '/connect-island']);
 
 /** The side panel's way into the menu: a page of its own, as it always was in a browser. */
 function MenuLink() {
@@ -106,12 +108,17 @@ export function AppShell() {
     <Outlet />
   );
 
-  if (layout === 'app') {
+  if (layout === 'app' || layout === 'island') {
     return (
-      <div className="shell" data-layout="app">
+      <div className="shell" data-layout={layout}>
         <NotificationCenter />
         {signOutDialog}
-        <DesktopIsland destinations={NAV} screen={screen} onSignOut={requestSignOut} />
+        <DesktopIsland
+          destinations={NAV}
+          screen={screen}
+          onSignOut={requestSignOut}
+          companion={layout === 'island'}
+        />
       </div>
     );
   }
