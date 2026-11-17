@@ -12,6 +12,8 @@ import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { formatCount } from '@web/lib/format';
 import { rememberedQuery } from '@web/lib/sessionSnapshot';
 import { useFavorites } from '@web/queries/favorites';
+import { useWatches } from '@web/queries/watches';
+import { watchedFirst } from '@web/lib/watches';
 import { useOnboarding } from '@web/queries/onboarding';
 import { queryKeys } from '@web/queries/queryKeys';
 import { brandIconUrl } from '@web/lib/brandIcon';
@@ -179,12 +181,18 @@ export function InboxPage() {
   });
 
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { watchKeys, watchState, toggleWatch } = useWatches();
   const nodes = useMemo(() => viewQuery.data?.nodes ?? [], [viewQuery.data]);
   const trail = useMemo(() => trailTo(nodes, facetKey), [nodes, facetKey]);
   const current = trail.at(-1) ?? null;
   const term = search.trim().toLowerCase();
 
-  const level = useMemo(() => childrenOf(nodes, current?.facetKey ?? null), [nodes, current]);
+  // Watched folders, and the ones on the way to them, come first and are never behind "Show all":
+  // a folder someone keeps checking Gmail for should not sink below the 24 with the newest mail.
+  const { ordered: level, pinned } = useMemo(
+    () => watchedFirst(childrenOf(nodes, current?.facetKey ?? null), watchKeys),
+    [nodes, current, watchKeys],
+  );
   // Expanded per view: a different level, ordering or window starts collapsed again.
   const viewKey = `${pivotOrderKey(order)}|${timeRange}|${current?.facetKey ?? ''}`;
   const [expandedView, setExpandedView] = useState<string | null>(null);
@@ -193,11 +201,11 @@ export function InboxPage() {
   // Searching looks through the whole tree, not just the level in view: a folder you remember by
   // name should not require retracing the path you filed it under.
   const visible = useMemo(() => {
-    if (!term) return showAll ? level : level.slice(0, INITIAL_FOLDER_COUNT);
+    if (!term) return showAll ? level : level.slice(0, Math.max(INITIAL_FOLDER_COUNT, pinned));
     return nodes
       .filter((node) => node.leafName.toLowerCase().includes(term))
       .sort((left, right) => left.fullPath.localeCompare(right.fullPath));
-  }, [nodes, level, term, showAll]);
+  }, [nodes, level, term, showAll, pinned]);
   const hiddenCount = term ? 0 : level.length - visible.length;
 
   const openFolder = (key: string | null) => {
@@ -407,6 +415,8 @@ export function InboxPage() {
               iconUrl={folderIconUrl(folder)}
               favorite={isFavorite(folder.facetKey)}
               onToggleFavorite={() => toggleFavorite(folder.facetKey, order)}
+              watch={watchState(folder.facetKey)}
+              onToggleWatch={() => toggleWatch(folder.facetKey)}
               onOpen={() => openFolder(folder.facetKey)}
             />
           ))}

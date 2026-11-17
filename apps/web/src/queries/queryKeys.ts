@@ -15,6 +15,7 @@ export const queryKeys = {
   facetVocabulary: ['facets', 'vocabulary'] as const,
   favorites: ['favorites'] as const,
   favoriteKeys: ['favorites', 'keys'] as const,
+  watches: ['watches'] as const,
   notifications: ['notifications'] as const,
   pushConfig: ['notifications', 'push'] as const,
   facetSearch: (

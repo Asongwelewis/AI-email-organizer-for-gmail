@@ -583,13 +583,25 @@ FAVORITE_VALIDATION_FAILED` when the key's facets are not the start of `order`; 
 FAVORITES_LIMIT_REACHED` past 100.
 - `DELETE /api/favorites/:facetKey` → `204`.
 
+### Watched folders
+
+The eye on a folder tile. All require a session; changes require a trusted Origin. A watch is
+stored in canonical facet order (`entity`, `domain`, `intent`), so `intent=offer|entity=applyboard`
+and `entity=applyboard|intent=offer` are one watch.
+
+- `GET /api/watches` → `{ keys: string[] }`, canonical keys.
+- `POST /api/watches` `{ facetKey }` → `201 { facetKey }` with the canonical key. Idempotent.
+  `400 WATCH_VALIDATION_FAILED` for a key no folder could have; `409 WATCHES_LIMIT_REACHED` past 25.
+- `DELETE /api/watches/:facetKey` → `204`, in any facet order.
+
 ### Notifications
 
 All require a session; changes require a trusted Origin.
 
 - `GET /api/notifications?cursor=` → `{ items, unreadCount, nextCursor }`. Each item names the
   message (`gmailMessageId`, `subject`, `senderName`, `senderEmail`, `receivedAt`) and, once it
-  has been sorted, the `folder` it went to in the saved arrangement.
+  has been sorted, the `folder` it went to in the saved arrangement, and `watched` when it was
+  alerted as mail in a watched folder.
 - `POST /api/notifications/read` `{ ids? }` → `{ marked }`. Without ids, everything.
 - `GET /api/notifications/push` → `{ configured, publicKey, subscriptions }`. `configured` is false
   without VAPID keys and a subject a push service will accept.

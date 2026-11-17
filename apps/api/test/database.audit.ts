@@ -30,6 +30,7 @@ const applicationTables = [
   'taxonomy_plans',
   'user_labels',
   'users',
+  'watched_folders',
 ];
 
 const requiredIndexes = [
@@ -113,6 +114,7 @@ const requiredIndexes = [
   'users_google_subject_unique_idx',
   'users_normalized_email_unique_idx',
   'users_status_idx',
+  'watched_folders_account_key_unique',
 ];
 
 try {
@@ -135,7 +137,7 @@ try {
         'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
         'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
         'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
-        'feedback', 'desktop_pairings'
+        'feedback', 'desktop_pairings', 'watched_folders'
       )
     order by c.relname
   `;
@@ -176,7 +178,7 @@ try {
       'gmail_labels', 'gmail_message_metadata', 'gmail_sync_runs', 'gmail_sync_states',
       'taxonomy_plans', 'taxonomy_plan_nodes', 'taxonomy_plan_node_rules', 'user_labels',
       'message_facets', 'facet_pivot_settings', 'facet_vocabularies', 'rate_limit_hits',
-      'feedback', 'desktop_pairings'
+      'feedback', 'desktop_pairings', 'watched_folders'
     ]) as tables(table_name)
     cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as privileges(privilege)
     group by roles.role_name
@@ -271,7 +273,8 @@ try {
         'user_labels_parent_idx',
         'users_google_subject_unique_idx',
         'users_normalized_email_unique_idx',
-        'users_status_idx'
+        'users_status_idx',
+        'watched_folders_account_key_unique'
       )
     order by indexname
   `;

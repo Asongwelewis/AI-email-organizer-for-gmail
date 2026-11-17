@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     getPushConfig: vi.fn(),
     subscribePush: vi.fn(),
     unsubscribePush: vi.fn(),
+    getWatchKeys: vi.fn(),
   },
   push: {
     pushAvailability: vi.fn(),
@@ -48,12 +49,14 @@ const item = (overrides: Partial<NotificationItem> = {}): NotificationItem => ({
     path: 'Netflix › Payment failed',
     order: ['entity', 'intent'],
   },
+  watched: false,
   ...overrides,
 });
 
 describe('NotificationsPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.api.getWatchKeys.mockResolvedValue([]);
     mocks.api.getNotifications.mockResolvedValue({
       items: [item()],
       unreadCount: 1,
