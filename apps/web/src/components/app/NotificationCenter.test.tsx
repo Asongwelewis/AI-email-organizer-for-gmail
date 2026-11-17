@@ -32,6 +32,7 @@ const item = (id: string, sender: string, readAt: string | null = null): Notific
     receivedAt: null,
   },
   folder: null,
+  watched: false,
 });
 
 function renderCenter() {

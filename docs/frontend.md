@@ -305,6 +305,15 @@ since buttons cannot nest. `useFavorites` fills it the moment it is tapped and r
 server refuses. A favourite opens in the arrangement it was starred from and over all mail, so it
 always lands on the folder it names.
 
+Its mirror in the bottom-right corner is the **eye**: watch this folder (`useWatches`,
+`lib/watches.ts`). A watched folder — and any folder on the way to a narrower watch — sorts first
+at its level of the Inbox and is never behind "Show all", because the folder someone keeps checking
+Gmail for is exactly the one that sinks below the 24 brands that wrote more recently. A folder a
+broader watch covers shows the eye on but quieter, and it is switched off on the broader folder.
+Once anything is watched, devices are pushed only for watched mail, and those alerts stay on screen
+until dismissed (`requireInteraction`); the Notifications screen marks them with an eye and still
+lists everything.
+
 New-mail notifications come from one shared query, polled every minute: the menu badge, the
 Notifications screen and `NotificationCenter` all read it. `NotificationCenter` toasts with Sonner
 for anything that arrived while the app is open — never for what was already there at launch — and

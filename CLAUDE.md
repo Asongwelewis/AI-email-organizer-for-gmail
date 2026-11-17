@@ -204,6 +204,13 @@ service worker) shows it in the OS notification centre — the Windows Action Ce
 Edge — unless a MailMind window is focused, in which case the open app shows a Sonner toast
 instead. A notification row points at the stored message and copies none of it. Logout unsubscribes
 the device first, so a shared computer does not keep receiving the last person's mail.
+**Watched folders** (`watched_folders`, the eye on a folder tile) are facet keys stored in canonical
+facet order, because a watch is about the mail and not the arrangement. A watched folder, and any
+folder on the way to one, sorts first and is never behind "Show all". Once anything is watched, a
+device is pushed for watched mail only, and that alert stays until dismissed. A brand watch matches
+on the entity derived from the sender, so it alerts before classification. A watch naming an intent
+matches once Gemini decides it: `notifications.watched_at` is claimed by a conditional update on a
+later check, so the alert goes out once.
 
 **One filing engine.** `automation.service` orchestrates and owns no classification of its own: a
 run refreshes the mailbox and calls `facetClassificationService.classifyAccount`, then

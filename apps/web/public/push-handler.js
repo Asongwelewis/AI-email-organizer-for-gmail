@@ -31,6 +31,10 @@ self.addEventListener('push', (event) => {
   const options = {
     body: typeof data.body === 'string' ? data.body : '',
     tag: typeof data.tag === 'string' ? data.tag : 'mailmind-new-mail',
+    // Mail in a watched folder stays in view until it is dismissed, and alerts again when it
+    // replaces an earlier notification of the same message.
+    requireInteraction: data.requireInteraction === true,
+    renotify: data.renotify === true,
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     data: { url: safeAppUrl(data.url) },

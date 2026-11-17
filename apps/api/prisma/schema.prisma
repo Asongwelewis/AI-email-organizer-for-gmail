@@ -77,6 +77,7 @@ model connected_google_accounts {
   facet_vocabularies              facet_vocabularies[]
   learned_classification_patterns learned_classification_patterns[]
   favorite_folders                favorite_folders[]
+  watched_folders                 watched_folders[]
   notifications                   notifications[]
   message_facets                  message_facets[]
   user_labels                     user_labels[]
@@ -824,6 +825,20 @@ model favorite_folders {
   @@index([connected_google_account_id, created_at(sort: Desc)], map: "favorite_folders_account_created_idx")
 }
 
+/// A folder someone watches: its mail sorts first in the Inbox, and new mail in it alerts their
+/// devices. Like a favourite it is a facet combination, but stored in one canonical facet order
+/// (entity, domain, intent), because a watch is about the mail and not the arrangement — the same
+/// watch is found from `entity=applyboard|intent=offer` and `intent=offer|entity=applyboard`.
+model watched_folders {
+  id                          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connected_google_account_id String                    @db.Uuid
+  facet_key                   String
+  created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([connected_google_account_id, facet_key], map: "watched_folders_account_key_unique")
+}
+
 /// One new message worth announcing. Points at the stored message rather than copying its sender
 /// and subject, so deleting the message or the account takes the notification with it.
 model notifications {
@@ -832,6 +847,9 @@ model notifications {
   kind                        notification_kind         @default(NEW_MAIL)
   gmail_message_id            String                    @unique @db.Uuid
   read_at                     DateTime?                 @db.Timestamptz(6)
+  /// When this message was found to be in a watched folder and alerted as such. Null for mail no
+  /// watch covers, and for watched mail whose facets have not been decided yet.
+  watched_at                  DateTime?                 @db.Timestamptz(6)
   created_at                  DateTime                  @default(now()) @db.Timestamptz(6)
   connected_google_accounts   connected_google_accounts @relation(fields: [connected_google_account_id], references: [id], onDelete: Cascade)
   message                     gmail_message_metadata    @relation(fields: [gmail_message_id], references: [id], onDelete: Cascade)
