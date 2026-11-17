@@ -20,7 +20,7 @@ describe('retrying a read', () => {
     expect(retryWhenUnreachable(3, dropped)).toBe(false);
   });
 
-  it('asks again when Render answered for a server that was not ready', () => {
+  it('asks again when the hosting platform answered for a server that was not ready', () => {
     expect(retryWhenUnreachable(0, responded(502, '<html>Bad gateway</html>'))).toBe(true);
     expect(retryWhenUnreachable(0, responded(503))).toBe(true);
   });

@@ -5,7 +5,7 @@ import { isOwnerEmail } from './account-policy.js';
 /**
  * Whether one more mailbox may be connected.
  *
- * The free Render instance and the free database are sized for a small beta, so the number of
+ * The API instance and the free database are sized for a small beta, so the number of
  * connected mailboxes other than the owner's is capped at BETA_MAX_MAILBOXES. The check sits in
  * front of Google's consent screen: someone past the cap is told the beta is full before they are
  * asked for anything, rather than after granting access to a mailbox that will never be read.

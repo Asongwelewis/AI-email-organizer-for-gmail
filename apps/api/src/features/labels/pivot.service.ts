@@ -137,7 +137,7 @@ export class PivotService {
     /*
      * One join, seven columns. Prisma's nested select ran this as two queries and built an object
      * per row per relation: measured at 270 ms of CPU for 6,000 messages against 16-30 ms for
-     * this, which on Render's free tenth of a CPU was the difference between a folder view in
+     * this, which on a free tenth of a CPU was the difference between a folder view in
      * about a quarter of a second and one in nearly three.
      *
      * The unread flag is read straight from the mailbox mirror, so a folder's badge tracks Gmail

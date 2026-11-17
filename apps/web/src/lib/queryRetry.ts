@@ -3,7 +3,7 @@ import { isServerUnreachable } from '@web/services/errorMessages';
 /**
  * Reads retry, but only when the server was never reached.
  *
- * Retries used to be off everywhere, so one dropped packet on a phone — or Render answering for a
+ * Retries used to be off everywhere, so one dropped packet on a phone — or the hosting platform answering for a
  * server that was still starting — left "Folders could not be loaded" on screen until someone
  * tapped Try again. An answer from the API is a decision and is shown as it came; no answer at all
  * is worth asking again, three times, a second, two and four apart.

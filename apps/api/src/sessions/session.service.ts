@@ -22,7 +22,7 @@ type SessionRecord = NonNullable<Awaited<ReturnType<typeof sessionRepository.fin
 
 /**
  * How long a session row read from the database answers for itself. Every authenticated request
- * used to read its session row first: one round trip of 100-150ms from Render to Supabase in front
+ * used to read its session row first: one round trip of 100-150ms from the API host to Supabase in front
  * of every screen, and with several hundred people, most of the database's work was asking the
  * same question again. The PWA polls every two seconds while something runs, so thirty seconds
  * removes nearly all of it.

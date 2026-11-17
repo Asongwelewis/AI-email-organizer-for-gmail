@@ -47,7 +47,7 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
 };
 
 /**
- * No answer from AMO at all: the request never got a response, or Render answered for a server
+ * No answer from AMO at all: the request never got a response, or the hosting platform answered for a server
  * that was not ready (its own 502/503/504 page, which carries none of our error payload).
  */
 export function isServerUnreachable(error: unknown): boolean {

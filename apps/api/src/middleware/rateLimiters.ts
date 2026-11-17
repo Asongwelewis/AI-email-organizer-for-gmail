@@ -8,7 +8,7 @@ import { PrismaRateLimitStore } from './rate-limit.store.js';
  * Shared counters cost a database round trip; per-instance counters cost accuracy. Which one a
  * limiter wants depends on what it is guarding.
  *
- * Measured on 27 Aug 2026 against the deployed API: Render and Supabase are not co-located, so a
+ * Measured on 27 Aug 2026 against the deployed API: the API host and Supabase were not co-located, so a
  * round trip is roughly 100-150ms. The upsert itself is about 2ms — the cost is entirely the trip.
  * Paying it on `activityPollLimiter`, which a client hits every two seconds for the length of a
  * run, is 150ms and one row written per poll to protect a budget of 1,200 requests that exists

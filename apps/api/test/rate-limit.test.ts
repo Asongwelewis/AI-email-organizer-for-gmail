@@ -186,7 +186,7 @@ describe('a rate limit shared across API instances', () => {
 
 /**
  * Card 36. A shared counter costs a database round trip, measured at 100-150ms against the
- * deployed API because Render and Supabase are not co-located; the upsert itself is about 2ms.
+ * deployed API because the API host and Supabase were not co-located; the upsert itself is about 2ms.
  * Paying that on progress polling — which a client hits every two seconds for the length of a run
  * — buys nothing, because that budget only stops a client hammering itself. Paying it on the auth
  * and quota limiters buys a real guard, since with N instances a per-instance limit is N times the

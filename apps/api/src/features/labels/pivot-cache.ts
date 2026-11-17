@@ -5,7 +5,7 @@ import type { PivotResult } from '@api/features/label-discovery/pivot.js';
  *
  * The Inbox asks for its folder tree every minute while it is open, and building one is a read of
  * every classified message in the mailbox plus a pivot over them. With a two-year window that is
- * thousands of rows, and on Render's free tenth of a CPU it was measured at well over a second of
+ * thousands of rows, and on a free tenth of a CPU it was measured at well over a second of
  * CPU per ask — for an answer that changes only when mail arrives or is sorted. So the answer is
  * kept, and dropped by the two things that can change it: a sync storing mail, and the classifier
  * writing decisions. A short TTL bounds how stale another instance's copy can be.
