@@ -271,6 +271,20 @@ export const api = {
     await http.delete(`/favorites/${encodeURIComponent(facetKey)}`);
   },
 
+  /** The watched folders' keys, in canonical facet order. */
+  async getWatchKeys(): Promise<string[]> {
+    const response = await http.get<{ keys: string[] }>('/watches');
+    return response.data.keys;
+  },
+
+  async addWatch(facetKey: string): Promise<void> {
+    await http.post('/watches', { facetKey });
+  },
+
+  async removeWatch(facetKey: string): Promise<void> {
+    await http.delete(`/watches/${encodeURIComponent(facetKey)}`);
+  },
+
   async getNotifications(cursor?: string): Promise<NotificationFeed> {
     const response = await http.get<NotificationFeed>('/notifications', {
       params: cursor ? { cursor } : {},

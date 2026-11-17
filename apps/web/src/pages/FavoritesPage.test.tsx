@@ -6,6 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getFavorites: vi.fn(),
   getFavoriteKeys: vi.fn(),
+  getWatchKeys: vi.fn().mockResolvedValue([]),
+  addWatch: vi.fn(),
+  removeWatch: vi.fn(),
   addFavorite: vi.fn(),
   removeFavorite: vi.fn(),
 }));
@@ -48,6 +51,7 @@ function renderPage() {
 describe('FavoritesPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.getWatchKeys.mockResolvedValue([]);
     mocks.getFavorites.mockResolvedValue([netflix]);
     mocks.getFavoriteKeys.mockResolvedValue([netflix.facetKey]);
   });
@@ -71,7 +75,7 @@ describe('FavoritesPage', () => {
     renderPage();
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /^(?!.*favourites).*Payment failed/ }),
+      await screen.findByRole('button', { name: /^(?!.*(favourites|watch)).*Payment failed/i }),
     );
 
     const location = await screen.findByTestId('location');

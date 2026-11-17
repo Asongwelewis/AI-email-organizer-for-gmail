@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Folder, FolderOpen, Star } from 'lucide-react';
+import { Eye, Folder, FolderOpen, Star } from 'lucide-react';
 
 import { formatCount } from '@web/lib/format';
 import { folderColor } from '@web/lib/folderColor';
+import type { WatchState } from '@web/lib/watches';
 
 export interface FolderTileProps {
   name: string;
@@ -26,6 +27,13 @@ export interface FolderTileProps {
   /** Whether this folder is starred. The star only appears when `onToggleFavorite` is given. */
   favorite?: boolean;
   onToggleFavorite?: () => void;
+  /**
+   * How the watches touch this folder. `covered` means a broader folder is watched, so the eye is
+   * on but belongs to that folder; `leads` means a folder inside is watched. The eye only appears
+   * when `onToggleWatch` is given.
+   */
+  watch?: WatchState | null;
+  onToggleWatch?: () => void;
   onOpen: () => void;
 }
 
@@ -38,6 +46,8 @@ export function FolderTile({
   iconUrl = null,
   favorite = false,
   onToggleFavorite,
+  watch = null,
+  onToggleWatch,
   onOpen,
 }: FolderTileProps) {
   const color = folderColor(path);
@@ -49,7 +59,7 @@ export function FolderTile({
   return (
     // A wrapper because the star is a second button, and a button cannot sit inside another.
     <div
-      className="folder-tile-wrap"
+      className={`folder-tile-wrap${watch === 'watched' || watch === 'covered' ? ' folder-tile-wrap--watched' : ''}`}
       style={{
         // One hue, and the theme decides the rest. Tint, icon, and label are built from it in
         // theme.css, so the label reads as part of the tile in both themes rather than printed
@@ -59,7 +69,7 @@ export function FolderTile({
     >
       <button
         type="button"
-        className={`folder-tile${onToggleFavorite ? ' folder-tile--starrable' : ''}`}
+        className={`folder-tile${onToggleFavorite || onToggleWatch ? ' folder-tile--starrable' : ''}`}
         onClick={onOpen}
       >
         {/* The corner says what is waiting inside, before anything is opened. */}
@@ -111,6 +121,56 @@ export function FolderTile({
           <Star aria-hidden="true" strokeWidth={1.75} fill={favorite ? 'currentColor' : 'none'} />
         </button>
       ) : null}
+      {onToggleWatch ? <WatchEye name={name} state={watch} onToggle={onToggleWatch} /> : null}
     </div>
+  );
+}
+
+/**
+ * The eye in the bottom-right corner: watch this folder. A watched folder comes first in the
+ * Inbox, and new mail in it alerts this person's devices and stays on screen until dismissed.
+ */
+function WatchEye({
+  name,
+  state,
+  onToggle,
+}: {
+  name: string;
+  state: WatchState | null;
+  onToggle: () => void;
+}) {
+  // Covered by a broader watch: the eye is on, but switching it off happens on that folder.
+  if (state === 'covered') {
+    return (
+      <span
+        className="folder-tile__eye folder-tile__eye--on folder-tile__eye--inherited"
+        role="img"
+        aria-label={`${name} is watched as part of a folder above it`}
+        title="Watched as part of the folder above"
+      >
+        <Eye aria-hidden="true" strokeWidth={2} />
+      </span>
+    );
+  }
+  const watched = state === 'watched';
+  return (
+    <button
+      type="button"
+      className={`folder-tile__eye${watched ? ' folder-tile__eye--on' : ''}${
+        state === 'leads' ? ' folder-tile__eye--inside' : ''
+      }`}
+      aria-pressed={watched}
+      aria-label={watched ? `Stop watching ${name}` : `Watch ${name}`}
+      title={
+        watched
+          ? 'Stop watching'
+          : state === 'leads'
+            ? 'A folder inside is watched. Watch all of this one'
+            : 'Watch: keep it at the top and alert me to new mail'
+      }
+      onClick={onToggle}
+    >
+      <Eye aria-hidden="true" strokeWidth={watched ? 2.25 : 1.75} />
+    </button>
   );
 }

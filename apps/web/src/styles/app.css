@@ -427,6 +427,17 @@ button.menu-item {
   border-radius: 999px;
 }
 
+.notification__watched {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.notification__watched svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
 .notification__sender {
   flex: 1;
   overflow: hidden;
@@ -996,6 +1007,74 @@ button.menu-item {
 .folder-tile__star--on {
   color: #e8a400;
   opacity: 1;
+}
+
+/* The eye: watch this folder. The star's mirror, in the bottom-right corner. */
+.folder-tile__eye {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: hsl(var(--tile-hue, 218) var(--tile-sl-ink));
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  opacity: 0.7;
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out,
+    background-color 140ms ease-out;
+}
+
+.folder-tile__eye svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.folder-tile__eye:hover,
+.folder-tile__eye:focus-visible {
+  opacity: 1;
+}
+
+.folder-tile__eye:active {
+  transform: scale(0.88);
+}
+
+/* Watched: an open eye on a solid disc, so it reads at a glance in both themes. */
+.folder-tile__eye--on {
+  color: #fff;
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* Watched through a broader folder: on, but quieter, and not a button. */
+.folder-tile__eye--inherited {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.folder-tile__eye--inherited:active {
+  transform: none;
+}
+
+/* A folder inside is watched: the eye is ringed rather than filled. */
+.folder-tile__eye--inside {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+/* A watched folder is outlined too, so a row of tiles shows which ones are being watched. */
+.folder-tile-wrap--watched > .folder-tile {
+  border-color: var(--accent);
+  box-shadow:
+    var(--highlight-inset),
+    0 0 0 1px var(--accent);
 }
 
 /* What is waiting inside, in the top-right corner. */

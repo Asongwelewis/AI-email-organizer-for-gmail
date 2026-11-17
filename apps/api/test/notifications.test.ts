@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   notificationFindMany: vi.fn(),
   notificationCount: vi.fn(),
   notificationUpdateMany: vi.fn(),
+  notificationUpdateManyAndReturn: vi.fn(),
+  watchFindMany: vi.fn(),
   accountFindUnique: vi.fn(),
   settingsFindUnique: vi.fn(),
   subscriptionFindMany: vi.fn(),
@@ -41,7 +43,9 @@ vi.mock('../src/database/prisma.js', () => ({
       findMany: mocks.notificationFindMany,
       count: mocks.notificationCount,
       updateMany: mocks.notificationUpdateMany,
+      updateManyAndReturn: mocks.notificationUpdateManyAndReturn,
     },
+    watched_folders: { findMany: mocks.watchFindMany },
     connected_google_accounts: {
       findUnique: mocks.accountFindUnique,
       findFirst: async () => ({ id: 'account-1', user_id: 'user-1' }),
@@ -78,6 +82,7 @@ const message = (id: string, overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.accountFindUnique.mockResolvedValue({ user_id: 'user-1' });
+  mocks.watchFindMany.mockResolvedValue([]);
 });
 
 /*
@@ -158,6 +163,122 @@ describe('announcing new mail', () => {
   });
 });
 
+/*
+ * Watching a folder is saying "this is the mail I keep checking Gmail for". It is what a device is
+ * alerted about once anything is watched, and the alert names the folder and stays until dismissed.
+ */
+describe('alerting watched folders', () => {
+  const service = () => {
+    const push = { sendToUser: vi.fn().mockResolvedValue(1) };
+    return { push, notifications: new NotificationsService(push) };
+  };
+
+  /** A recent notification row as `claimWatched` reads it. */
+  const recent = (
+    id: string,
+    senderEmail: string,
+    facets: { entity: string | null; domain: string | null; intent: string | null } | null,
+  ) => ({
+    id: `n-${id}`,
+    message: {
+      id,
+      subject: `Subject ${id}`,
+      sender_name: `Sender ${id}`,
+      sender_email: senderEmail,
+      facets,
+    },
+  });
+
+  it('alerts a brand the moment its mail arrives, before Gemini has looked at it', async () => {
+    mocks.watchFindMany.mockResolvedValue([{ facet_key: 'entity=applyboard' }]);
+    mocks.messageFindMany.mockResolvedValue([
+      message('a', { sender_email: 'no-reply@applyboard.com', sender_name: 'ApplyBoard' }),
+      message('b', { sender_email: 'news@shop.example' }),
+    ]);
+    mocks.createManyAndReturn.mockResolvedValue([
+      { id: 'n-a', gmail_message_id: 'a' },
+      { id: 'n-b', gmail_message_id: 'b' },
+    ]);
+    // Neither is classified yet: the entity comes from the sender address alone.
+    mocks.notificationFindMany.mockResolvedValue([
+      recent('a', 'no-reply@applyboard.com', null),
+      recent('b', 'news@shop.example', null),
+    ]);
+    mocks.notificationUpdateManyAndReturn.mockResolvedValue([{ id: 'n-a' }]);
+    const { push, notifications } = service();
+
+    await expect(notifications.recordNewMail('account-1', NOW)).resolves.toBe(2);
+
+    expect(mocks.notificationUpdateManyAndReturn.mock.calls[0]![0].where).toEqual({
+      id: { in: ['n-a'] },
+      watched_at: null,
+    });
+    // Only the watched message reaches the device; the shop's newsletter stays in the feed.
+    expect(push.sendToUser).toHaveBeenCalledTimes(1);
+    expect(push.sendToUser).toHaveBeenCalledWith('user-1', {
+      title: 'New in Applyboard',
+      body: 'Sender a: Subject a',
+      url: '/notifications',
+      tag: 'n-a',
+      requireInteraction: true,
+      renotify: true,
+    });
+  });
+
+  it('alerts a watched intent once Gemini has decided it, on a later check', async () => {
+    mocks.watchFindMany.mockResolvedValue([{ facet_key: 'intent=offer|entity=applyboard' }]);
+    mocks.messageFindMany.mockResolvedValue([]);
+    mocks.notificationFindMany.mockResolvedValue([
+      recent('a', 'no-reply@applyboard.com', {
+        entity: 'applyboard',
+        domain: 'education',
+        intent: 'offer',
+      }),
+      recent('b', 'no-reply@applyboard.com', {
+        entity: 'applyboard',
+        domain: 'education',
+        intent: 'promotional',
+      }),
+    ]);
+    mocks.notificationUpdateManyAndReturn.mockResolvedValue([{ id: 'n-a' }]);
+    const { push, notifications } = service();
+
+    // Nothing new was announced on this check, and the watched alert still goes out.
+    await expect(notifications.recordNewMail('account-1', NOW)).resolves.toBe(0);
+
+    expect(mocks.createManyAndReturn).not.toHaveBeenCalled();
+    expect(mocks.notificationFindMany.mock.calls[0]![0].where).toMatchObject({
+      connected_google_account_id: 'account-1',
+      watched_at: null,
+      message: { deleted_at: null, is_unread: true },
+    });
+    expect(push.sendToUser).toHaveBeenCalledTimes(1);
+    expect(push.sendToUser.mock.calls[0]![1]).toMatchObject({ tag: 'n-a' });
+  });
+
+  // Two instances checking at once: only the one whose claim landed alerts it.
+  it('alerts only what this call claimed', async () => {
+    mocks.watchFindMany.mockResolvedValue([{ facet_key: 'entity=applyboard' }]);
+    mocks.messageFindMany.mockResolvedValue([]);
+    mocks.notificationFindMany.mockResolvedValue([recent('a', 'team@applyboard.com', null)]);
+    mocks.notificationUpdateManyAndReturn.mockResolvedValue([]);
+    const { push, notifications } = service();
+
+    await notifications.recordNewMail('account-1', NOW);
+
+    expect(push.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('never asks for watched mail when nothing is watched', async () => {
+    mocks.messageFindMany.mockResolvedValue([]);
+    const { notifications } = service();
+
+    await notifications.recordNewMail('account-1', NOW);
+
+    expect(mocks.notificationFindMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('the notification feed', () => {
   it('names the folder each message was sorted into, in the saved arrangement', async () => {
     mocks.notificationFindMany.mockResolvedValue([
@@ -166,6 +287,7 @@ describe('the notification feed', () => {
         kind: 'NEW_MAIL',
         created_at: new Date('2026-10-18T11:00:00.000Z'),
         read_at: null,
+        watched_at: new Date('2026-10-18T11:00:30.000Z'),
         message: {
           gmail_message_id: '18f0abc',
           subject: 'Your payment failed',
@@ -191,6 +313,7 @@ describe('the notification feed', () => {
         path: 'Netflix › Payment failed',
         order: ['entity', 'intent'],
       },
+      watched: true,
     });
   });
 

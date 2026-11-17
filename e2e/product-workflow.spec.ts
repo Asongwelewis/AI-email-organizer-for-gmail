@@ -48,6 +48,7 @@ async function apiMock(route: Route) {
     '/api/activity/runs': { runs: [] },
     '/api/favorites': { items: [] },
     '/api/favorites/keys': { keys: [] },
+    '/api/watches': { keys: [] },
     '/api/notifications': { items: [], unreadCount: 0, nextCursor: null },
     '/api/notifications/push': { configured: false, publicKey: null, subscriptions: 0 },
     '/api/automation/status': {
@@ -192,7 +193,10 @@ test('a signed-in visitor lands in the authenticated shell', async ({ page }) =>
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
   // The folder itself, not its star, whose label names the folder too.
-  await expect(page.getByRole('button', { name: /^(?!.*favourites).*Job hunt/ })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^(?!.*(favourites|watch)).*Job hunt/i }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Watch Job hunt' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Job hunt to favourites' })).toBeVisible();
   // The menu sits on the left of every screen.
   await expect(page.getByRole('link', { name: 'Menu' })).toBeVisible();

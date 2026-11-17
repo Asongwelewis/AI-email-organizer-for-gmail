@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   getGmailStatus: vi.fn(),
   getFacetMessages: vi.fn(),
   getFavoriteKeys: vi.fn(),
+  getWatchKeys: vi.fn().mockResolvedValue([]),
+  addWatch: vi.fn(),
+  removeWatch: vi.fn(),
   addFavorite: vi.fn(),
   removeFavorite: vi.fn(),
   getOnboarding: vi.fn(),
@@ -79,6 +82,7 @@ const TREE: PivotNode[] = [
 describe('InboxPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.getWatchKeys.mockResolvedValue([]);
     window.localStorage.clear();
     mocks.getPivotSettings.mockResolvedValue({
       canonicalPivot: ['domain', 'intent'],
@@ -219,6 +223,51 @@ describe('InboxPage', () => {
   });
 
   /*
+   * A watched folder is one someone keeps checking Gmail for. It must never sink behind "Show all"
+   * just because 24 other brands wrote more recently — which is exactly what happened to ApplyBoard.
+   */
+  it('puts a watched folder first even when it is not among the newest', async () => {
+    mocks.getWatchKeys.mockResolvedValue(['domain=folder-29']);
+    mocks.getPivotView.mockResolvedValue({
+      order: ['domain', 'intent'],
+      nodes: Array.from({ length: 30 }, (_, index) =>
+        node({
+          facetKey: `domain=folder-${index}`,
+          leafName: `Folder ${index}`,
+          subtreeMessageCount: 3,
+          latestReceivedAt: new Date(Date.UTC(2026, 9, 18, 12) - index * 60_000).toISOString(),
+        }),
+      ),
+      unfiled: { total: 0, noFacetValue: 0, belowThreshold: 0 },
+      collapsed: 0,
+    });
+    renderScreen(<InboxPage />, '/inbox');
+
+    const eye = await screen.findByRole('button', { name: 'Stop watching Folder 29' });
+    expect(eye).toHaveAttribute('aria-pressed', 'true');
+    const names = [...document.querySelectorAll('.folder-tile__name')].map((el) => el.textContent);
+    expect(names[0]).toBe('Folder 29');
+    expect(names).toHaveLength(24);
+  });
+
+  it('watches a folder from its tile, by its canonical key', async () => {
+    mocks.addWatch.mockImplementation(async () => {
+      mocks.getWatchKeys.mockResolvedValue(['domain=finance']);
+    });
+    renderScreen(<InboxPage />, '/inbox');
+
+    const eye = await screen.findByRole('button', { name: 'Watch Finance' });
+    expect(eye).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(eye);
+
+    expect(mocks.addWatch).toHaveBeenCalledWith('domain=finance');
+    expect(await screen.findByRole('button', { name: 'Stop watching Finance' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  /*
    * Every folder, current and future, can be starred from its tile. The star fills the moment it
    * is tapped, and the starring is stored against the folder's identity and its arrangement.
    */
@@ -286,7 +335,9 @@ describe('InboxPage', () => {
     renderScreen(<InboxPage />, '/inbox');
 
     // The folder itself, not its star, whose label names the folder too.
-    await userEvent.click(await screen.findByRole('button', { name: /^(?!.*favourites).*Career/ }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^(?!.*(favourites|watch)).*Career/i }),
+    );
 
     await waitFor(() =>
       expect(mocks.getFacetMessages).toHaveBeenCalledWith('domain=career', { range: '24h' }),

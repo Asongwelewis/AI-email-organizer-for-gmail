@@ -23,6 +23,10 @@ export interface PushPayload {
   url: string;
   /** Same tag, same slot: a newer notification replaces the older one rather than stacking. */
   tag: string;
+  /** Stays on screen until dismissed: set for mail in a watched folder. */
+  requireInteraction?: boolean;
+  /** Alerts again when it replaces a notification with the same tag, instead of a silent swap. */
+  renotify?: boolean;
 }
 
 /** Failures in a row before a subscription is treated as abandoned and dropped. */
@@ -89,8 +93,9 @@ export class PushService {
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
           JSON.stringify(payload),
-          // An hour: mail that waited longer than that to be announced is not news any more.
-          { TTL: 60 * 60, urgency: 'normal' },
+          // An hour: mail that waited longer than that to be announced is not news any more. A
+          // watched folder's alert is delivered at once, even to a device saving its battery.
+          { TTL: 60 * 60, urgency: payload.requireInteraction ? 'high' : 'normal' },
         );
         delivered += 1;
         await prisma.push_subscriptions.update({

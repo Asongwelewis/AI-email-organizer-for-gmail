@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellOff, BellRing } from 'lucide-react';
+import { BellOff, BellRing, Eye } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
@@ -17,6 +17,7 @@ import {
 } from '@web/lib/push';
 import { useNotificationFeed } from '@web/queries/notifications';
 import { queryKeys } from '@web/queries/queryKeys';
+import { useWatches } from '@web/queries/watches';
 import { api } from '@web/services/http';
 import { pivotOrderKey } from '@web/types/facets';
 import type { NotificationItem } from '@web/types/notifications';
@@ -34,6 +35,8 @@ function folderLink(item: NotificationItem): string | null {
 /** Why the switch says what it says. Each state names what the person can do about it. */
 function PushSwitch() {
   const queryClient = useQueryClient();
+  // Once anything is watched, a device is alerted about watched mail only.
+  const watching = useWatches().watchKeys.length > 0;
   const [availability, setAvailability] = useState<PushAvailability>(pushAvailability);
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const configQuery = useQuery({
@@ -108,15 +111,17 @@ function PushSwitch() {
   } else if (subscribed) {
     state = {
       title: 'On for this device',
-      detail:
-        'New mail shows up in your Windows notification centre — or your phone’s — even with AMO closed.',
+      detail: watching
+        ? 'Mail in the folders you watch shows up in your Windows notification centre — or your phone’s — and stays until you dismiss it, even with AMO closed. Other new mail is listed here.'
+        : 'New mail shows up in your Windows notification centre — or your phone’s — even with AMO closed. Tap the eye on a folder to be alerted about that folder only.',
       action: 'off',
     };
   } else {
     state = {
       title: 'Off for this device',
-      detail:
-        'Turn them on to see new mail in your Windows notification centre, even with AMO closed. Your browser will ask first.',
+      detail: watching
+        ? 'Turn them on to be alerted in your Windows notification centre when mail arrives in a folder you watch, even with AMO closed. Your browser will ask first.'
+        : 'Turn them on to see new mail in your Windows notification centre, even with AMO closed. Your browser will ask first.',
       action: 'on',
     };
   }
@@ -225,6 +230,12 @@ export function NotificationsPage({ embedded = false }: { embedded?: boolean }) 
                 <div className="notification__head">
                   {item.readAt ? null : <span className="notification__dot" aria-label="Unread" />}
                   <span className="notification__sender">{sender}</span>
+                  {item.watched ? (
+                    <span className="notification__watched" title="In a folder you watch">
+                      <Eye aria-hidden="true" strokeWidth={2} />
+                      <span className="sr-only">In a folder you watch</span>
+                    </span>
+                  ) : null}
                   <time className="notification__time" dateTime={item.createdAt}>
                     {formatRelative(item.message.receivedAt ?? item.createdAt)}
                   </time>

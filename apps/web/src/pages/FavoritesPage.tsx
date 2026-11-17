@@ -6,6 +6,7 @@ import { FolderTile } from '@web/components/app/FolderTile';
 import { EmptyState, LoadingState } from '@web/components/app/StateViews';
 import { brandIconUrl } from '@web/lib/brandIcon';
 import { useFavorites } from '@web/queries/favorites';
+import { useWatches } from '@web/queries/watches';
 import { queryKeys } from '@web/queries/queryKeys';
 import { api } from '@web/services/http';
 import { pivotOrderKey } from '@web/types/facets';
@@ -33,6 +34,7 @@ function inboxLink(favorite: FavoriteFolder): string {
 export function FavoritesPage() {
   const navigate = useNavigate();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { watchState, toggleWatch } = useWatches();
   const favoritesQuery = useQuery({
     queryKey: queryKeys.favorites,
     queryFn: () => api.getFavorites(),
@@ -80,6 +82,8 @@ export function FavoritesPage() {
               iconUrl={brandIconUrl(favorite.iconDomain)}
               favorite={isFavorite(favorite.facetKey)}
               onToggleFavorite={() => toggleFavorite(favorite.facetKey, favorite.order)}
+              watch={watchState(favorite.facetKey)}
+              onToggleWatch={() => toggleWatch(favorite.facetKey)}
               onOpen={() => navigate(inboxLink(favorite))}
             />
           ))}

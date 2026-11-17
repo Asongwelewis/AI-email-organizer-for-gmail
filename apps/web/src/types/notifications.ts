@@ -15,6 +15,8 @@ export interface NotificationItem {
   };
   /** The folder it was sorted into, once it has been. */
   folder: { facetKey: string; path: string; order: PivotFacet[] } | null;
+  /** In a folder being watched, and alerted as such. */
+  watched: boolean;
 }
 
 export interface NotificationFeed {

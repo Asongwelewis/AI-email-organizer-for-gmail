@@ -13,6 +13,7 @@ import { feedbackRouter } from '@api/features/feedback/feedback.routes.js';
 import { desktopRouter } from '@api/features/desktop/desktop-pairing.routes.js';
 import { favoritesRouter } from '@api/features/favorites/favorites.routes.js';
 import { notificationsRouter } from '@api/features/notifications/notifications.routes.js';
+import { watchesRouter } from '@api/features/watches/watches.routes.js';
 import { onboardingRouter } from '@api/features/onboarding/onboarding.routes.js';
 
 export const apiRouter = Router();
@@ -31,6 +32,7 @@ apiRouter.use('/automation', automationRouter);
 apiRouter.use('/activity', activityRouter);
 apiRouter.use('/favorites', favoritesRouter);
 apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/watches', watchesRouter);
 apiRouter.use('/onboarding', onboardingRouter);
 // Public on purpose: someone who was handed the link has no session and is still worth hearing.
 apiRouter.use('/feedback', feedbackRouter);
