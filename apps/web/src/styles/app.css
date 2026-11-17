@@ -11,8 +11,9 @@
  * they alias tokens now, and nothing here defines a colour of its own.
  *
  * One breakpoint, at 768px. Below it the navigation is a floating tab bar at the bottom and the
- * grid is two columns; above it the island floats at the top centre over four columns in a
- * centred column.
+ * grid is two columns; above it a left side panel and four columns inside a max-width column.
+ * The installed desktop app (`[data-layout='app']`) is its own shape: an empty window with a
+ * draggable island, and screens in a tray — see "desktop app" below.
  */
 
 .shell {
@@ -24,6 +25,7 @@
   --app-line-strong: var(--line-strong);
   --app-focus: var(--accent);
   --app-danger: var(--status-danger-ink);
+  --app-rail: 16rem;
   --app-tabs: 4.25rem;
 
   min-height: 100dvh;
@@ -53,75 +55,15 @@
 
 /* ---------------------------------------------------------------- navigation */
 
-/**
- * The island. On a desktop the navigation is not a side panel but one dark pill floating at the
- * top centre, the way the hardware island sits in the middle of a MacBook's top edge: the menu
- * with its unread count, the five screens, and whose mailbox this is. It is dark in both themes
- * because the hardware is, and because a dark object over a light page reads as something laid on
- * the window rather than part of it.
- *
- * It grows downward to say something live — the server waking — and shrinks back when that is
- * over. Below the breakpoint the same pill is the tab bar at the bottom.
- */
-.island {
+.shell__rail {
   display: none;
 }
 
-.island__row {
-  display: flex;
-  gap: 0.15rem;
-  align-items: center;
-}
-
-.island__nav {
-  display: flex;
-  gap: 0.1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.island__link {
-  position: relative;
-  display: inline-flex;
-  gap: 0.45rem;
-  align-items: center;
-  height: 2.5rem;
-  padding: 0 0.95rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink-on-invert-soft);
-  text-decoration: none;
-  white-space: nowrap;
-  border-radius: 999px;
-  transition:
-    color 140ms ease-out,
-    background-color 140ms ease-out;
-}
-
-.island__link:hover {
-  color: var(--ink-on-invert);
-  background: rgb(255 255 255 / 0.08);
-}
-
-.island__link--active,
-.island__link--active:hover {
-  color: var(--accent-ink);
-  background: none;
-}
-
-/* The icon and the label ride above the selection sliding underneath them. */
-.island__link > :not(.island__selection) {
-  position: relative;
-  z-index: 1;
-}
-
-.island__link svg {
-  width: 1.05rem;
-  height: 1.05rem;
-}
-
-.island__selection,
+/*
+ * Parts of the island, shared by the desktop app's island and its buttons. Dark in both themes
+ * because the hardware island is, and because a dark object over a light page reads as something
+ * laid on the window rather than part of it.
+ */
 .tab-item__selection {
   position: absolute;
   inset: 0;
@@ -177,7 +119,7 @@
   background: var(--line-on-invert);
 }
 
-/* As wide as the row and never wider: the message wraps rather than stretching the island. */
+/* As wide as the bar and never wider: the message wraps rather than stretching the island. */
 .island__live {
   width: 0;
   min-width: 100%;
@@ -192,7 +134,7 @@
   color: var(--ink-on-invert-soft);
 }
 
-.shell .island :focus-visible,
+.shell .desk-island :focus-visible,
 .shell .shell__tabs :focus-visible {
   border-radius: 999px;
 }
@@ -291,6 +233,7 @@
 }
 
 .menu-button:hover,
+.menu-button--active,
 .menu-button[aria-expanded='true'] {
   background: var(--accent-soft);
 }
@@ -535,10 +478,10 @@ button.menu-item {
 /* ---------------------------------------------------------------- island window */
 
 /**
- * The window the island opens: notifications, account and privacy, appearance and signing out,
- * in a small floating panel over whatever screen is open. Under the island on a desktop, under the
- * menu button on a phone. A light surface although the island is dark: what it holds are screens,
- * and they keep their own colours.
+ * The window the phone's menu opens: notifications, account and privacy, appearance and signing
+ * out, in a small floating panel over whatever screen is open. The desktop app shows the same
+ * contents in its tray. A light surface although the pill is dark: what it holds are screens, and
+ * they keep their own colours.
  */
 .island-window {
   position: fixed;
@@ -1527,50 +1470,149 @@ button.menu-item {
     display: none;
   }
 
-  /* Centred on the window's top edge. Margins, not a transform: the window and the selection
-     animate transforms of their own, and a centring transform would be overwritten by them. */
-  .island {
-    position: fixed;
-    z-index: 30;
+  .shell {
+    display: grid;
+    grid-template-columns: var(--app-rail) minmax(0, 1fr);
+  }
+
+  /*
+   * The sidebar, floating: inset from the window edge with rounded corners, so it reads as a panel
+   * laid on the window rather than a strip cut out of it. Vibrancy is what a Finder or Mail window
+   * looks like.
+   */
+  .shell__rail {
+    position: sticky;
     top: 0.75rem;
-    right: 0;
-    left: 0;
     display: flex;
     flex-direction: column;
-    width: max-content;
-    max-width: calc(100vw - 1.5rem);
-    margin-inline: auto;
-    padding: 0.3rem;
-    color: var(--ink-on-invert);
-    background: var(--surface-invert);
-    border: 1px solid var(--line-on-invert);
-    border-radius: 1.625rem;
-    box-shadow: var(--shadow-md);
+    gap: 1rem;
+    height: calc(100dvh - 1.5rem);
+    margin: 0.75rem 0 0.75rem 0.75rem;
+    padding: 1.25rem 0.85rem 1rem;
+    overflow-y: auto;
+    background: var(--surface-chrome-opaque);
+    border: 1px solid var(--app-line);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--highlight-inset), var(--shadow-sm);
   }
 
-  /* Clears the island, and keeps the screen to a readable width under it instead of spreading
-     across the whole window. */
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .shell__rail {
+      background: var(--surface-chrome);
+      -webkit-backdrop-filter: var(--vibrancy);
+      backdrop-filter: var(--vibrancy);
+    }
+  }
+
+  /* Whose mailbox this is: the photo first, the name and address under it. */
+  .shell__profile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.25rem 0.25rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .shell__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    max-width: 100%;
+  }
+
+  .shell__name {
+    overflow: hidden;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The menu button sits on its own row under the profile, lined up with the rows below it. */
+  .shell__rail > .menu-button {
+    margin-left: 0.15rem;
+  }
+
+  .shell__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nav-item {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.9375rem;
+    color: var(--app-ink-soft);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+  }
+
+  .nav-item svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .nav-item:hover {
+    color: var(--app-ink);
+    background: var(--accent-soft);
+  }
+
+  /* Selected sidebar rows in macOS are filled with the accent, not tinted grey. */
+  .nav-item--active,
+  .nav-item--active:hover {
+    font-weight: 500;
+    color: var(--accent-ink);
+    background: var(--accent);
+  }
+
+  .shell__account {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: flex-start;
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid var(--app-line);
+  }
+
+  .shell__account-actions {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .shell__email {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    color: var(--app-ink-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .shell__main {
-    padding: 5.5rem 2rem 3rem;
+    padding: 2.5rem 2rem 3rem;
   }
 
-  .shell__column {
-    max-width: 62rem;
-  }
-
-  .island-window {
-    top: 4.6rem;
-    width: min(28rem, calc(100vw - 1.5rem));
-    max-height: calc(100dvh - 5.6rem);
-  }
-
-  /* The menu is in the island, so the bar that holds it on a phone is not needed. */
+  /* The menu is in the side panel, so the bar that holds it on a phone is not needed. */
   .shell__toolbar {
     display: none;
   }
 
-  /* The island says this itself. */
-  .shell__column > .server-wake {
+  /* Just the two segments, not stretched across the panel. */
+  .shell__theme {
+    align-self: flex-start;
+  }
+
+  /* The phone's window has no button to open it here; one left open by a resize goes too. */
+  .island-window {
     display: none;
   }
 
@@ -2150,12 +2192,12 @@ button.menu-item {
   }
 
   /* Fixed, so the reserved strip has to be added to their offsets by hand. */
-  .island {
+  .desk-island {
     top: calc(env(titlebar-area-height, 0px) + 0.75rem);
   }
 
-  .island-window {
-    top: calc(env(titlebar-area-height, 0px) + 4.6rem);
+  .desk-stage {
+    top: calc(env(titlebar-area-height, 0px) + 0.75rem);
   }
 
   /*
@@ -2181,6 +2223,289 @@ button.menu-item {
     -webkit-app-region: no-drag;
     app-region: no-drag;
   }
+}
+
+/* ---------------------------------------------------------------- desktop app */
+
+/**
+ * AMO installed from Chrome and opened in its own window on a computer. No side panel and no page:
+ * an empty window, the island floating on it wherever it was left, and each screen in a tray that
+ * opens from the island. Chosen in script (`useAppLayout`) rather than by a media query, so the
+ * markup itself changes, not only its styling.
+ */
+.shell[data-layout='app'] {
+  display: block;
+  overflow: hidden;
+  height: 100dvh;
+}
+
+/* What the island may be dragged within, and what shows when no tray is open. */
+.desk-stage {
+  position: fixed;
+  inset: 0.75rem;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.desk-stage__hint {
+  max-width: 22rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-tertiary);
+  text-align: center;
+}
+
+/* Starts at the top centre; dragging moves it by transform from there. */
+.desk-island {
+  position: fixed;
+  z-index: 30;
+  top: 0.75rem;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  margin-inline: auto;
+  padding: 0.3rem;
+  color: var(--ink-on-invert);
+  background: var(--surface-invert);
+  border: 1px solid var(--line-on-invert);
+  border-radius: 1.75rem;
+  box-shadow: var(--shadow-lg);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.desk-island:active {
+  cursor: grabbing;
+}
+
+.desk-island img {
+  -webkit-user-drag: none;
+}
+
+.desk-island__bar {
+  display: flex;
+  gap: 0.15rem;
+  align-items: center;
+}
+
+/* ------------------------------------------------ the dock */
+
+.dock {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 0.15rem;
+  list-style: none;
+}
+
+/* The slot's width is what the magnification animates, so neighbours make room. */
+.dock__slot {
+  display: grid;
+  flex: none;
+  place-items: center;
+  height: 2.75rem;
+}
+
+.dock__item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--ink-on-invert-soft);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-user-drag: none;
+}
+
+/* The icon is a small square tile, the way the Dock's apps are; the open screen's is filled. */
+.dock__tile {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: rgb(255 255 255 / 0.07);
+  border-radius: 0.7rem;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out;
+  will-change: transform;
+}
+
+.dock__tile svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.dock__item:hover .dock__tile {
+  color: var(--ink-on-invert);
+  background: rgb(255 255 255 / 0.14);
+}
+
+.dock__item--active .dock__tile,
+.dock__item--active:hover .dock__tile {
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+
+/* The open screen's dot, as the Dock marks a running app. */
+.dock__dot {
+  position: absolute;
+  bottom: -0.1rem;
+  left: 50%;
+  width: 0.25rem;
+  height: 0.25rem;
+  margin-left: -0.125rem;
+  background: var(--ink-on-invert);
+  border-radius: 999px;
+}
+
+/* The name, shown beside the icon under the pointer — on the side towards the middle. */
+.dock__label {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-on-invert);
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--surface-invert);
+  border: 1px solid var(--line-on-invert);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease-out;
+}
+
+.desk-island--below .dock__label {
+  top: calc(100% + 1.1rem);
+}
+
+.desk-island--above .dock__label {
+  bottom: calc(100% + 1.1rem);
+}
+
+.dock__item:hover .dock__label,
+.dock__item:focus-visible .dock__label {
+  opacity: 1;
+}
+
+/* ------------------------------------------------ the tray */
+
+/**
+ * The tray: a small window for the screen the island opened, beside the island on the side with
+ * room. Its place and size are written by script as the island moves; the screens inside keep
+ * their own colours and are laid out as on a narrow screen.
+ */
+.desk-tray {
+  position: fixed;
+  z-index: 29;
+  top: var(--tray-top, 5rem);
+  bottom: var(--tray-bottom, auto);
+  left: var(--tray-left, 1rem);
+  display: flex;
+  flex-direction: column;
+  width: var(--tray-width, min(40rem, calc(100vw - 2rem)));
+  max-height: var(--tray-max-height, 70dvh);
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--highlight-inset), var(--shadow-lg);
+}
+
+.desk-tray--below {
+  transform-origin: top center;
+}
+
+.desk-tray--above {
+  transform-origin: bottom center;
+}
+
+.shell .desk-tray:focus,
+.shell .desk-tray:focus-visible {
+  outline: none;
+}
+
+.desk-tray__screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 1.25rem 1.25rem 1.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.desk-tray__close {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  float: right;
+  margin: -0.5rem -0.5rem 0 0.5rem;
+  background: var(--surface-elevated);
+}
+
+/* A screen in the tray: a little smaller, and laid out as on a narrow screen. */
+.desk-tray .screen__title {
+  font-size: 1.45rem;
+}
+
+.desk-tray .tile-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desk-tray .folder-tile {
+  min-height: 9.5rem;
+}
+
+.desk-tray .folder-tile__icon {
+  width: 3.25rem;
+  height: 3.25rem;
+}
+
+.desk-tray .mail-row {
+  grid-template-columns: 1fr auto;
+  align-items: normal;
+}
+
+.desk-tray .mail-row__subject {
+  grid-column: 1 / -1;
+}
+
+.desk-tray .mail-row__open {
+  display: none;
+}
+
+.desk-tray .account-grid {
+  grid-template-columns: 1fr;
+}
+
+.desk-tray .account-actions {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.desk-tray .push-switch {
+  margin-bottom: 0;
+}
+
+.desk-tray .menu-profile {
+  margin-bottom: 1rem;
+}
+
+.desk-tray .menu-theme {
+  margin: 1rem 0;
 }
 
 /* ------------------------------------------------------------- arrangements */

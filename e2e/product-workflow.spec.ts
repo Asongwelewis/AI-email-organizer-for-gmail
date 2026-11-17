@@ -1,4 +1,4 @@
-import { expect, test, type Route } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 async function apiMock(route: Route) {
   const url = new URL(route.request().url());
@@ -190,13 +190,12 @@ test('a signed-in visitor lands in the authenticated shell', async ({ page }) =>
   await page.goto('/inbox');
 
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
   // The folder itself, not its star, whose label names the folder too.
   await expect(page.getByRole('button', { name: /^(?!.*favourites).*Job hunt/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add Job hunt to favourites' })).toBeVisible();
-  // The menu is on the island, and signing out is in the window it opens.
-  await page.getByRole('button', { name: /^Menu/ }).click();
-  const menu = page.getByRole('dialog', { name: 'Menu' });
-  await expect(menu.getByRole('button', { name: 'Log out' })).toBeVisible();
+  // The menu sits on the left of every screen.
+  await expect(page.getByRole('link', { name: 'Menu' })).toBeVisible();
 });
 
 test('every screen is reachable from the navigation', async ({ page }) => {
@@ -215,16 +214,10 @@ test('every screen is reachable from the navigation', async ({ page }) => {
   await page.getByRole('link', { name: 'Activity', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
   await expect(page.getByText('Nothing has run yet')).toBeVisible();
-  // Notifications open in the island's window, over the screen that was open.
-  await page.getByRole('button', { name: /^Menu/ }).click();
-  await page
-    .getByRole('dialog', { name: 'Menu' })
-    .getByRole('button', { name: /Notifications/ })
-    .click();
-  await expect(page.getByRole('dialog', { name: 'Notifications' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible();
-  // And as a page of their own, for when the window is too small.
-  await page.getByRole('link', { name: 'Open as a full page' }).click();
+  // Notifications live behind the menu on the left.
+  await page.getByRole('link', { name: 'Menu' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible();
+  await page.getByRole('link', { name: /Notifications/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible();
 });
 
@@ -242,6 +235,76 @@ test('on a phone the island is the tab bar, and the menu opens the same window',
   await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Menu' })).toHaveCount(0);
+});
+
+/**
+ * Chrome reports `display-mode: standalone` only for an installed window, which a test browser
+ * cannot be. Answering that one query as the window's width does is exactly what an installed
+ * window wider than the breakpoint reports, so the app takes its desktop-app shape.
+ */
+async function asInstalledApp(page: Page) {
+  await page.addInitScript(() => {
+    const original = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) =>
+      query.includes('display-mode') ? original('(min-width: 768px)') : original(query);
+  });
+}
+
+test('installed on a computer, the island floats, opens screens in a tray, and stays where it is dragged', async ({
+  page,
+}) => {
+  await asInstalledApp(page);
+  await page.route('http://127.0.0.1:4174/api/**', apiMock);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/inbox');
+
+  const island = page.getByRole('navigation', { name: 'Primary' });
+  await expect(island).toBeVisible();
+  // An empty window: no side panel, and no screen until one is asked for.
+  await expect(page.getByText(/Choose a screen on the island/)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toHaveCount(0);
+
+  await island.getByRole('link', { name: 'Favourites' }).click();
+  const tray = page.getByRole('dialog', { name: 'Favourites' });
+  await expect(tray.getByRole('heading', { level: 1, name: 'Favourites' })).toBeVisible();
+  await island.getByRole('link', { name: 'Favourites' }).click();
+  await expect(tray).toHaveCount(0);
+
+  // The Dock: the icon under the pointer swells.
+  const findIcon = island.getByRole('link', { name: 'Find' });
+  const before = (await findIcon.boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await expect
+    .poll(async () => (await findIcon.boundingBox())!.width)
+    .toBeGreaterThan(before.width + 8);
+
+  // Dragged from its edge to the lower left, it stays there after a reload.
+  const start = (await island.boundingBox())!;
+  await page.mouse.move(start.x + 4, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(start.x - 200, start.y + 400, { steps: 12 });
+  await page.mouse.up();
+  const moved = (await island.boundingBox())!;
+  expect(moved.y).toBeGreaterThan(start.y + 300);
+
+  // The last tap left the window on Favourites, so a reload opens it again in the tray.
+  await page.reload();
+  await expect(page.getByRole('dialog', { name: 'Favourites' })).toBeVisible();
+  const restored = (await page.getByRole('navigation', { name: 'Primary' }).boundingBox())!;
+  expect(Math.abs(restored.y - moved.y)).toBeLessThan(4);
+  expect(Math.abs(restored.x - moved.x)).toBeLessThan(4);
+
+  // Low in the window, the tray opens above the island.
+  await page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('button', { name: /^Menu/ })
+    .click();
+  const menu = page.getByRole('dialog', { name: 'Menu' });
+  await expect(menu).toBeVisible();
+  const menuBox = (await menu.boundingBox())!;
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(restored.y);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
 });
 
 /**

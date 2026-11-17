@@ -172,22 +172,22 @@ or a message gets found. All of them render inside `ProtectedRoute` and `AppShel
 | `/favorites`     | The starred folders, with live counts over all mail                          |
 | `/folders`       | Shape an arrangement, preview its tree, keep it as the default               |
 | `/activity`      | Run records, newest first, with state, progress, stop reasons, error codes   |
-| `/menu`          | The island window's menu as a page of its own, for old links                 |
+| `/menu`          | Behind the side panel's menu icon: notifications and the rest                |
 | `/notifications` | New-mail feed, and turning device notifications on or off                    |
 | `/account`       | Signed-in connection, session, logout, and deletion controls                 |
 
-The island holds the five everyday screens: Inbox, Find, Favourites, Folders, Activity. Its menu
-button carries the unread notification count and opens the **island window**, a small floating
-panel over whatever screen is open. The window shows notifications and account and privacy in
-place (`NotificationsPage` and `AccountPage` with `embedded`, which drops their own heading), plus
-appearance, feedback and logging out. Each in-place screen has an "open as a full page" button
-leading to its route.
+Every layout holds the same five everyday screens: Inbox, Find, Favourites, Folders, Activity. The
+menu carries the unread notification count. In the side panel it is a link to `/menu`. On a phone,
+and on the desktop app's island, it opens the **island window** instead: notifications and account
+and privacy shown in place (`NotificationsPage` and `AccountPage` with `embedded`, which drops
+their own heading), plus appearance, feedback and logging out. Each in-place screen has an "open as
+a full page" button leading to its route.
 
-The photo at the island's right end opens the window straight onto account and privacy. Escape,
-a click outside, or moving to another screen closes it. A confirmation opened from inside it owns
-Escape and the clicks around it, and `ConfirmDialog` renders on `document.body` so its backdrop
-covers the whole page. State lives in `components/app/islandWindowState.ts`, with the component in
-`IslandWindow.tsx`.
+Escape, a click outside, or moving to another screen closes the window. A confirmation opened from
+inside it owns Escape and the clicks around it, and `ConfirmDialog` renders on `document.body` so
+its backdrop covers the whole page. The window's state lives in
+`components/app/islandWindowState.ts`. Its contents are `IslandPanel` in `IslandWindow.tsx`, which
+the phone frames as a floating window and the desktop app as its tray.
 
 `/setup` is reachable but deliberately absent from the navigation: it is a path you walk once,
 linked to from wherever an account turns out not to be ready.
@@ -235,18 +235,35 @@ The system font stack carries UI text and every numeral — on a Mac that resolv
 which is the point — with Manrope as the fallback elsewhere and DM Mono for timestamps and codes.
 Fraunces is the wordmark alone.
 
-`AppShell` is one layout with one breakpoint at 768px. **Above it, the island**
-(`components/app/IslandNav.tsx`): a dark pill fixed at the top centre in both themes, holding the
-menu, the five screens and the account photo, over a four-column grid in a centred 62rem column.
-It replaced a left side panel that made the app read as one huge window. The selection slides
-between screens (`layoutId`), and the island grows downward to show the "starting up" message
-while the server wakes (`lib/serverWaking.ts`).
+`AppShell` has three shapes:
 
-**Below it, the same pill floats at the bottom as the tab bar**, and the menu button sits at the
-top of the screen. Toasts start below the island (`offset.top` in `App.tsx`). The island's motion
-goes through `useIslandTransition` and `usePopIn` in `lib/motion.ts`, so it is instant under
-reduced motion. A phone layout stretched across a desktop is the failure mode this avoids. The editorial atmosphere still runs on
-the landing and sign-in pages; it does not follow you through the door.
+- **A browser tab on a computer** gets the side panel on the left beside a max-width column.
+- **A phone** gets the dark pill floating at the bottom as the tab bar, with the menu at the top of
+  the screen opening the island window. The stylesheet switches between these two at 768px.
+- **AMO installed from Chrome and opened in its own window on a computer** takes a shape of its own
+  (`components/app/DesktopIsland.tsx`): an empty window with the island floating on it.
+  - The five screens are Dock-style icon tiles on the island. They swell and lift as the mouse
+    passes across them (`DOCK` in `lib/motion.ts`), the name shows beside the one under the
+    pointer, and a dot marks the open screen.
+  - Tapping a screen opens it in a **tray** from the island instead of turning the window into the
+    screen. Tapping it again puts the tray away. The tray opens towards the middle of the window:
+    below an island near the top, above one near the bottom.
+  - The island can be dragged anywhere in the window from any point on it. A drag never counts as
+    a tap. It remembers where it was left (`amo:island-position` in `localStorage`, as an offset
+    from the top centre) and is pulled back inside a window that shrank.
+  - The app opens on `/inbox` with the tray closed. Any other screen, including a reload of one or
+    a link followed from a notification, opens in the tray.
+
+`useAppLayout` (`lib/appLayout.ts`) decides this in script, from `display-mode: standalone` or
+`window-controls-overlay` together with `min-width: 768px`. It is script rather than a media query
+because the markup changes, not only its styling. The end-to-end suite answers that one query as
+the window's width to test the installed shape, since a test browser is never installed.
+
+The island grows to show the "starting up" message while the server wakes
+(`lib/serverWaking.ts`). Its motion goes through `useIslandTransition`, `usePopIn` and
+`useReducedMotion`, so nothing moves under reduced motion. A phone layout stretched across a
+desktop is the failure mode all this avoids. The editorial atmosphere still runs on the landing and
+sign-in pages; it does not follow you through the door.
 
 ## Authentication state
 
