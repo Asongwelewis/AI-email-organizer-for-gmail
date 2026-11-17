@@ -102,21 +102,35 @@ export function useEntrance(): (index?: number) => MotionProps {
  * rather than sliding in from anywhere, so the scale starts close to one and the travel is short.
  * Nothing at all under reduced motion, for the reason `useReveal` gives.
  */
-export function usePopIn(): MotionProps {
+export function usePopIn(from: 'above' | 'below' = 'above'): MotionProps {
   const reduceMotion = useReducedMotion();
   if (reduceMotion) return {};
+  // Out of whichever edge the island is on: down from it, or up from it when it sits low.
+  const away = from === 'above' ? -1 : 1;
   return {
-    initial: { opacity: 0, scale: 0.94, y: -10 },
+    initial: { opacity: 0, scale: 0.94, y: 10 * away },
     animate: { opacity: 1, scale: 1, y: 0 },
     exit: {
       opacity: 0,
       scale: 0.97,
-      y: -6,
+      y: 6 * away,
       transition: { duration: MOTION.duration.fast, ease: MOTION.ease.in },
     },
     transition: { duration: MOTION.duration.base, ease: MOTION.ease.out },
   };
 }
+
+/**
+ * The Dock's magnification: how wide an icon's slot is for a pointer this far from its centre.
+ * Full size under the pointer, falling to rest over about two neighbours either side — the
+ * curve the Mac uses, sampled at three points and sprung between them.
+ */
+export const DOCK = {
+  rest: 40,
+  peak: 60,
+  reach: 120,
+  spring: { mass: 0.1, stiffness: 170, damping: 12 },
+} as const;
 
 /**
  * How the island moves when its shape changes: the selection sliding to another screen, or the
