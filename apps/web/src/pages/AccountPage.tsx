@@ -6,7 +6,8 @@ import { ConfirmDialog } from '@web/components/ConfirmDialog';
 import { ErrorNotice } from '@web/components/app/ErrorNotice';
 import { useAuth } from '@web/context/useAuth';
 
-export function AccountPage() {
+/** `embedded` is the island's window, whose title bar already names the screen. */
+export function AccountPage({ embedded = false }: { embedded?: boolean }) {
   const { user, gmailConnection, disconnectGmail, logoutAll, isDisconnecting } = useAuth();
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
@@ -24,17 +25,21 @@ export function AccountPage() {
   }
 
   return (
-    <section className="screen account-screen">
-      <header className="screen__head">
-        <div>
-          <span className="eyebrow">Private controls</span>
-          <h1 className="screen__title">Account &amp; privacy</h1>
-        </div>
-      </header>
-      <p className="screen__lede">
-        See what is connected, end access, and remove your AMO data without hunting through a
-        settings maze.
-      </p>
+    <section className={`screen account-screen${embedded ? ' screen--embedded' : ''}`}>
+      {embedded ? null : (
+        <>
+          <header className="screen__head">
+            <div>
+              <span className="eyebrow">Private controls</span>
+              <h1 className="screen__title">Account &amp; privacy</h1>
+            </div>
+          </header>
+          <p className="screen__lede">
+            See what is connected, end access, and remove your AMO data without hunting through a
+            settings maze.
+          </p>
+        </>
+      )}
 
       <div className="account-grid">
         <article className="account-card">

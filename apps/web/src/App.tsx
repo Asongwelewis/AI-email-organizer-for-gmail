@@ -8,10 +8,22 @@ import { ThemeProvider } from '@web/context/ThemeContext';
 import { useTheme } from '@web/context/useTheme';
 import { router } from '@web/router';
 
-/** Sonner paints its own surfaces, so it has to be told which theme it is sitting on. */
+/**
+ * Sonner paints its own surfaces, so it has to be told which theme it is sitting on.
+ *
+ * Its top offset clears the island, which floats at the top centre and is wide enough to reach
+ * under a top-right toast. Phones keep Sonner's own offset: their island is at the bottom.
+ */
 function ThemedToaster() {
   const { resolvedTheme } = useTheme();
-  return <Toaster position="top-right" closeButton theme={resolvedTheme} />;
+  return (
+    <Toaster
+      position="top-right"
+      closeButton
+      theme={resolvedTheme}
+      offset={{ top: 84, right: 24 }}
+    />
+  );
 }
 
 export function App() {

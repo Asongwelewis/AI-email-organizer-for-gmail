@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { MagneticButton } from './MagneticButton';
@@ -60,7 +61,10 @@ export function ConfirmDialog({
     };
   }, [busy, onCancel, open]);
 
-  return (
+  // Rendered on the body, not where it was asked for: inside the island's window an ancestor that
+  // is still animating its transform would otherwise become the backdrop's frame, and the
+  // "full-screen" backdrop would cover only the window.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -101,6 +105,7 @@ export function ConfirmDialog({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

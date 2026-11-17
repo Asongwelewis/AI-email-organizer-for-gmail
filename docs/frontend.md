@@ -172,12 +172,22 @@ or a message gets found. All of them render inside `ProtectedRoute` and `AppShel
 | `/favorites`     | The starred folders, with live counts over all mail                          |
 | `/folders`       | Shape an arrangement, preview its tree, keep it as the default               |
 | `/activity`      | Run records, newest first, with state, progress, stop reasons, error codes   |
-| `/menu`          | Behind the menu icon on the left of every screen: notifications and the rest |
+| `/menu`          | The island window's menu as a page of its own, for old links                 |
 | `/notifications` | New-mail feed, and turning device notifications on or off                    |
 | `/account`       | Signed-in connection, session, logout, and deletion controls                 |
 
-The tab bar holds the five everyday screens: Inbox, Find, Favourites, Folders, Activity. The menu
-icon, top left at every width, carries the unread notification count.
+The island holds the five everyday screens: Inbox, Find, Favourites, Folders, Activity. Its menu
+button carries the unread notification count and opens the **island window**, a small floating
+panel over whatever screen is open. The window shows notifications and account and privacy in
+place (`NotificationsPage` and `AccountPage` with `embedded`, which drops their own heading), plus
+appearance, feedback and logging out. Each in-place screen has an "open as a full page" button
+leading to its route.
+
+The photo at the island's right end opens the window straight onto account and privacy. Escape,
+a click outside, or moving to another screen closes it. A confirmation opened from inside it owns
+Escape and the clicks around it, and `ConfirmDialog` renders on `document.body` so its backdrop
+covers the whole page. State lives in `components/app/islandWindowState.ts`, with the component in
+`IslandWindow.tsx`.
 
 `/setup` is reachable but deliberately absent from the navigation: it is a path you walk once,
 linked to from wherever an account turns out not to be ready.
@@ -225,9 +235,17 @@ The system font stack carries UI text and every numeral — on a Mac that resolv
 which is the point — with Manrope as the fallback elsewhere and DM Mono for timestamps and codes.
 Fraunces is the wordmark alone.
 
-`AppShell` is one layout with one breakpoint at 768px: a bottom tab bar and a two-column tile grid
-below it, a left nav rail and a four-column grid inside a max-width column above it. A phone layout
-stretched across a desktop is the failure mode this avoids. The editorial atmosphere still runs on
+`AppShell` is one layout with one breakpoint at 768px. **Above it, the island**
+(`components/app/IslandNav.tsx`): a dark pill fixed at the top centre in both themes, holding the
+menu, the five screens and the account photo, over a four-column grid in a centred 62rem column.
+It replaced a left side panel that made the app read as one huge window. The selection slides
+between screens (`layoutId`), and the island grows downward to show the "starting up" message
+while the server wakes (`lib/serverWaking.ts`).
+
+**Below it, the same pill floats at the bottom as the tab bar**, and the menu button sits at the
+top of the screen. Toasts start below the island (`offset.top` in `App.tsx`). The island's motion
+goes through `useIslandTransition` and `usePopIn` in `lib/motion.ts`, so it is instant under
+reduced motion. A phone layout stretched across a desktop is the failure mode this avoids. The editorial atmosphere still runs on
 the landing and sign-in pages; it does not follow you through the door.
 
 ## Authentication state
