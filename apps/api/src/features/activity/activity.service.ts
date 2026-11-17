@@ -91,8 +91,20 @@ export class ActivityService {
    * throw into an open response: every ending, including a crash, becomes a row the client polls.
    */
   runDetached(runId: string, work: (report: ProgressReporter) => Promise<RunOutcome>): void {
-    void this.runToCompletion(runId, work);
+    const running = this.runToCompletion(runId, work);
+    this.detached.add(running);
+    void running.finally(() => this.detached.delete(running));
   }
+
+  /**
+   * Resolves once every run detached in this process has ended. A web server never needs it; a
+   * one-shot job does, or it would exit with a first setup half done.
+   */
+  async whenIdle(): Promise<void> {
+    while (this.detached.size > 0) await Promise.allSettled([...this.detached]);
+  }
+
+  private readonly detached = new Set<Promise<void>>();
 
   async runToCompletion(
     runId: string,

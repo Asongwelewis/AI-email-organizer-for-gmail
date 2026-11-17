@@ -88,7 +88,7 @@ export function OnboardingProgress({
       <section className="onboarding onboarding--done" aria-label="Setup">
         <p className="onboarding__title">Your folders are ready</p>
         <p className="onboarding__lede">
-          New mail is sorted within a minute or two of arriving. Older mail is sorted in the
+          New mail is sorted within a few minutes of arriving. Older mail is sorted in the
           background over the next day.
         </p>
         <Link className="button button--primary" to="/inbox">

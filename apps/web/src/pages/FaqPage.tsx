@@ -22,7 +22,7 @@ const questions = [
   {
     question: 'Do I have to sort or approve anything?',
     answer:
-      'No. AMO classifies the last two years of your mail as soon as you connect Gmail, and every new email within a minute or two of arriving, then organizes it into folders. Classification is automated and accurate for most mail, but not infallible, so use Gmail itself as the source of truth for anything important.',
+      'No. AMO classifies the last two years of your mail as soon as you connect Gmail, and every new email within a few minutes of arriving, then organizes it into folders. Classification is automated and accurate for most mail, but not infallible, so use Gmail itself as the source of truth for anything important.',
   },
   {
     question: 'What happens when I disconnect Gmail?',

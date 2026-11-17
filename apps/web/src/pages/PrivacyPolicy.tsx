@@ -77,7 +77,7 @@ export function PrivacyPolicy() {
         brand, an area of life such as finance or career, and what the message is for, such as a
         receipt or a security alert — and organized into the folders you browse and search. When you
         connect Gmail, AMO classifies the last two years of your mail; after that, every new email
-        is classified within a minute or two of arriving. Mail older than two years before you first
+        is classified within a few minutes of arriving. Mail older than two years before you first
         connected is never synchronized or stored.
       </p>
       <p>

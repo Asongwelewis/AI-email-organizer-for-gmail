@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 
 import { auditService } from '@api/audit/audit.service.js';
+import { isSignInAllowed, SIGN_IN_RESTRICTED_MESSAGE } from '@api/auth/sign-in-policy.js';
 import { env } from '@api/config/env.js';
 import { AppError } from '@api/errors/AppError.js';
 import { connectedGoogleAccountRepository } from '@api/repositories/connected-google-account.repository.js';
@@ -104,6 +105,10 @@ export class AuthService {
       const client = createGoogleOAuthClient('LOGIN');
       const { tokens } = await client.getToken(code);
       const identity = await verifyGoogleIdentity(client, tokens.id_token);
+      // A private deployment turns everyone else away before an account row exists.
+      if (!isSignInAllowed(identity.email)) {
+        throw new AppError('AUTH_SIGN_IN_RESTRICTED', SIGN_IN_RESTRICTED_MESSAGE, 403);
+      }
       const created = await sessionService.createForGoogleIdentity(
         {
           googleSubject: identity.subject,

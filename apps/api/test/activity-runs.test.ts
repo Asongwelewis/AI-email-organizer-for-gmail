@@ -92,6 +92,32 @@ describe('activity runs', () => {
     mocks.finish.mockResolvedValue(undefined);
   });
 
+  /*
+   * The automation job runs once and exits. A first setup it starts is detached, so without this
+   * the process would end with the run half done and the row left RUNNING until it expired.
+   */
+  it('lets a one-shot process wait for every detached run to end', async () => {
+    const activity = service();
+    let release: () => void = () => undefined;
+    activity.runDetached(
+      RUN_ID,
+      () => new Promise((resolve) => (release = () => resolve({ state: 'SUCCEEDED' }))),
+    );
+
+    let idle = false;
+    const waiting = activity.whenIdle().then(() => (idle = true));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(idle).toBe(false);
+
+    release();
+    await waiting;
+    expect(mocks.finish).toHaveBeenCalledWith(
+      RUN_ID,
+      expect.objectContaining({ state: 'SUCCEEDED' }),
+    );
+    await expect(activity.whenIdle()).resolves.toBeUndefined();
+  });
+
   it('starts a run and reports it as running', async () => {
     const started = await service().start({ accountId: ACCOUNT_ID, kind: 'AUTOMATION_FILING' });
 

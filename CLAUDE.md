@@ -178,11 +178,15 @@ It only touches mail from the last 48 hours that was never classified; the backl
 **full runs** at `AUTOMATION_FULL_RUN_HOURS_UTC` (default `2,14`). A watcher check writes no row
 unless it sorted something, and then adds to one `automation_runs` row per account per day, so the
 daily caps still see its usage. It stands aside while a full run is in flight, and a full run waits
-out a check that holds the lease. Both need a process that is always running, which is why the
-API is on Railway: the previous free host slept after 15 idle minutes, and every attempt to
-keep it awake ran into a monthly quota — first instance hours (25 Oct 2026), then 5 GB of
-outbound bandwidth (9 Nov 2026). A full run missed while the process restarts is caught up at
-boot, because `next_run_at` lives in the database.
+out a check that holds the lease. **In production both clocks run outside the web service**: a
+Railway cron service starts the same image with `AMO_PROCESS=automation-job` every five minutes,
+and `jobs/automation-job.ts` runs one `runAutomationPass` (watch, then due full runs, then
+`activityService.whenIdle()` so a detached first setup finishes) and exits. The web service has
+`AUTOMATION_RUN_IN_PROCESS=false` and no timers, so it sleeps between visits. This is a cost
+decision: the previous host's free plan ran out of instance hours (25 Oct 2026) and then of
+bandwidth (9 Nov 2026) keeping one process awake. New mail is therefore sorted within about
+five minutes, not one. A full run missed while nothing ran is caught up on the next pass,
+because `next_run_at` lives in the database.
 
 **Inbox, favourites and notifications are the everyday screens.** Sorted is called **Inbox**
 (`/inbox`; `/sorted` redirects with its query string). The **Review** and **Approve** pages are
@@ -221,6 +225,11 @@ string, since ours carry facet values, search phrases and message ids — and no
 collected rather than entered. There is deliberately no `GET`: this system has no admin role, so an
 authenticated read would hand every signed-in user everybody else's feedback and reply addresses.
 The operator reads it with `npm run feedback --workspace @mailmind/api`.
+
+**A private deployment.** `SIGN_IN_ALLOWED_EMAILS`, when set, is the only list of Google
+accounts that may use AMO (`auth/sign-in-policy.ts`): others are refused at the Google callback
+before a user row exists, and on every request of a session they already hold. Production
+lists only the owner, with `BETA_MAX_MAILBOXES=0`.
 
 **Gemini sorts the owner's mail only.** `features/accounts/account-policy.ts` decides per
 mailbox: `OWNER_ACCOUNT_EMAILS` are sorted by Gemini over their whole history; everyone else
@@ -309,8 +318,9 @@ parsed by Zod at startup — invalid config aborts the process and reports field
 values. `docs/backend.md` documents every variable; `WEB_APP_URL` + deployed frontend origins form
 the shared CORS and trusted-Origin (CSRF) allowlist.
 
-Deployment: the API on **Railway**, built from the root [Dockerfile](Dockerfile) on every push to
-`main` (migrations run at boot, health check `/ready`); the SPA on Vercel
+Deployment: the API on **Railway** as two services built from the root [Dockerfile](Dockerfile)
+on every push to `main`: a sleeping web service (health check `/ready`) and a five-minute cron
+service (`AMO_PROCESS=automation-job`); migrations run at boot of either; the SPA on Vercel
 ([vercel.json](vercel.json), history fallback to `index.html`).
 [docs/deploy-railway.md](docs/deploy-railway.md) is the setup runbook.
 
