@@ -10,8 +10,9 @@
  * the several hundred rules in this file did not all have to be rewritten to change theme — but
  * they alias tokens now, and nothing here defines a colour of its own.
  *
- * One breakpoint, at 768px. Below it the navigation is a bottom tab bar and the grid is two
- * columns; above it a left rail and four columns inside a max-width column.
+ * One breakpoint, at 768px. Below it the navigation is a floating tab bar at the bottom and the
+ * grid is two columns; above it the island floats at the top centre over four columns in a
+ * centred column.
  */
 
 .shell {
@@ -23,7 +24,6 @@
   --app-line-strong: var(--line-strong);
   --app-focus: var(--accent);
   --app-danger: var(--status-danger-ink);
-  --app-rail: 16rem;
   --app-tabs: 4.25rem;
 
   min-height: 100dvh;
@@ -53,50 +53,194 @@
 
 /* ---------------------------------------------------------------- navigation */
 
-.shell__rail {
+/**
+ * The island. On a desktop the navigation is not a side panel but one dark pill floating at the
+ * top centre, the way the hardware island sits in the middle of a MacBook's top edge: the menu
+ * with its unread count, the five screens, and whose mailbox this is. It is dark in both themes
+ * because the hardware is, and because a dark object over a light page reads as something laid on
+ * the window rather than part of it.
+ *
+ * It grows downward to say something live — the server waking — and shrinks back when that is
+ * over. Below the breakpoint the same pill is the tab bar at the bottom.
+ */
+.island {
   display: none;
 }
 
+.island__row {
+  display: flex;
+  gap: 0.15rem;
+  align-items: center;
+}
+
+.island__nav {
+  display: flex;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.island__link {
+  position: relative;
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  height: 2.5rem;
+  padding: 0 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink-on-invert-soft);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 999px;
+  transition:
+    color 140ms ease-out,
+    background-color 140ms ease-out;
+}
+
+.island__link:hover {
+  color: var(--ink-on-invert);
+  background: rgb(255 255 255 / 0.08);
+}
+
+.island__link--active,
+.island__link--active:hover {
+  color: var(--accent-ink);
+  background: none;
+}
+
+/* The icon and the label ride above the selection sliding underneath them. */
+.island__link > :not(.island__selection) {
+  position: relative;
+  z-index: 1;
+}
+
+.island__link svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.island__selection,
+.tab-item__selection {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.island__button {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  color: var(--ink-on-invert);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  transition: background-color 140ms ease-out;
+}
+
+.island__button:hover,
+.island__button[aria-expanded='true'] {
+  background: rgb(255 255 255 / 0.14);
+}
+
+.island__button svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+/* A ring the colour of the island keeps the count legible where it overlaps the icon. */
+.island__button .menu-button__badge {
+  top: 0;
+  right: -0.1rem;
+  box-shadow: 0 0 0 2px var(--surface-invert);
+}
+
+.island__avatar .avatar {
+  width: 2.05rem;
+  height: 2.05rem;
+  font-size: 0.6rem;
+}
+
+.island__divider {
+  flex: none;
+  width: 1px;
+  height: 1.35rem;
+  margin: 0 0.25rem;
+  background: var(--line-on-invert);
+}
+
+/* As wide as the row and never wider: the message wraps rather than stretching the island. */
+.island__live {
+  width: 0;
+  min-width: 100%;
+  overflow: hidden;
+}
+
+.island__live p {
+  margin: 0;
+  padding: 0.35rem 0.85rem 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink-on-invert-soft);
+}
+
+.shell .island :focus-visible,
+.shell .shell__tabs :focus-visible {
+  border-radius: 999px;
+}
+
 /**
- * Vibrancy. Translucent chrome over the content scrolling behind it is the single most
- * macOS-reading detail in the whole interface — and it is also the one that fails silently, so the
- * opaque tint is the default and the blur is layered on only where it is supported.
+ * The tab bar is the island on a phone: the same dark pill, floating above the bottom edge and
+ * the home indicator rather than welded to them.
  */
 .shell__tabs {
   position: fixed;
   z-index: 20;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  right: 0.75rem;
+  bottom: calc(0.6rem + env(safe-area-inset-bottom));
+  left: 0.75rem;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  height: calc(var(--app-tabs) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  background: var(--surface-chrome-opaque);
-  border-top: 1px solid var(--line);
-}
-
-@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  .shell__tabs {
-    background: var(--surface-chrome);
-    -webkit-backdrop-filter: var(--vibrancy);
-    backdrop-filter: var(--vibrancy);
-  }
+  gap: 0.15rem;
+  height: var(--app-tabs);
+  padding: 0.3rem;
+  background: var(--surface-invert);
+  border: 1px solid var(--line-on-invert);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-md);
 }
 
 .tab-item {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   align-items: center;
   justify-content: center;
-  /* The bar reserves the safe area as padding, so the target itself has to be measured against
-     the bar's own height and not the padded box. 44pt minimum, per platform guidance. */
+  /* 44pt minimum, per platform guidance. */
   min-height: 2.75rem;
-  font-size: 0.75rem;
-  color: var(--app-ink-soft);
+  font-size: 0.6875rem;
+  color: var(--ink-on-invert-soft);
   text-decoration: none;
+  border-radius: 1.2rem;
   transition: color 160ms ease-out;
+}
+
+.tab-item > :not(.tab-item__selection) {
+  position: relative;
+  z-index: 1;
+}
+
+.tab-item .tab-item__selection {
+  border-radius: 1.2rem;
 }
 
 .tab-item:active {
@@ -104,17 +248,17 @@
 }
 
 .tab-item svg {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.3rem;
+  height: 1.3rem;
 }
 
 .tab-item--active {
   font-weight: 500;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .shell__main {
-  padding: 1.5rem 1.25rem calc(var(--app-tabs) + 2rem);
+  padding: 1.5rem 1.25rem calc(var(--app-tabs) + 2.5rem + env(safe-area-inset-bottom));
 }
 
 .shell__column {
@@ -137,13 +281,17 @@
   justify-content: center;
   width: 2.75rem;
   height: 2.75rem;
+  padding: 0;
   color: var(--app-ink, var(--ink));
+  cursor: pointer;
+  background: none;
+  border: 0;
   border-radius: var(--radius-md);
   transition: background 140ms ease-out;
 }
 
 .menu-button:hover,
-.menu-button--active {
+.menu-button[aria-expanded='true'] {
   background: var(--accent-soft);
 }
 
@@ -207,6 +355,15 @@
   color: inherit;
   text-decoration: none;
   background: var(--surface-content);
+}
+
+/* The window's rows open a view in place, so they are buttons dressed as the menu's links. */
+button.menu-item {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border: 0;
 }
 
 .menu-item + .menu-item {
@@ -375,9 +532,122 @@
   line-height: 1.4;
 }
 
-/* Just the two segments, not stretched across the panel. */
-.shell__theme {
-  align-self: flex-start;
+/* ---------------------------------------------------------------- island window */
+
+/**
+ * The window the island opens: notifications, account and privacy, appearance and signing out,
+ * in a small floating panel over whatever screen is open. Under the island on a desktop, under the
+ * menu button on a phone. A light surface although the island is dark: what it holds are screens,
+ * and they keep their own colours.
+ */
+.island-window {
+  position: fixed;
+  z-index: 40;
+  top: calc(env(safe-area-inset-top, 0px) + 4rem);
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 6.5rem - var(--app-tabs) - env(safe-area-inset-bottom, 0px));
+  margin-inline: auto;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--highlight-inset), var(--shadow-lg);
+  transform-origin: top center;
+}
+
+/* Focused so its name is announced; the panel itself needs no ring. */
+.shell .island-window:focus,
+.shell .island-window:focus-visible {
+  outline: none;
+}
+
+.island-window__bar {
+  display: flex;
+  flex: none;
+  gap: 0.15rem;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.island-window__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-left: 0.6rem;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.island-window__tool {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out;
+}
+
+.island-window__tool:hover {
+  color: var(--ink);
+  background: var(--surface-inset);
+}
+
+.island-window__tool svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.island-window__body {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* A screen shown in the window: tighter, and one column however wide the screen would be. */
+.screen--embedded {
+  gap: 1rem;
+}
+
+.island-window .account-grid {
+  grid-template-columns: 1fr;
+}
+
+/* The screen's own gap already spaces it; its margin is for the full page. */
+.island-window .push-switch {
+  margin-bottom: 0;
+}
+
+.island-window .account-actions {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.island-window .menu-profile {
+  margin-bottom: 1rem;
+}
+
+.island-window .menu-theme {
+  margin: 1rem 0;
 }
 
 /* ---------------------------------------------------------------- screens */
@@ -1231,7 +1501,7 @@
   position: fixed;
   z-index: 40;
   right: 1rem;
-  bottom: calc(var(--app-tabs) + 1rem);
+  bottom: calc(var(--app-tabs) + 1.4rem + env(safe-area-inset-bottom));
   left: 1rem;
   display: flex;
   flex-wrap: wrap;
@@ -1253,143 +1523,54 @@
 /* ---------------------------------------------------------------- desktop */
 
 @media (min-width: 768px) {
-  .shell {
-    display: grid;
-    grid-template-columns: var(--app-rail) minmax(0, 1fr);
-  }
-
   .shell__tabs {
     display: none;
   }
 
-  /*
-   * The sidebar, floating: inset from the window edge with rounded corners, so it reads as a panel
-   * laid on the window rather than a strip cut out of it. Vibrancy is what a Finder or Mail window
-   * looks like.
-   */
-  .shell__rail {
-    position: sticky;
+  /* Centred on the window's top edge. Margins, not a transform: the window and the selection
+     animate transforms of their own, and a centring transform would be overwritten by them. */
+  .island {
+    position: fixed;
+    z-index: 30;
     top: 0.75rem;
+    right: 0;
+    left: 0;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    height: calc(100dvh - 1.5rem);
-    margin: 0.75rem 0 0.75rem 0.75rem;
-    padding: 1.25rem 0.85rem 1rem;
-    overflow-y: auto;
-    background: var(--surface-chrome-opaque);
-    border: 1px solid var(--app-line);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--highlight-inset), var(--shadow-sm);
+    width: max-content;
+    max-width: calc(100vw - 1.5rem);
+    margin-inline: auto;
+    padding: 0.3rem;
+    color: var(--ink-on-invert);
+    background: var(--surface-invert);
+    border: 1px solid var(--line-on-invert);
+    border-radius: 1.625rem;
+    box-shadow: var(--shadow-md);
   }
 
-  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-    .shell__rail {
-      background: var(--surface-chrome);
-      -webkit-backdrop-filter: var(--vibrancy);
-      backdrop-filter: var(--vibrancy);
-    }
-  }
-
-  /* Whose mailbox this is: the photo first, the name and address under it. */
-  .shell__profile {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    align-items: center;
-    padding: 0.25rem 0.25rem 1rem;
-    text-align: center;
-    border-bottom: 1px solid var(--app-line);
-  }
-
-  .shell__identity {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    max-width: 100%;
-  }
-
-  .shell__name {
-    overflow: hidden;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* The menu button sits on its own row under the profile, lined up with the rows below it. */
-  .shell__rail > .menu-button {
-    margin-left: 0.15rem;
-  }
-
-  .shell__nav {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .nav-item {
-    display: flex;
-    gap: 0.65rem;
-    align-items: center;
-    padding: 0.5rem 0.65rem;
-    font-size: 0.9375rem;
-    color: var(--app-ink-soft);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
-  }
-
-  .nav-item svg {
-    width: 1.15rem;
-    height: 1.15rem;
-  }
-
-  .nav-item:hover {
-    color: var(--app-ink);
-    background: var(--accent-soft);
-  }
-
-  /* Selected sidebar rows in macOS are filled with the accent, not tinted grey. */
-  .nav-item--active,
-  .nav-item--active:hover {
-    font-weight: 500;
-    color: var(--accent-ink);
-    background: var(--accent);
-  }
-
-  .shell__account {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    align-items: flex-start;
-    margin-top: auto;
-    padding-top: 1rem;
-    border-top: 1px solid var(--app-line);
-  }
-
-  .shell__account-actions {
-    display: flex;
-    gap: 0.25rem;
-  }
-
-  .shell__email {
-    max-width: 100%;
-    overflow: hidden;
-    font-size: 0.8125rem;
-    color: var(--app-ink-soft);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+  /* Clears the island, and keeps the screen to a readable width under it instead of spreading
+     across the whole window. */
   .shell__main {
-    padding: 2.5rem 2rem 3rem;
+    padding: 5.5rem 2rem 3rem;
   }
 
-  /* The menu has moved into the side panel, so the bar that held it on a phone is not needed. */
+  .shell__column {
+    max-width: 62rem;
+  }
+
+  .island-window {
+    top: 4.6rem;
+    width: min(28rem, calc(100vw - 1.5rem));
+    max-height: calc(100dvh - 5.6rem);
+  }
+
+  /* The menu is in the island, so the bar that holds it on a phone is not needed. */
   .shell__toolbar {
+    display: none;
+  }
+
+  /* The island says this itself. */
+  .shell__column > .server-wake {
     display: none;
   }
 
@@ -1966,6 +2147,15 @@
 @media (display-mode: window-controls-overlay) {
   .shell {
     padding-top: env(titlebar-area-height, 0px);
+  }
+
+  /* Fixed, so the reserved strip has to be added to their offsets by hand. */
+  .island {
+    top: calc(env(titlebar-area-height, 0px) + 0.75rem);
+  }
+
+  .island-window {
+    top: calc(env(titlebar-area-height, 0px) + 4.6rem);
   }
 
   /*
