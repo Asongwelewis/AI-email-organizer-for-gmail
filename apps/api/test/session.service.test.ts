@@ -12,6 +12,7 @@ const repository = vi.hoisted(() => ({
 
 vi.mock('../src/repositories/session.repository.js', () => ({ sessionRepository: repository }));
 
+import { env } from '../src/config/env.js';
 import { sha256 } from '../src/security/hashing.service.js';
 import {
   SessionService,
@@ -115,6 +116,37 @@ describe('SessionService', () => {
     await expect(new SessionService().authenticate(requestWithToken())).rejects.toMatchObject({
       code: status === 'SUSPENDED' ? 'AUTH_USER_SUSPENDED' : 'AUTH_USER_DELETED',
     });
+  });
+
+  /*
+   * A private deployment must cut off a session that was issued before its owner closed it, not
+   * only refuse new sign-ins: otherwise removing someone would wait for their session to expire.
+   */
+  it('refuses a session whose user is not on a configured sign-in list', async () => {
+    const original = env.SIGN_IN_ALLOWED_EMAILS;
+    env.SIGN_IN_ALLOWED_EMAILS = ['owner@example.com'];
+    try {
+      repository.findByTokenHash.mockResolvedValue(activeRecord());
+      await expect(new SessionService().authenticate(requestWithToken())).rejects.toMatchObject({
+        code: 'AUTH_SIGN_IN_RESTRICTED',
+        statusCode: 401,
+      });
+
+      forgetCachedSessions();
+      repository.findByTokenHash.mockResolvedValue(
+        activeRecord({ users: { ...activeRecord().users, email: 'Owner@Example.com' } }),
+      );
+      const result = await new SessionService().authenticate(requestWithToken());
+      expect(result.user.email).toBe('Owner@Example.com');
+    } finally {
+      env.SIGN_IN_ALLOWED_EMAILS = original;
+    }
+  });
+
+  it('lets everyone in while no sign-in list is configured', async () => {
+    expect(env.SIGN_IN_ALLOWED_EMAILS).toEqual([]);
+    repository.findByTokenHash.mockResolvedValue(activeRecord());
+    await expect(new SessionService().authenticate(requestWithToken())).resolves.toBeDefined();
   });
 
   it('allows only one winner when concurrent rotation loses its conditional update', async () => {

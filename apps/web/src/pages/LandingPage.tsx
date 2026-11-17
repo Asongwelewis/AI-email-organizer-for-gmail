@@ -15,7 +15,7 @@ import { MOTION, useEntrance, useReveal } from '@web/lib/motion';
 const CLASSIFICATION_FACTS = [
   { value: '11,244', label: 'of 11,245 emails classified' },
   { value: '93%', label: 'correct in a hand-checked sample' },
-  { value: '< 1 min', label: 'from arrival to its folder' },
+  { value: '≤ 5 min', label: 'from arrival to its folder' },
 ] as const;
 
 const principles = [
@@ -28,7 +28,7 @@ const principles = [
   {
     number: '02',
     title: 'Automated',
-    copy: 'AMO checks your Gmail every minute. A new email is classified and filed into its folder the moment it arrives — no buttons to press, no queue to clear, nothing to approve.',
+    copy: 'AMO checks your Gmail every few minutes. A new email is classified and filed into its folder soon after it arrives — no buttons to press, no queue to clear, nothing to approve.',
   },
   {
     number: '03',

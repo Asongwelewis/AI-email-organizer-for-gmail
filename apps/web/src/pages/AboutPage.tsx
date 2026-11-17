@@ -13,7 +13,7 @@ const promises = [
   {
     Icon: FolderKanban,
     title: 'Organized into folders',
-    copy: 'Sender, area of life and purpose become folders you can reorder, search, and filter by recency — kept up to date every minute.',
+    copy: 'Sender, area of life and purpose become folders you can reorder, search, and filter by recency — kept up to date every few minutes.',
   },
   {
     Icon: Hand,

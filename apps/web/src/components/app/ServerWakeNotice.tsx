@@ -6,7 +6,7 @@ import { useDelayedFlag } from '@web/lib/useDelayedFlag';
 export const SLOW_SERVER_DELAY_MS = 4_000;
 
 export const SLOW_SERVER_MESSAGE =
-  'Still loading. The server is taking longer than usual to answer, which can happen for a minute while a new version starts.';
+  'Starting up. The server rests when nobody is using it, so the first visit after a quiet spell takes a few seconds.';
 
 /**
  * Says why the screen is still loading when the server is slow to answer — a new version still

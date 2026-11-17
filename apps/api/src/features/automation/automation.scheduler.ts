@@ -4,6 +4,7 @@ import { captureApiException } from '@api/observability/sentry.js';
 // One engine. `runScheduledAccount` refreshes the mailbox, classifies into facets, then files
 // through the canonical pivot — it no longer reaches the retired taxonomy classifier.
 import { automationService } from './automation.service.js';
+import { activityService } from '@api/features/activity/activity.service.js';
 import { onboardingService } from '@api/features/onboarding/onboarding.service.js';
 import { forEachWithConcurrency } from '@api/utils/concurrency.js';
 import { mailWatchService } from './mail-watch.service.js';
@@ -17,9 +18,11 @@ import { mailWatchService } from './mail-watch.service.js';
  * arrived and sorts only that, so mail lands in its folder within a minute or two instead of at
  * the next full run.
  *
- * The API runs on an always-on instance. A full run is due once its `next_run_at` has passed, and
- * that lives in the database, so an hour missed while the process was restarting or redeploying
- * is caught up at the first tick after boot (one runs at boot).
+ * They run in one of two places. In-process, on these timers. Or, with AUTOMATION_RUN_IN_PROCESS
+ * off, as `runAutomationPass` in a one-shot job an external scheduler starts (a Railway cron
+ * service, every five minutes) while the web service sleeps between visits. Either way a full run
+ * is due once its `next_run_at` has passed, and that lives in the database, so an hour missed
+ * while nothing was running is caught up on the next pass.
  */
 
 let timer: NodeJS.Timeout | null = null;
@@ -94,6 +97,17 @@ async function watchTick(): Promise<void> {
   } finally {
     watching = false;
   }
+}
+
+/**
+ * One pass of both clocks, for a process that runs once and exits: new mail first, because it is
+ * what a person is waiting for, then any full run that is due, then whatever a first setup the
+ * sweep started still has to do.
+ */
+export async function runAutomationPass(): Promise<void> {
+  await watchTick();
+  await tick();
+  await activityService.whenIdle();
 }
 
 export function startAutomationScheduler(): void {

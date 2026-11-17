@@ -142,6 +142,20 @@ const environmentSchema = z
           .filter(Boolean),
       ),
     /**
+     * The only Google accounts that may sign in, comma-separated. Empty means anyone may; set, the
+     * deployment is private and every other address is refused at sign-in and on every request
+     * of a session it already holds. See `auth/sign-in-policy.ts`.
+     */
+    SIGN_IN_ALLOWED_EMAILS: z
+      .string()
+      .optional()
+      .transform((value) =>
+        (value ?? '')
+          .split(',')
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    /**
      * Days of mail a non-owner mailbox is sorted over, counted back from when it was first
      * connected; mail older than that is never synced, stored or sorted. A mailbox's own
      * `mail_history_days` overrides it, which is what a paid plan will set.
@@ -187,6 +201,12 @@ const environmentSchema = z
     FACET_SAMPLE_UNFILED_SHARE: z.coerce.number().min(0).max(1).default(0.8),
     FACET_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1000).max(64000).default(16000),
     AUTOMATION_ENABLED: booleanValue.default(true),
+    /**
+     * Whether the web service runs the scheduler itself. Off when a separate scheduler starts the
+     * one-shot automation job (`AMO_PROCESS=automation-job`, a Railway cron service): the web
+     * service then has no timers of its own and can sleep while nobody is using it.
+     */
+    AUTOMATION_RUN_IN_PROCESS: booleanValue.default(true),
     /**
      * The hours, in UTC, a FULL run starts: the backlog, re-classification, and filing when the
      * Gmail export is on. Comma-separated, e.g. "2,14". New mail does not wait for these — the

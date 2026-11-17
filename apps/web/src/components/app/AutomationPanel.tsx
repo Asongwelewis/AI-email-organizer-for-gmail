@@ -13,7 +13,7 @@ import { api } from '@web/services/http';
 /**
  * Whether automation is on, how fresh it is, and what today has already cost.
  *
- * There are no buttons here any more, on purpose. New mail is checked for every minute and sorted
+ * There are no buttons here any more, on purpose. New mail is checked for every few minutes and sorted
  * as it lands, and the full job runs twice a day on its own, so "Run now" and "Check for new mail"
  * only ever asked a person to do by hand what was about to happen anyway. What this answers
  * instead is the question the whole product rests on: *is it still running on its own?*
